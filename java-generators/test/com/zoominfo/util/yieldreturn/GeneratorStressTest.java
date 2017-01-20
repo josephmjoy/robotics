@@ -12,6 +12,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class GeneratorStressTest {
     Logger log = new Logger();
     
+    /**
+     * A simple logger class that the rest of the code uses to log stuff and also for assertion failures.
+     * This can be modified/replaced to adapt to other (including headless) environments.
+     */
     class Logger {
         
          void logError(String s) {
