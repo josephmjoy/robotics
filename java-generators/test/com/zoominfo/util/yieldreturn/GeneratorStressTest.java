@@ -1,5 +1,8 @@
+/**
+ * PROJECT: Robotics sample code.
+ * Module: Stress test for the "Java Generator" code from https://github.com/domlachowicz/java-generators.
+ */
 package com.zoominfo.util.yieldreturn;
-
 import org.junit.Test;
 import static org.junit.Assert.*;
 import java.util.ArrayList;
@@ -27,9 +30,14 @@ public class GeneratorStressTest {
             boolean result = isEntered.compareAndSet(true, false);
             assert(result);
         }
-
     }
 
+    /**
+     * Wraps a generator that returns an "int supplier", i.e., a
+     * function with no arguments that returns an int.
+     * Internally, it cycles through a set of sequence generators (intFuncs).
+     * It also uses an "entry tracker" to verify that client and iterator code are strictly interleaved.
+     */
     static class IntFuncGenerator extends Generator<IntSupplier> {
         final String name;
         int yieldCount;
@@ -127,18 +135,28 @@ public class GeneratorStressTest {
         EntryTracker tracker = new EntryTracker(); // Keeps track of thread reentrancy.
          
         // Create some random unary int functions ...
+        // These ones return the ith multiple of the nth prime.
+        // The generators will keep cycling through these functions to
+        // generate the lambda that is returned as the next yield value. The client code is expecting this and
+        // again verifies this sequence. If the Generator code returns values in the wrong sequence
+        // it will be caught by the client code.
         IntUnaryOperator[] intFuncs = new IntUnaryOperator[] {
-                (i) -> i,
-                (i) -> 10*i,
-                (i) -> 100*i
+                (i) -> 2*i,
+                (i) -> 3*i,
+                (i) -> 7*i,
+                (i) -> 11*i,
+                (i) -> 13*i,
+                (i) -> 19*i
         };
         
         tracker.enter(); //Enter the room - only one thead can be "in the room" at a time.
+        
         // Initialize the generators; They are all identical (but) different instances.
         for (int i = 0; i < nGenerators; i++) {
             generators[i] = new IntFuncGenerator("G"+i, intFuncs, tracker, yieldCount, busyWorkCalls, busyWorkDepth);
         }
      
+        // Run through the genrators "in parallel"
         for (int i=0; i<yieldCount; i++) {
             for (IntFuncGenerator gen: generators) {
                 Iterator<IntSupplier> iter = gen.defaultIterator();
@@ -167,7 +185,9 @@ public class GeneratorStressTest {
         }
     }
     
-    
+    /**
+     * Goes through stages, running more and more intensive versions of runLambdaTests.
+     */
     @Test
     public void testMultiple() {
         // Create multiple iterators and iterate over them "in parallel".
