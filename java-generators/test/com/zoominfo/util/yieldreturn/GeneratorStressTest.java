@@ -75,9 +75,9 @@ public class GeneratorStressTest {
          * is intFuncs[i%intFuncs.length].applyAsInt(i).
          * @param name  Name of this generator. Used for debugging/logging.
          * @param intFuncs  Array of int functions that determine successive lambdas 
-         * @param yieldCount Exact number of iterations for this generator.
-         * @param busyWorkCalls  Count of extra "busy work" calls to make before yielding. 
-         * @param busyWorkDepth Recursion depth when performing "busy work".r
+         * @param yieldCount Exact number of iterations for this generator
+         * @param busyWorkCalls  Count of extra "busy work" calls to make before yielding
+         * @param busyWorkDepth Recursion depth when performing "busy work"
          */
         public IntFuncGenerator(String name, IntUnaryOperator[] intFuncs, EntryTracker tracker, int yieldCount, long busyWorkCalls, int busyWorkDepth) {
             this.name = name;
@@ -126,7 +126,7 @@ public class GeneratorStressTest {
         
         /**
          * For testing purposes, we maintain an on-demand single iterator.
-         * @return Return the "default" iterator for this instance.
+         * @return Return the "default" iterator for this instance
          */
         public Iterator<IntSupplier> defaultIterator() {
             if (myIterator == null) {
@@ -159,8 +159,8 @@ public class GeneratorStressTest {
      * Create multiple generators and iterate over them "in parallel".
      * @param nGenerators Count of generators
      * @param yieldCount  Total number of yields (for all generators)
-     * @param busyWorkCalls Number of calls when doing "busy work" before each yield.
-     * @param busyWorkDepth  Recursion depth when doing "busy work" before each yield.
+     * @param busyWorkCalls Number of calls when doing "busy work" before each yield
+     * @param busyWorkDepth  Recursion depth when doing "busy work" before each yield
      */
     public void runLambdaTest(int nGenerators, final int yieldCount, final long busyWorkCalls, final int busyWorkDepth ) {
 
