@@ -31,6 +31,7 @@ public class GeneratorStressTest {
     }
 
     static class IntFuncGenerator extends Generator<IntSupplier> {
+        final String name;
         int yieldCount;
         IntUnaryOperator[] intFuncs;
         long busyWorkCalls;
@@ -41,12 +42,14 @@ public class GeneratorStressTest {
         /**
          * Returns a generator that yields exactly yieldCount times. The lambda returned in the ith
          *  iteration is intFuncs[i%intFuncs.length].applyAsInt(i) where i is the ith iteration.
+         * @param name  Name of this generator. Used for debugging/logging.
          * @param intFuncs  Array of int functions that determine successive lambdas 
          * @param yieldCount Exact number of iterations for this generator.
          * @param busyWorkCalls  Count of extra "busy work" calls to make before yielding. 
          * @param busyWorkDepth Recursion depth when performing "busy work".r
          */
-        public IntFuncGenerator(IntUnaryOperator[] intFuncs, EntryTracker tracker, int yieldCount, long busyWorkCalls, int busyWorkDepth) {
+        public IntFuncGenerator(String name, IntUnaryOperator[] intFuncs, EntryTracker tracker, int yieldCount, long busyWorkCalls, int busyWorkDepth) {
+            this.name = name;
             this.yieldCount = yieldCount;
             this.intFuncs = intFuncs;
             this.tracker = tracker;
@@ -58,6 +61,7 @@ public class GeneratorStressTest {
         @Override
         protected void run() {
             tracker.enter(); // "Enter the room" (only one thread can be "in the room").
+            //System.out.println("GEN " + this.name + " STARTING");
             int count = yieldCount;
             while (count > 0) {                
                 for (IntUnaryOperator func : intFuncs) {                   
@@ -75,6 +79,7 @@ public class GeneratorStressTest {
             }
             
             // A final exit...
+            //System.out.println("GEN " + this.name + " ENDING");
             tracker.exit();
         }
         
@@ -131,7 +136,7 @@ public class GeneratorStressTest {
         tracker.enter(); //Enter the room - only one thead can be "in the room" at a time.
         // Initialize the generators; They are all identical (but) different instances.
         for (int i = 0; i < nGenerators; i++) {
-            generators[i] = new IntFuncGenerator(intFuncs, tracker, yieldCount, busyWorkCalls, busyWorkDepth);
+            generators[i] = new IntFuncGenerator("G"+i, intFuncs, tracker, yieldCount, busyWorkCalls, busyWorkDepth);
         }
      
         for (int i=0; i<yieldCount; i++) {
@@ -167,11 +172,13 @@ public class GeneratorStressTest {
     public void testMultiple() {
         // Create multiple iterators and iterate over them "in parallel".
         System.out.println("--TESTMULTIPLE BEGINS ---");
-        for (int i=0; i< 5; i++) {
-            long busyWorkCalls = (long) Math.pow(2, i);
-            int busyWorkDepth = Math.max(1, 100*i);
-            int yieldCount = i;
-            int nGenerators = Math.min(i, 1);
+        final int STAGES = 20;
+        for (int i=0; i<= STAGES; i++) {
+            int busyWorkDepth = Math.max(1, 10*i);
+            int yieldCount = 100*i;
+            int nGenerators = 2*i; //Math.min(i, 1);
+            long multFactor = Math.max(1, (long) nGenerators * yieldCount);
+            long busyWorkCalls = Math.max(2*busyWorkDepth,  (long) (Math.pow(2, i)/multFactor));
             System.out.println("STARTING #" + i + ":: nGens:" + nGenerators + " yc:" + yieldCount +" bwC:" + busyWorkCalls + " bwD:" + busyWorkDepth);
             runLambdaTest(nGenerators, yieldCount, busyWorkCalls, busyWorkDepth);
             System.out.println("...ENDING ");
