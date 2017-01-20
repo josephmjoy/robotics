@@ -90,7 +90,11 @@ public class GeneratorStressTest {
             tracker.enter(); // "Enter the room" (only one thread can be "in the room").
             //log.logInfo("INTGEN, name:" + this.name + ", STARTING");
             int count = yieldCount;
-            while (count > 0) {                
+            while (count > 0) {
+                
+                // Keep cycling through the intFuncs. The  lambda generated at the ith
+                // iteration of this generator is intFuncs[i % intFuncs.length].applyAsInt(i).
+                // The *client* code calling these generators knows this and verifies this sequence.
                 for (IntUnaryOperator func : intFuncs) {                   
                     if (count <= 0) {
                         break;
@@ -99,6 +103,12 @@ public class GeneratorStressTest {
                     count--;
                     busyWork(busyWorkCalls, busyWorkDepth);
                     final int param = index;
+                    // Give other threads a chance to run every now and then.
+                    // This is purely to attempt to precipitate latent threading bugs.
+                    //(see also this code in the runLambdaTests method.)
+                    if (count % 3 == 0) {
+                        Thread.yield();
+                    }
                     tracker.exit();
                     yield(() -> func.applyAsInt(param));
                     tracker.enter();
@@ -154,22 +164,25 @@ public class GeneratorStressTest {
         EntryTracker tracker = new EntryTracker(); // Keeps track of thread reentrancy.
          
         // Create some random unary int functions ...
-        // These ones return the ith multiple of the nth prime.
+        // The nth function returns n*BASE+ i. It could be defined using a loop, but this way the
+        // structure is more clear.
         // The generators will keep cycling through these functions to
         // generate the lambda that is returned as the next yield value. The client code is expecting this and
         // again verifies this sequence. If the Generator code returns values in the wrong sequence
-        // it will be caught by the client code.
+        // it will be caught (with high probability) by the client code. One could have more such functions and also
+        // do more to ensure that generated values are unique across functions but that is overkill.
+        final int BASE = 10000;
         IntUnaryOperator[] intFuncs = new IntUnaryOperator[] {
-                (i) -> 2*i,
-                (i) -> 3*i,
-                (i) -> 7*i,
-                (i) -> 11*i,
-                (i) -> 13*i,
-                (i) -> 17*i,
-                (i) -> 19*i,
-                (i) -> 23*i,
-                (i) -> 29*i,
-                (i) -> 31*i
+                (i) -> BASE + i,
+                (i) -> 2*BASE + i,
+                (i) -> 3*BASE + i,
+                (i) -> 4*BASE + i,
+                (i) -> 5*BASE + i,
+                (i) -> 6*BASE + i,
+                (i) -> 7*BASE + i,
+                (i) -> 8*BASE + i,
+                (i) -> 9*BASE + i,
+                (i) -> 10*BASE + i
         };
         
         tracker.enter(); //Enter the room - only one thead can be "in the room" at a time.
@@ -193,7 +206,7 @@ public class GeneratorStressTest {
                 IntSupplier func = iter.next();
                 tracker.enter(); // Get back "in the room"
                 int actual = func.getAsInt();
-                int expected = intFuncs[i % intFuncs.length].applyAsInt(i);
+                int expected = intFuncs[i % intFuncs.length].applyAsInt(i); // Pick the nth function, which is (i modulo number of functions)
                 log.logAssert(expected == actual, "runLambdaTest, generator:" + gen.name + ", iteration:" + i + " expected:" + expected + ", actual:" + actual);
             }   
         }
