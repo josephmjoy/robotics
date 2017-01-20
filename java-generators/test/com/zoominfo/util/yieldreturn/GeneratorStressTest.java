@@ -206,7 +206,7 @@ public class GeneratorStressTest {
                 if (i % 3 == 0) {
                     Thread.yield();
                 }
-                tracker.exit(); // "Exit the room"
+                tracker.exit(); // "Exit the room" - the iterator logic will run now.
                 IntSupplier func = iter.next();
                 tracker.enter(); // Get back "in the room"
                 int actual = func.getAsInt();
@@ -217,9 +217,9 @@ public class GeneratorStressTest {
         // We expect ALL the iterators to be done now...
         for (IntFuncGenerator gen: generators) {
             Iterator<IntSupplier> iter = gen.defaultIterator();
-            tracker.exit();
+            tracker.exit(); // "Exit the room" - the iterator logic will run now (yes, even for hasNext())
             boolean actual = iter.hasNext();
-            tracker.enter();
+            tracker.enter(); // Get back "in the room"
             boolean expected = false;
             log.logAssert(expected == actual, "runLambda, generator:" + gen.name + ", Unexpected items left");
         }
