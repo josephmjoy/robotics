@@ -59,14 +59,15 @@ public class GeneratorStressTest {
         protected void run() {
             tracker.enter(); // "Enter the room" (only one thread can be "in the room").
             int count = yieldCount;
-            for (int i=0; count > 0 ; i++) {
+            while (count > 0) {                
                 for (IntUnaryOperator func : intFuncs) {                   
                     if (count <= 0) {
                         break;
                     }
+                    int index = yieldCount - count; // 0-based index of the iterator
                     count--;
                     busyWork(busyWorkCalls, busyWorkDepth);
-                    final int param = i;
+                    final int param = index;
                     tracker.exit();
                     yield(() -> func.applyAsInt(param));
                     tracker.enter();
@@ -123,8 +124,8 @@ public class GeneratorStressTest {
         // Create some random unary int functions ...
         IntUnaryOperator[] intFuncs = new IntUnaryOperator[] {
                 (i) -> i,
-                (i) -> i + 1,
-                (i) -> i + 2
+                (i) -> 10*i,
+                (i) -> 100*i
         };
         
         tracker.enter(); //Enter the room - only one thead can be "in the room" at a time.
@@ -142,20 +143,20 @@ public class GeneratorStressTest {
                 if (i % 3 == 0) {
                     Thread.yield();
                 }
-                System.out.println("runLambdas[]: " + i + "calling next");
                 tracker.exit(); // "Exit the room"
                 IntSupplier func = iter.next();
                 tracker.enter(); // Get back "in the room"
-                System.out.println("runLambdas[]: " + i + "returned from next");
                 int actual = func.getAsInt();
                 int expected = intFuncs[i % intFuncs.length].applyAsInt(i);
-                //assertEquals(expected,actual);
+                assertEquals(expected,actual);
             }   
         }
         // We expect ALL the iterators to be done now...
         for (IntFuncGenerator gen: generators) {
             Iterator<IntSupplier> iter = gen.defaultIterator();
+            tracker.exit();
             boolean actual = iter.hasNext();
+            tracker.enter();
             boolean expected = false;
             assertEquals(expected,actual);
         }
@@ -170,9 +171,8 @@ public class GeneratorStressTest {
             long busyWorkCalls = (long) Math.pow(2, i);
             int busyWorkDepth = Math.max(1, 100*i);
             int yieldCount = i;
-            int nGenerators = i;
+            int nGenerators = Math.min(i, 1);
             System.out.println("STARTING #" + i + ":: nGens:" + nGenerators + " yc:" + yieldCount +" bwC:" + busyWorkCalls + " bwD:" + busyWorkDepth);
-            //busyWork(calls, depth);
             runLambdaTest(nGenerators, yieldCount, busyWorkCalls, busyWorkDepth);
             System.out.println("...ENDING ");
         }
