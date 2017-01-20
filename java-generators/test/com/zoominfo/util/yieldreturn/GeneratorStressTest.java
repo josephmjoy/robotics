@@ -71,7 +71,7 @@ public class GeneratorStressTest {
         EntryTracker tracker; 
         
         /**
-         * Returns a generator that yields exactly yieldCount times. The lambda returned in the ith
+         * Constructs a generator that yields exactly yieldCount times. The lambda returned in the ith
          *  iteration is intFuncs[i%intFuncs.length].applyAsInt(i) where i is the ith iteration.
          * @param name  Name of this generator. Used for debugging/logging.
          * @param intFuncs  Array of int functions that determine successive lambdas 
