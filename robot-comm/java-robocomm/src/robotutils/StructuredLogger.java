@@ -9,15 +9,15 @@ import java.util.regex.Pattern;
 
 public class StructuredLogger  {
 	
-	final String PRI0 = "0"; // Tag indicating pri0
-    final String PRI1 = "1"; // Tag indicating pri1
-    final String PRI2 = "2"; // Tag indicating pri2
+	final int PRI0 = 0; // Tag indicating pri0
+    final int PRI1 = 2; // Tag indicating pri1
+    final int PRI2 = 2; // Tag indicating pri2
     final String INFO = "INFO";
     final String TRACE = "TRACE";
     final String ERR = "ERR";
     final String WARN = "WARN";
 
-    private final RawLogger rawLogger;
+    private final RawLogger[] rawLoggers;
     private final String rootName;
     private InternalLogger rootLog;
     private String sessionId;
@@ -39,7 +39,7 @@ public class StructuredLogger  {
 		void newSession(String sessionId);
 		
 		// Log a string message
-		void log(String msg);
+		void log(int pri, String cat, String msg);
 		
 		// Flush the log to persistant storage if appropriate.
 		void flush();
@@ -118,7 +118,14 @@ public class StructuredLogger  {
 	// create the hierarchy of Logger objects. (Start by calling beginSession and 
 	// then getRootLog).
 	public StructuredLogger(RawLogger _rawLogger, String _rootName) {
-        this.rawLogger = _rawLogger;
+		this(new RawLogger[] {_rawLogger}, _rootName);
+    }
+	
+	// Creates the containing logger object. This object can be used to 
+	// create the hierarchy of Logger objects. (Start by calling beginSession and 
+	// then getRootLog).
+	public StructuredLogger(RawLogger[] _rawLoggers, String _rootName) {
+		this.rawLoggers = _rawLoggers;
         this.rootName = _rootName;
     }
 	
@@ -143,7 +150,9 @@ public class StructuredLogger  {
         assert(!this.sessionStarted);
         long startTime = System.currentTimeMillis();
         String sessionID = "" + startTime; // WAS String.format("%020d", startTime);
-        rawLogger.newSession(sessionId);
+        for (RawLogger rl: rawLoggers) {
+            rl.newSession(sessionId);
+        }
         this.sessionId = sessionID;
         this.sessionStart  = startTime;
         this.sessionStarted = true;
@@ -160,8 +169,10 @@ public class StructuredLogger  {
         InternalLogger rootLog = getInternalRootLog();
         rootLog.pri0(Logger.LOGGER, "Session ended.");
         this.sessionStarted = false;
-        rawLogger.flush();
-        rawLogger.close();
+        for (RawLogger rl: rawLoggers) {
+	        rl.flush();
+	        rl.close();
+        }
 
     }
 
@@ -258,8 +269,10 @@ public class StructuredLogger  {
 		public void loggedAssert(boolean cond, String s) {
 			if (!cond) {
                     rawLog(PRI0, ERR, ASSERTFAIL, s);
-                    flush();
-                    rawLogger.assertionFailure(s);
+                    this.flush();
+                    for (RawLogger rl: rawLoggers) {
+                        rl.assertionFailure(s); // TODO: we will call this handler from each raw logger - probably the first one will break.
+                    }
             }
 
 		}
@@ -267,7 +280,9 @@ public class StructuredLogger  {
 		@Override
 		public void flush() {
             if (sessionStarted) {
-                rawLogger.flush();
+            	for (RawLogger rl: rawLoggers) {
+                    rl.flush();
+            	}
             }     
 		}
 		
@@ -276,7 +291,7 @@ public class StructuredLogger  {
             rawLog(PRI0, INFO, msgType, s);
         }
 
-        private void rawLog(String pri, String cat, String msgType, String msg) {
+        private void rawLog(int pri, String cat, String msgType, String msg) {
             // Example:
             //  _sid:989, _sn:1, _ts: 120, _co: .b, _pri:1, _sev:INFO, _ty:OTHER, Hello world!
             msgType = scrubName(msgType);
@@ -299,7 +314,9 @@ public class StructuredLogger  {
                     msg
                     );
             if (sessionStarted) {
-                rawLogger.log(output);
+            	for (RawLogger rl: rawLoggers) {
+                    rl.log(pri, cat, output);
+            	}
             }
         }
 
