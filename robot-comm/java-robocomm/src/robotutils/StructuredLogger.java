@@ -27,6 +27,7 @@ public class StructuredLogger  {
     private boolean sessionStarted = false;
     private boolean sessionEnded = false;
     private AtomicInteger seqNo = new AtomicInteger(0);
+    private String sessionDescription;
     
     // These are for scrubbing message type and message fields before logging.
     private static final Pattern BAD_NAME_PATTERN = Pattern.compile("[^-.\\w]");
@@ -149,7 +150,7 @@ public class StructuredLogger  {
     // Caller must ensure no other thread attempts to log concurrently with
     // this call - actual logging calls are not synchronized for performance
     // reasons.
-    public synchronized void  beginSession(String sessionDescription) {
+    public synchronized void  beginSession(String _sessionDescription) {
         assert(!this.sessionStarted && !this.sessionEnded);
         long startTime = System.currentTimeMillis();
         String sessionID = "" + startTime; // WAS String.format("%020d", startTime);
@@ -159,6 +160,7 @@ public class StructuredLogger  {
         this.sessionId = sessionID;
         this.sessionStart  = startTime;
         this.sessionStarted = true;
+        this.sessionDescription = _sessionDescription;
         seqNo.set(0); // First logged sequence number in the session is 1.
         InternalLogger rootLog = getInternalRootLog();
         rootLog.pri0(Logger.LOGGER, sessionDescription + " session started.");
@@ -172,7 +174,7 @@ public class StructuredLogger  {
     public synchronized void endSession() {
         assert(this.sessionStarted);
         InternalLogger rootLog = getInternalRootLog();
-        rootLog.pri0(Logger.LOGGER, "Session ended.");
+        rootLog.pri0(Logger.LOGGER, sessionDescription + " session ended.");
         this.sessionStarted = false;
         this.sessionEnded = true;
         for (RawLogger rl: rawLoggers) {
