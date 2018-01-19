@@ -61,4 +61,26 @@ class StructuredMessageMapperTest {
 		String s = StructuredMessageMapper.toString(map);
 		assertEquals(s, "k:v");
 	}
+	
+	@Test
+	void testSimpleStringToMap() {
+		String input = "k1:v1 k2:v2 k3:v3";
+		HashMap<String, String> map = StructuredMessageMapper.toHashMap(input);
+		Set<String> keys = map.keySet();
+		assertEquals(keys.size(), 3);
+		assertEquals(map.get("k1"), "v1");
+		assertEquals(map.get("k2"), "v2");
+		assertEquals(map.get("k3"), "v3");
+	}
+	
+	@Test
+	void testSimpleMapToString() {
+		HashMap<String, String> map = new HashMap<String, String>();
+		map.put("k1",  "v1");
+		map.put("k2",  "v2");
+		map.put("k3",  "v3");
+		String[] keys = {"k1", "k2", "k3"};
+		String s = StructuredMessageMapper.toString(map, keys);
+		assertEquals(s, "k1:v1 k2:v2 k3:v3");
+	}
 }
