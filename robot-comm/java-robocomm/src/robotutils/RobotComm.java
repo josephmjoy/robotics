@@ -1,6 +1,6 @@
-
 // RobotComm - UDP based communications for robot status and commands.
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
+package robotutils;
 
 /**
  * Class to implement simple 2-way message passing over UDP
@@ -67,7 +67,7 @@ public class RobotComm implements AutoCloseable{
 	}
 	
 	/**
-	 * Creates a remote UDP port - for sending
+	 *  Creates a remote UDP port - for sending
 	 * @param nameOrAddress - either a name to be resolved or an dotted IP address
 	 * @param port - port number (0-65535)
 	 * @return remote port object

@@ -1,3 +1,9 @@
+//
+// Structured logging classes. For logging and tracing that is intended to be consumed by other
+// programs that analyze and visualize the log data.
+// Created by Joseph M. Joy (https://github.com/josephmjoy)
+package robotutils;
+
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
@@ -23,14 +29,33 @@ public class StructuredLogger  {
     private static final Pattern BAD_NAME_PATTERN = Pattern.compile("[^-.\\w]");
     private static final Pattern BAD_MSG_PATTERN = Pattern.compile("\\n\\r");
 
+    // Clients provide this to actually write log messages to some system like the file system
+    // or network.
 	public interface RawLogger {
+		
+		// Prepare to log a new session. For example, a file based logging system may
+		// open a new file. SessionId will not contain illegal characters for file names, such as
+		// slashes.
 		void newSession(String sessionId);
+		
+		// Log a string message
 		void log(String msg);
+		
+		// Flush the log to persistant storage if appropriate.
 		void flush();
-		void close();
+		
+		// Handle a failed assertion (this failure has already been logged and flush() called).
+		// One implementation is to simply call assert(false). Another is to throw some other kind
+		// of exception.
 		void assertionFailure(String s);
+		
+		// Close any open resources (no further calls to log or flush will follow the call to close)
+		void close();
+
 	}
 
+	// The core logger interface - a hierarchy of logging objects can be built - for
+	// each component/sub-component.
 	public interface Logger {
 
 		// These are reserved key names - don't use them for generating key-value
@@ -58,11 +83,11 @@ public class StructuredLogger  {
 		// Creates a child logger with the specified component name.
 		Logger newLogger(String component);
 
-		void err(String s); //  Pri 0
-		void warn(String s); // Pri 0
-		void info(String s); // Pri 1
-		void trace(String s); // Pri 2
-		void trace(String msgType, String s);
+		void err(String s); //  Log an error - Pri 0
+		void warn(String s); // Log a warning - Pri 0
+		void info(String s); // Log some information - Pri 1
+		void trace(String s); // Log potentially high-volume trace data - Pri 2
+		void trace(String msgType, String s); // As above, with a custom message data type
 
 
 		// These special-case logging methods are for recording each component's initialization
@@ -88,7 +113,9 @@ public class StructuredLogger  {
 
 	}
 
-	
+	// Creates the containing logger object. This object can be used to 
+	// create the hierarchy of Logger objects. (Start by calling beginSession and 
+	// then getRootLog).
 	public StructuredLogger(RawLogger _rawLogger, String _rootName) {
         this.rawLogger = _rawLogger;
         this.rootName = _rootName;
@@ -137,15 +164,21 @@ public class StructuredLogger  {
 
     }
 
+    // This private class implements each node of the Logger object hierarchy.
 	private class InternalLogger implements Logger {
 
         final String component;
         boolean tracingEnabled = true;
 
+        // {component} should be a short - 3-5 char - representation of the component.
+        // The component hierarchy is represented using dotted notation, e.g.: root.a.b.c
         InternalLogger(String component) {
             this.component = scrubName(component); // Replace  ':' etc (these shouldn't be there) by '#'
         }
 
+        // See the Logger interface definition for documentation on
+        // these overridden methods.
+        
 		@Override
 		public InternalLogger newLogger(String component) {
 			return new InternalLogger(rootName + "." + component);
