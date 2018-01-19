@@ -10,13 +10,13 @@ import java.util.regex.Pattern;
 
 public class StructuredLogger  {
 	
-	final int PRI0 = 0; // Tag indicating pri0
-    final int PRI1 = 2; // Tag indicating pri1
-    final int PRI2 = 2; // Tag indicating pri2
-    final String INFO = "INFO";
-    final String TRACE = "TRACE";
-    final String ERR = "ERR";
-    final String WARN = "WARN";
+	final static int PRI0 = 0; // Tag indicating pri0
+    final static int PRI1 = 2; // Tag indicating pri1
+    final static int PRI2 = 2; // Tag indicating pri2
+    final static String INFO = "INFO";
+    final static String TRACE = "TRACE";
+    final static String ERR = "ERR";
+    final static String WARN = "WARN";
 
     private final RawLogger[] rawLoggers;
     private final String rootName;
