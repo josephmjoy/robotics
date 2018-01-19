@@ -191,7 +191,7 @@ public class StructuredLogger  {
         // See the Logger interface definition for documentation on
         // these overridden methods.
         
-		@Override
+        @Override
 		public InternalLogger newLogger(String component) {
 			return new InternalLogger(rootName + "." + component);
 		}
