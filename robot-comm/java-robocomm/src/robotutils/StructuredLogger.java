@@ -5,6 +5,7 @@
 package robotutils;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 public class StructuredLogger  {
@@ -19,10 +20,12 @@ public class StructuredLogger  {
 
     private final RawLogger[] rawLoggers;
     private final String rootName;
+    private final Consumer<String> assertionFailureHandler;
     private InternalLogger rootLog;
     private String sessionId;
     private long sessionStart;
     private boolean sessionStarted = false;
+    private boolean sessionEnded = false;
     private AtomicInteger seqNo = new AtomicInteger(0);
     
     // These are for scrubbing message type and message fields before logging.
@@ -43,11 +46,6 @@ public class StructuredLogger  {
 		
 		// Flush the log to persistant storage if appropriate.
 		void flush();
-		
-		// Handle a failed assertion (this failure has already been logged and flush() called).
-		// One implementation is to simply call assert(false). Another is to throw some other kind
-		// of exception.
-		void assertionFailure(String s);
 		
 		// Close any open resources (no further calls to log or flush will follow the call to close)
 		void close();
@@ -116,17 +114,22 @@ public class StructuredLogger  {
 
 	// Creates the containing logger object. This object can be used to 
 	// create the hierarchy of Logger objects. (Start by calling beginSession and 
-	// then getRootLog).
-	public StructuredLogger(RawLogger _rawLogger, String _rootName) {
-		this(new RawLogger[] {_rawLogger}, _rootName);
+	// then getRootLog). 
+	//
+	// {_assertionFailureHandler} is an optional handler of assertion failures - it is
+	// called if the call to loggedAssert fails the assertion tes (failure has already been logged and flush() called)).
+	// One implementation is to simply call assert(false) after an error message to debug putput. Another is to throw an
+	// exception. WARNING: Will be invoked even if there is no active session.
+	public StructuredLogger(RawLogger _rawLogger, String _rootName, Consumer<String> _assertionFailureHandler) {
+		this(new RawLogger[] {_rawLogger}, _rootName, _assertionFailureHandler);
     }
 	
-	// Creates the containing logger object. This object can be used to 
-	// create the hierarchy of Logger objects. (Start by calling beginSession and 
-	// then getRootLog).
-	public StructuredLogger(RawLogger[] _rawLoggers, String _rootName) {
+	// This version takes an array of rawLoggers so that logging output may be piped to multiple logger
+	// sinks.
+	public StructuredLogger(RawLogger[] _rawLoggers, String _rootName, Consumer<String> _assertionFailureHandler) {
 		this.rawLoggers = _rawLoggers;
         this.rootName = _rootName;
+        this.assertionFailureHandler = _assertionFailureHandler;
     }
 	
 	// Get the root ("top level") logging object.
@@ -147,7 +150,7 @@ public class StructuredLogger  {
     // this call - actual logging calls are not synchronized for performance
     // reasons.
     public synchronized void  beginSession(String sessionDescription) {
-        assert(!this.sessionStarted);
+        assert(!this.sessionStarted && !this.sessionEnded);
         long startTime = System.currentTimeMillis();
         String sessionID = "" + startTime; // WAS String.format("%020d", startTime);
         for (RawLogger rl: rawLoggers) {
@@ -161,14 +164,17 @@ public class StructuredLogger  {
         rootLog.pri0(Logger.LOGGER, sessionDescription + " session started.");
     }
 
-    // Caller must encure no other thread attempts to log concurrently
+    // Caller must ensure no other thread attempts to log concurrently
     // with this thread - actual logging calls are not synchronized for
     // performance reasons.
+    // WARNING - the StructuredLogger can only do a single session in its lifetime.
+    // Once the session has been ended a new session can not be started.
     public synchronized void endSession() {
         assert(this.sessionStarted);
         InternalLogger rootLog = getInternalRootLog();
         rootLog.pri0(Logger.LOGGER, "Session ended.");
         this.sessionStarted = false;
+        this.sessionEnded = true;
         for (RawLogger rl: rawLoggers) {
 	        rl.flush();
 	        rl.close();
@@ -178,7 +184,6 @@ public class StructuredLogger  {
 
     // This private class implements each node of the Logger object hierarchy.
 	private class InternalLogger implements Logger {
-
         final String component;
         boolean tracingEnabled = true;
 
@@ -267,11 +272,13 @@ public class StructuredLogger  {
 
 		@Override
 		public void loggedAssert(boolean cond, String s) {
+			// Note that we will call the assertionFailureHandler even if there is the logging session is not active.
+			// However if there is no session, there will be no logging and flushing (those methods below will have no effect).
 			if (!cond) {
                     rawLog(PRI0, ERR, ASSERTFAIL, s);
                     this.flush();
-                    for (RawLogger rl: rawLoggers) {
-                        rl.assertionFailure(s); // TODO: we will call this handler from each raw logger - probably the first one will break.
+                    if (assertionFailureHandler!=null) {
+                    	assertionFailureHandler.accept(s);
                     }
             }
 
@@ -291,9 +298,15 @@ public class StructuredLogger  {
             rawLog(PRI0, INFO, msgType, s);
         }
 
-        private void rawLog(int pri, String cat, String msgType, String msg) {
+        private void rawLog(int pri, String cat, String msgType, String msg) {       	
             // Example:
             //  _sid:989, _sn:1, _ts: 120, _co: .b, _pri:1, _sev:INFO, _ty:OTHER, Hello world!
+        	
+        	// Note that sessionStarted is defined in the containing class - StructuredLogger!
+        	if (!sessionStarted) {
+        		return; //               ******************** EARLY RETURN ******************
+        	}
+        	
             msgType = scrubName(msgType);
             msg = scrubMessage(msg);
             // As a special case, if msg contains no colons, we prefix a special _msg key.
