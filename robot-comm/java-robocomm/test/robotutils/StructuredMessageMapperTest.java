@@ -83,4 +83,79 @@ class StructuredMessageMapperTest {
 		String s = StructuredMessageMapper.toString(map, keys);
 		assertEquals(s, "k1:v1 k2:v2 k3:v3");
 	}
+	
+	@Test
+	void testMoreComplexMappings() {
+		String[] keys = {
+				"!#!@AB89.[],/-+",
+				"2f0j20j0j",
+				"13r2ffs,,,,,,",
+				"-n339ghhss8898v",
+				"d"
+		};
+		
+		String[] values = {
+				"13r \n\t \r doo bE B",
+				"waka waka waka",
+				"What's all the fuss?!",
+				"(a=3.5, b=4.5, c=11.2)",
+				"\"some quoted string\""
+		};
+		
+		
+		assert(keys.length == values.length);
+		
+		StringBuilder sb = new StringBuilder();
+		StringBuilder sbClean = new StringBuilder();
+		String pre = "";
+		for (int i = 0; i< keys.length; i++) {
+			String k = keys[i];
+			String v = values[i];
+			// Make sure our test data is clean - no edge whitespace.
+			assert(k.equals(k.trim()));
+			assert(v.equals(v.trim()));
+			String space = randomWhitespace();
+			sb.append(space);
+			
+			sbClean.append(pre);
+			sbClean.append(k);
+			pre = " ";
+			sb.append(k);
+			space = randomWhitespace();
+			sb.append(space);
+			
+			sb.append(":");
+			sbClean.append(":");
+			
+			space = randomWhitespace();
+			sb.append(space);
+			
+			sb.append(v);
+			sbClean.append(v);
+			
+			space = randomWhitespace();
+			sb.append(space);
+		}
+		String input = sb.toString();
+		String cleanInput = sbClean.toString();
+		
+		HashMap<String, String> map = StructuredMessageMapper.toHashMap(input);
+		
+		// Verify map contents.
+		for (int i=0; i<keys.length; i++) {
+			String k = keys[i];
+			String v = values[i];
+			assertEquals(map.get(k), v);
+		}
+		
+		// Convert back to string
+		String outputMessage = StructuredMessageMapper.toString(map, keys);
+		assertEquals(outputMessage, cleanInput);
+	}
+	
+	// Raturns a random amount of "random" whitespace.
+	String randomWhitespace() {
+		String randomWhitespace = "    \t\t    \n\r      ";
+		return randomWhitespace.substring((int)(Math.random()*randomWhitespace.length()));
+	}
 }
