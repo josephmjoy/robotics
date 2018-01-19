@@ -67,6 +67,7 @@ public class StructuredLogger  {
 		final String PRI = "_pri"; // Priority: 0/1/2
 		final String CAT = "_cat"; // CATEGORY: ERR/WARN/INFO
 		final String TYPE = "_ty"; // Message type
+		final String DEF_MSG = "_msg"; // Default message contents
 
 		//
 		// Standard message types
@@ -280,6 +281,11 @@ public class StructuredLogger  {
             //  _sid:989, _sn:1, _ts: 120, _co: .b, _pri:1, _sev:INFO, _ty:OTHER, Hello world!
             msgType = scrubName(msgType);
             msg = scrubMessage(msg);
+            // As a special case, if msg contains no colons, we prefix a special _msg key.
+            if (msg.indexOf(StructuredMessageMapper.COLON)==-1) {
+            	msg = DEF_MSG + StructuredMessageMapper.COLON + msg;
+            }
+            
             int curSeq = seqNo.incrementAndGet();
             long timestamp = System.currentTimeMillis() - sessionStart;
             String output = String.format("%s:%s %s:%s %s:%s %s:%s %s:%s %s:%s %s:%s %s",
