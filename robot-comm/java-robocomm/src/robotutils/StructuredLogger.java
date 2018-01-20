@@ -2,6 +2,7 @@
 // Structured logging classes. For logging and tracing that is intended to be consumed by other
 // programs that analyze and visualize the log data.
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
+//
 package robotutils;
 
 import java.io.BufferedWriter;
@@ -9,6 +10,11 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -375,7 +381,7 @@ public class StructuredLogger  {
 			// We don't throw any exceptions on error, just write the error to the err console.
 			if (!logDirectory.canWrite()) {
 				System.err.println(String.format(
-						"StructuredLogger: log directory {%s} cannot be written to.", 
+						"FileRawLogger: log directory {%s} cannot be written to.", 
 						logDirectory.getAbsolutePath()
 						));
 			}
@@ -405,7 +411,10 @@ public class StructuredLogger  {
 			    out = new BufferedWriter(new FileWriter(logFile, append));
 			}
 			catch (IOException e) {
-				System.err.println("StructuredLogger: could not create/open log file. Exception: " + e);
+				System.err.println(String.format(
+						"FileRawLogger: Cannot log. Could not create/open log file {%s}. Exception: %s", 
+						logDirectory.getAbsolutePath(),
+						e));
 				out = null;
 			}
 		}
@@ -420,8 +429,8 @@ public class StructuredLogger  {
 			}
 			catch (IOException e) {
 				if (!logErrorNotified) {
-				    System.err.println(String.format("StructuredLogger: could not write to log file {%s}. Exception: %s",
-				    		logFile, 
+				    System.err.println(String.format("FileRawLogger: could not write to log file {%s}. Exception: %s",
+				    		logFile.getAbsolutePath(), 
 				    		e));
 				    logErrorNotified = true;
 				}
@@ -436,8 +445,8 @@ public class StructuredLogger  {
 				}
 			}
 			catch (IOException e) {
-			    System.err.println(String.format("StructuredLogger: could not flush log file {%s}. Exception: %s",
-			    		logFile, 
+			    System.err.println(String.format("FileRawLogger: could not flush log file {%s}. Exception: %s",
+			    		logFile.getAbsolutePath(), 
 			    		e));		
 			}
 			
@@ -451,9 +460,77 @@ public class StructuredLogger  {
 				}
 			}
 			catch (IOException e) {
-			    System.err.println(String.format("StructuredLogger: could not close log file {%s}. Exception: %s",
-			    		logFile, 
+			    System.err.println(String.format("FileRawLogger: could not close log file {%s}. Exception: %s",
+			    		logFile.getAbsolutePath(), 
 			    		e));			
+			}
+		}
+    	
+    }
+    
+    private static class UDPRawLogger implements RawLogger {
+    	final String destAddress;
+    	final int destPort;
+    	boolean logErrorNotified; // we generate one err msg if there is an error message on write..
+    	DatagramSocket clientSocket;
+        InetAddress destIPAddress;
+        boolean canLog = false;
+    
+
+
+		// Logger that logs by sending UDP traffic to the specified address and port.
+		public UDPRawLogger(String _address, int _port) {
+			destAddress = _address;
+			destPort = _port;
+		}
+
+		
+		@Override
+		public void newSession(String sessionId) {			
+			
+			try {
+		    	clientSocket = new DatagramSocket();
+		        destIPAddress = InetAddress.getByName(destAddress);
+			}
+			catch (SocketException e) {
+				System.err.println("UDPRawLogger: Cannot log. Could not create DatagramSocket. Exception: " + e);
+			}
+			catch (UnknownHostException e) {
+				System.err.println("UDPRawLogger: Cannot log. Could not resolve address " + destAddress + ". Exception: " + e);
+			}
+			System.out.println(String.format("UDPRawLogger: logging session %s to IP Address %s, port %d", sessionId, destIPAddress, destPort));
+			canLog = true;
+		}
+
+		@Override
+		public void log(int pri, String cat, String msg) {
+			try {
+				if (canLog) {
+					byte[] sendData = msg.getBytes();
+				    DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, destIPAddress, destPort);
+				    clientSocket.send(sendPacket);				
+				}
+			}
+			catch (IOException e) {
+				if (!logErrorNotified) {
+				    System.err.println(String.format("UDPRawLogger: could not send msg to IP Address %s, port %d. Exception: %s",
+				    		destIPAddress.toString(), 
+				    		destPort,
+				    		e));
+				    logErrorNotified = true;
+				}
+			}
+		}
+
+		@Override
+		public void flush() {
+				// Nothing to do as we don't buffer messages.
+		}
+
+		@Override
+		public void close() {
+			if (clientSocket != null) {
+				clientSocket.close();
 			}
 		}
     	
@@ -465,7 +542,8 @@ public class StructuredLogger  {
      * @param logDirectory - directory where log files will reside.
      * @param prefix - filename prefix
      * @param suffix - filename suffix
-     * @return append - true: append to the file if it exist; false: overwrite the file if it exists.
+     * @param append - true: append to the file if it exist; false: overwrite the file if it exists.
+     * @return A StructuredLogger.Logger object that may be passed into a StructuredLogger constructor
      */
    public static RawLogger createFileLogger(File logDirectory, String prefix, String suffix, boolean append) {
 	   FileRawLogger fileLogger = new FileRawLogger(logDirectory, prefix, suffix, append);
@@ -476,14 +554,25 @@ public class StructuredLogger  {
    /**
     * Creates a logger that logs multiple sessions to a single file.
     * No IOExceptions are thrown. Instead error messages are written to System.err.
-    * @param logFile
-    * @param append - - true: append to the file if it exist; false: overwrite the file if it exists.
-    * @return
+    * @param logFile - File object representing log file path.
+    * @param append - true: append to the file if it exist; false: overwrite the file if it exists.
+    * @return A StructuredLogger.Logger object that may be passed into a StructuredLogger constructor
     */
    public static RawLogger createFileLogger(File logFile, boolean append) {
 	   FileRawLogger fileLogger = new FileRawLogger(logFile, append);
 	   return fileLogger;
 	
+   }
+   
+   /**
+    * Creates a logger that transmits log messages as UDP packets to the specified destination.
+    * @param address - Destination host name or IP Address
+    * @param port - Destination port.
+    * @return A StructuredLogger.Logger object that may be passed into a StructuredLogger constructor
+    */
+   public static RawLogger createUDPLogger(String address, int port) {
+	   UDPRawLogger fileLogger = new UDPRawLogger(address, port);
+	   return fileLogger;
    }
 
 }

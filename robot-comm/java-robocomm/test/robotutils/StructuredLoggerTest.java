@@ -121,7 +121,6 @@ class StructuredLoggerTest {
 	
 
 
-
 	/**
 	 * @throws java.lang.Exception
 	 */
