@@ -64,9 +64,6 @@ class StructuredLoggerTest {
 		public void log(int pri, String cat, String msg) {
 			assertTrue(newSessionCalled);
 			assertFalse(closeCalled);
-			// We expect the previous message to be cleared between calls to log - tester's esponsibility.
-			// So this verifies that log is called exactly once.
-			assertFalse(logCalled);
 			logCalled = true;
 			msgPri = pri;
 			msgCat = cat;

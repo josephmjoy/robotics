@@ -4,8 +4,10 @@
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
 package robotutils;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -359,7 +361,7 @@ public class StructuredLogger  {
     	File logFile;
     	final String prefix;
     	final String suffix;
-    	FileOutputStream out;
+    	BufferedWriter out;
     	boolean logErrorNotified; // we generate on err msg on write error.
     
 
@@ -400,7 +402,7 @@ public class StructuredLogger  {
 			
 			try {
 
-			    out = new FileOutputStream(logFile, append);
+			    out = new BufferedWriter(new FileWriter(logFile, append));
 			}
 			catch (IOException e) {
 				System.err.println("StructuredLogger: could not create/open log file. Exception: " + e);
@@ -412,7 +414,8 @@ public class StructuredLogger  {
 		public void log(int pri, String cat, String msg) {
 			try {
 				if (out !=null ) {
-					out.write(msg.getBytes());
+					out.write(msg, 0, msg.length());
+					out.newLine();
 				}
 			}
 			catch (IOException e) {
