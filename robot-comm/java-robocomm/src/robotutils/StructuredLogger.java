@@ -4,6 +4,7 @@
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
 package robotutils;
 
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -352,68 +353,132 @@ public class StructuredLogger  {
     }
 
     private static class FileRawLogger implements RawLogger {
-    	final String logDirectory;
+    	final boolean perSessionLog;
+    	final boolean append;
+    	final File logDirectory;
+    	File logFile;
+    	final String prefix;
+    	final String suffix;
     	FileOutputStream out;
-    	
-    	public FileRawLogger(String _logDirectory) {
-    		logDirectory = _logDirectory;
-    		
-    		
-    	}
+    	boolean logErrorNotified; // we generate on err msg on write error.
+    
 
+    	// Logger that creates per-session log files
+		public FileRawLogger(File _logDirectory, String _prefix, String _suffix, boolean _append) {
+			perSessionLog = true;
+			logDirectory = _logDirectory;
+			prefix = _prefix;
+			suffix = _suffix;
+			append = _append;
+			// We don't throw any exceptions on error, just write the error to the err console.
+			if (!logDirectory.canWrite()) {
+				System.err.println(String.format(
+						"StructuredLogger: log directory {%s} cannot be written to.", 
+						logDirectory.getAbsolutePath()
+						));
+			}
+		}
+
+		// Logger that logs to a single log file
+		public FileRawLogger(File _logFile, boolean _append) {
+			perSessionLog = false;
+			logDirectory = null;
+			logFile = _logFile;
+			prefix = null;
+			suffix = null;
+			append = _append;
+		}
+
+		
 		@Override
 		public void newSession(String sessionId) {
-			// TODO Auto-generated method stub
+			
+			if (perSessionLog) {
+				String name = prefix + sessionId + suffix;
+				logFile = new File(logDirectory, name);
+			}
+			
 			try {
-			 out = new FileOutputStream(logDirectory + "\\" + sessionId + ".txt");
+
+			    out = new FileOutputStream(logFile, append);
 			}
 			catch (IOException e) {
-				System.err.println("LOG FILE NOT FOUND!");
-				assert false;				
+				System.err.println("StructuredLogger: could not create/open log file. Exception: " + e);
+				out = null;
 			}
 		}
 
 		@Override
 		public void log(int pri, String cat, String msg) {
-			// TODO Auto-generated method stub
 			try {
-				out.write(msg.getBytes());
+				if (out !=null ) {
+					out.write(msg.getBytes());
+				}
 			}
 			catch (IOException e) {
-				System.err.println("LOG FILE NOT FOUND!");
-				assert false;				
+				if (!logErrorNotified) {
+				    System.err.println(String.format("StructuredLogger: could not write to log file {%s}. Exception: %s",
+				    		logFile, 
+				    		e));
+				    logErrorNotified = true;
+				}
 			}
 		}
 
 		@Override
 		public void flush() {
-			// TODO Auto-generated method stub
 			try {
-				out.flush();
+				if (out != null) {
+					out.flush();
+				}
 			}
 			catch (IOException e) {
-				System.err.println("LOG FILE NOT FOUND!");
-				assert false;				
+			    System.err.println(String.format("StructuredLogger: could not flush log file {%s}. Exception: %s",
+			    		logFile, 
+			    		e));		
 			}
 			
 		}
 
 		@Override
 		public void close() {
-			// TODO Auto-generated method stub
 			try {
-				out.close();
+				if (out != null) {
+					out.close();
+				}
 			}
 			catch (IOException e) {
-				System.err.println("LOG FILE NOT FOUND!");
-				assert false;				
+			    System.err.println(String.format("StructuredLogger: could not close log file {%s}. Exception: %s",
+			    		logFile, 
+			    		e));			
 			}
 		}
     	
     }
 
-   public static RawLogger createFileLogger(String logDirectory) {
-	   FileRawLogger fileLogger = new FileRawLogger(logDirectory);
+    /**
+     * Creates a logger that generates per-session log files of the form {perfix}{session id}{suffix}.
+     * No IOExceptions are thrown. Instead error messages are written to System.err.
+     * @param logDirectory - directory where log files will reside.
+     * @param prefix - filename prefix
+     * @param suffix - filename suffix
+     * @return append - true: append to the file if it exist; false: overwrite the file if it exists.
+     */
+   public static RawLogger createFileLogger(File logDirectory, String prefix, String suffix, boolean append) {
+	   FileRawLogger fileLogger = new FileRawLogger(logDirectory, prefix, suffix, append);
+	   return fileLogger;
+	
+   }
+   
+   /**
+    * Creates a logger that logs multiple sessions to a single file.
+    * No IOExceptions are thrown. Instead error messages are written to System.err.
+    * @param logFile
+    * @param append - - true: append to the file if it exist; false: overwrite the file if it exists.
+    * @return
+    */
+   public static RawLogger createFileLogger(File logFile, boolean append) {
+	   FileRawLogger fileLogger = new FileRawLogger(logFile, append);
 	   return fileLogger;
 	
    }

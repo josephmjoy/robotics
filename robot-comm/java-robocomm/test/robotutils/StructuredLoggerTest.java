@@ -5,6 +5,8 @@ package robotutils;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
 
 import org.junit.jupiter.api.AfterAll;
@@ -217,10 +219,42 @@ class StructuredLoggerTest {
 	}
 	
 	@Test
-	void testFileRawLogger() {
-		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger("C:\\tmp");
+	void testFileRawLogger1() throws IOException {
+		
+		// Create a temporary file
+		File path = File.createTempFile("testLog", ".txt");
+		path.deleteOnExit();	// So tests don't leave stuff lying around.			
+
+		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(path, false); // false == do not append
 		rawLog.newSession("123");
 		rawLog.log(3,  "INFO",  "Test raw message");
+		rawLog.flush();
+		rawLog.close();
+		
+		rawLog = StructuredLogger.createFileLogger(path, true); // true == append
+		rawLog.newSession("456");
+		rawLog.log(3,  "INFO",  "Another test raw message");
+		rawLog.flush();
+		rawLog.close();
+	}
+	
+	@Test
+	void testFileRawLogger2() throws IOException {
+		
+		// Create a temporary file
+		String tempDir = System.getProperty("java.io.tmpdir");
+		File dirPath=  new File(tempDir);
+		assert(dirPath.isDirectory());		
+
+		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", false); // false==don't append
+		rawLog.newSession("123");
+		rawLog.log(3,  "INFO",  "Test raw message");
+		rawLog.flush();
+		rawLog.close();
+		
+		rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", true); // true==appendd
+		rawLog.newSession("456");
+		rawLog.log(3,  "INFO",  "Another test raw message");
 		rawLog.flush();
 		rawLog.close();
 	}
