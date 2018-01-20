@@ -173,6 +173,7 @@ class StructuredLoggerTest {
 		// Now let's verify that doing various things with bossLogger does NOT call down to the raw loggers.
 		rootLog.info("TEST");
 		rootLog.flush();
+		rootLog.info("Hello!");
 		rootLog.loggedAssert(false,  "Foo");
 		assertTrue(assertionHandlerCalled); // even after session closing, handler should be called.
 		for (MyRawLogger rl: rawLoggers) {
@@ -199,7 +200,29 @@ class StructuredLoggerTest {
 
 	@Test
 	void testBeginEndSession() {
-		//fail("Not yet implemented");
+
+	}
+	
+	@Test
+	void testSimpleLogUsage() {
+		StructuredLogger.Logger log1 = bossLogger.getRootLog();
+		log1.info("test logging message");
+		log1.err("this is an error");
+		log1.loggedAssert(log1!=null, "unexpectedly, log1 is null.");
+		log1.logDeinitStart("Starting module foo");
+		
+		StructuredLogger.Logger log2 = log1.newLogger("DRIVE");
+		log2.info("Hi!");
+		
+	}
+	
+	@Test
+	void testFileRawLogger() {
+		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger("C:\\tmp");
+		rawLog.newSession("123");
+		rawLog.log(3,  "INFO",  "Test raw message");
+		rawLog.flush();
+		rawLog.close();
 	}
 
 }

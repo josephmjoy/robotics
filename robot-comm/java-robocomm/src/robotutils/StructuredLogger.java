@@ -4,6 +4,8 @@
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
 package robotutils;
 
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -349,5 +351,71 @@ public class StructuredLogger  {
         return BAD_MSG_PATTERN.matcher(msgType).replaceAll("#");
     }
 
+    private static class FileRawLogger implements RawLogger {
+    	final String logDirectory;
+    	FileOutputStream out;
+    	
+    	public FileRawLogger(String _logDirectory) {
+    		logDirectory = _logDirectory;
+    		
+    		
+    	}
+
+		@Override
+		public void newSession(String sessionId) {
+			// TODO Auto-generated method stub
+			try {
+			 out = new FileOutputStream(logDirectory + "\\" + sessionId + ".txt");
+			}
+			catch (IOException e) {
+				System.err.println("LOG FILE NOT FOUND!");
+				assert false;				
+			}
+		}
+
+		@Override
+		public void log(int pri, String cat, String msg) {
+			// TODO Auto-generated method stub
+			try {
+				out.write(msg.getBytes());
+			}
+			catch (IOException e) {
+				System.err.println("LOG FILE NOT FOUND!");
+				assert false;				
+			}
+		}
+
+		@Override
+		public void flush() {
+			// TODO Auto-generated method stub
+			try {
+				out.flush();
+			}
+			catch (IOException e) {
+				System.err.println("LOG FILE NOT FOUND!");
+				assert false;				
+			}
+			
+		}
+
+		@Override
+		public void close() {
+			// TODO Auto-generated method stub
+			try {
+				out.close();
+			}
+			catch (IOException e) {
+				System.err.println("LOG FILE NOT FOUND!");
+				assert false;				
+			}
+		}
+    	
+    }
+
+   public static RawLogger createFileLogger(String logDirectory) {
+	   FileRawLogger fileLogger = new FileRawLogger(logDirectory);
+	   return fileLogger;
+	
+   }
 
 }
