@@ -531,6 +531,7 @@ public class StructuredLogger  {
 		public void close() {
 			if (clientSocket != null) {
 				clientSocket.close();
+				clientSocket = null;
 			}
 		}
     	

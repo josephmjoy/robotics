@@ -10,7 +10,11 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.SocketException;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -28,7 +32,8 @@ class StructuredLoggerTest {
 	boolean assertionHandlerCalled;
 	MyRawLogger[] rawLoggers;
 	final String SESSION_DESCRIPTION = "TEST SESSION DESCRIPTION"; // Make sure it doesn't have beginning or ending whitespace, and no colons.
-
+	
+	
 	class MyRawLogger implements StructuredLogger.RawLogger {
 		final String logName;
 		boolean newSessionCalled;
@@ -109,17 +114,7 @@ class StructuredLoggerTest {
 	 */
 	@BeforeEach
 	void setUp() throws Exception {	
-		assert(rawLoggers==null);
-		rawLoggers = new MyRawLogger[]{new MyRawLogger("file"), new MyRawLogger("network")};
-		assert(bossLogger == null);
-		bossLogger = new StructuredLogger(rawLoggers, "ROOT", s -> {
-			assertFalse(assertionHandlerCalled);
-			assertionHandlerCalled = true;
-		});
 
-		bossLogger.beginSession(SESSION_DESCRIPTION);
-		verifyBeginSessionState();
-		clearLoggedMessages(); // messages are logged when a session is started.
 	}
 
 
@@ -129,11 +124,7 @@ class StructuredLoggerTest {
 	 */
 	@AfterEach
 	void tearDown() throws Exception {
-		clearLoggedMessages();
-		bossLogger.endSession();
-		verifyEndSessionState();
-		bossLogger = null;
-		rawLoggers = null;
+
 	}
 
 
@@ -293,33 +284,89 @@ class StructuredLoggerTest {
 	}
 
 	@Test
-	void testUDPRawLogger() {	
-
-		StructuredLogger.RawLogger rawLog = StructuredLogger.createUDPLogger("localhost", 9876); // false==don't append
+	void testUDPRawLogger() throws SocketException, InterruptedException {	
+		final int PORT = 9876;
+		ConcurrentLinkedQueue<String> receivedMessageQueue = new ConcurrentLinkedQueue<String>();
+		StructuredLogger.RawLogger rawLog = StructuredLogger.createUDPLogger("localhost", PORT); // false==don't append
+		DatagramSocket serverSocket = new DatagramSocket(PORT);
+		
+		setupToReceiveUDPMessage(serverSocket, receivedMessageQueue);
+		//Thread.sleep(500); // Wait 
+		String[] sendMsgs = {
+				"Test raw message 1",
+				"Test raw message 2",
+				"Test raw message 3"
+		};
 		rawLog.newSession("123");
-		String inMsg = "Test raw message 1";
-		rawLog.log(3,  "INFO",  "Test raw message 1");
-		String receivedMsg = receiveTestMessage(9876);
+		for (String msg: sendMsgs) {
+			rawLog.log(3,  "INFO",  msg );
+		}
 		rawLog.flush();
 		rawLog.close();
-		assertEquals(inMsg, receivedMsg);	
+
+		// Now we wait for our message(s)
+		String[] receivedMsgs = receiveTestMessages(sendMsgs.length, receivedMessageQueue);
+		validateMessages(sendMsgs, receivedMsgs);
+
+	}
+	
+	private void validateMessages(String[] sendMsgs, String[] receivedMsgs) {
+		assertEquals(sendMsgs.length, receivedMsgs.length);
+		int matchedMessages = 0;
+		
+		// This is o(n^2) and also assumes sent messages are all different, but
+		// it will suffice.
+		for (String msg:sendMsgs) {
+			for (String msg1: receivedMsgs) {
+				if (msg.equals(msg1)) {
+					matchedMessages++;
+				}
+			}
+		}
+		assertEquals(sendMsgs.length, matchedMessages);
 	}
 
-	private String receiveTestMessage(int portNum) {
-		String msg = "BAD";
-		try {
-			DatagramSocket serverSocket = new DatagramSocket(9876);
-			byte[] receiveData = new byte[1024];
+	private void setupToReceiveUDPMessage(DatagramSocket serverSocket, ConcurrentLinkedQueue<String> receivedMessageQueue) {
+		ExecutorService executor = Executors.newSingleThreadExecutor();
+		executor.submit(() -> {
 
-			DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-			serverSocket.receive(receivePacket);
-			msg = new String(receivePacket.getData());
-			serverSocket.close();
+			try {
+				while(true) {
+					
+					byte[] receiveData = new byte[1024];
+					DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+					System.out.println("Waiting to receive UDP packet...");
+					serverSocket.receive(receivePacket);
+					System.out.println("Received packet.");
+					String msg = new String(receivePacket.getData(), 0, receivePacket.getLength());
+					receivedMessageQueue.add(msg);
+
+				}
+			}
+			catch (IOException e) {
+				System.err.println("IO Exception " + e);
+			}
+		});
+
+	}
+
+	// Receives count messages from the queue
+	private String[] receiveTestMessages(int count, ConcurrentLinkedQueue<String> receivedMessageQueue) throws InterruptedException {
+		String[]messages = new String[count];
+		int i = count-1;
+		while (i>=0) {
+			String msg = receivedMessageQueue.poll();
+			if (msg == null) {
+				System.out.println("Waiting for more messages...");
+				Thread.sleep(250);
+			} else {
+				System.out.println("Received message.");
+				messages[i] = msg;
+				i--;
+			}
 		}
-		catch (IOException e) {
-			System.err.println("IO Exception " + e);
-		}
-		return msg;
+		
+		return messages;
 	}
 
 }
