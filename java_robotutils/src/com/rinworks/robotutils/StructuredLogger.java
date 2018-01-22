@@ -3,7 +3,7 @@
 // programs that analyze and visualize the log data.
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
 //
-package robotutils;
+package com.rinworks.robotutils;
 
 import java.io.BufferedWriter;
 import java.io.File;

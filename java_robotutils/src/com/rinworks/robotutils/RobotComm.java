@@ -1,6 +1,6 @@
 // RobotComm - UDP based communications for robot status and commands.
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
-package robotutils;
+package com.rinworks.robotutils;
 
 /**
  * Class to implement simple 2-way message passing over UDP

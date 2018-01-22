@@ -2,7 +2,7 @@
 // JUnit tests for roboutils.
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
 //
-package robotutils;
+package com.rinworks.robotutils;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumingThat;
@@ -15,6 +15,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import com.rinworks.robotutils.StructuredMessageMapper;
 
 class StructuredMessageMapperTest {
 

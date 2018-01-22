@@ -1,4 +1,4 @@
-package robotutils;
+package com.rinworks.robotutils;
 
 import java.util.HashMap;
 import java.util.Set;
