@@ -58,10 +58,10 @@ public class StructuredMessageMapper {
 					int kStart = m.start();
 					value = pre.substring(0,  kStart).trim();
 					key = pre.substring(kStart).trim();
-					if (key.length()==0) {
-						// Hmm, empty key
-						emptyKey = true;
-					}
+					assert key.length()>0;
+				} else {
+					// Hmm, empty key
+					emptyKey = true;
 				}
 			}
 			if (value == null) {
