@@ -187,20 +187,24 @@ public class StructuredLogger  {
 	public StructuredLogger(RawLogger[] _rawLoggers, String _rootName) {
 		this.rawLoggers = _rawLoggers;
         this.rootName = _rootName;
-        this.defaultLog = new LogImplementation(_rootName);
+        this.defaultLog = this.commonNewLog(_rootName);
     }
+
+	// Consolidates calls to create a new log objects, incase we want to do something more
+	// like keep a list of logs. At present we don't keep a global list of allocated log objects.
+	private LogImplementation commonNewLog(String name) {
+		return new LogImplementation(name);
+	}
 
 	// Updates the assertion failure handler.
 	// The default handler is null, which means that assertion failures are logged but
 	// otherwise no action is taken.
+	// Note that there is no thread synchronization in this update - so it's best
+	// to set this up before calling beginLogging.
 	public void setAsseretionFailureHandler(Consumer<String> _assertionFailureHandler) {
 		this.assertionFailureHandler = _assertionFailureHandler;
 	}
-	
-	// Get the root ("top level") log object.
-    public Log defaultLog() {
-        return this.defaultLog;
-    }
+
     
 
     // Begins the logging session. The Session timestamp is set.
@@ -239,6 +243,31 @@ public class StructuredLogger  {
 
     }
 
+	
+	// The base logger support some simple logging functions for
+	// convenience. Look at the Log interface methods for full documentation
+	void err(String s) {
+		this.defaultLog.err(s);
+	}
+	
+	void warn(String s) {
+		this.defaultLog.warn(s);
+	}
+	
+	void info(String s) {
+		this.defaultLog.info(s);
+	}
+	
+	// Get the root ("top level") log object, which provides a much richer
+	// set of logging methods
+    public Log defaultLog() {
+        return this.defaultLog;
+    }
+    
+    
+
+    
+    
     // This private class implements a Log object
 	private class LogImplementation implements Log {
         final String component;
@@ -255,7 +284,9 @@ public class StructuredLogger  {
         
         @Override
 		public LogImplementation newLog(String component) {
-			return new LogImplementation(rootName + "." + component);
+        	// Note: commonNewLog is actually a method of the *containing*
+        	// class - an instance of StructuredLogger.
+			return commonNewLog(rootName + "." + component);
 		}
 
 
