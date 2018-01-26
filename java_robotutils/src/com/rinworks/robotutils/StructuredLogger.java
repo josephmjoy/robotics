@@ -103,7 +103,7 @@ public class StructuredLogger  {
 		// Actual logging methods - logged with message type "_OTHER"
 		//
 		void err(String s); //  Log an error - Pri 0
-		void warn(String s); // Log a warning - Pri 0
+		void warn(String s); // Log a warning - Pri 1
 		void info(String s); // Log some information - Pri 1
 		
 		
@@ -295,13 +295,6 @@ public class StructuredLogger  {
 
 
 		@Override
-		public void trace(String msgType, String s) {
-			if (tracingEnabled) {
-			    rawLog(PRI2, TRACE, scrubName(msgType), s);
-			}
-		}
-
-		@Override
 		public void err(String s) {
 			err(OTHER, s);
 
@@ -325,6 +318,33 @@ public class StructuredLogger  {
 
 		}
 
+		@Override
+		public void err(String msgType, String s) {
+			if (tracingEnabled) {
+			    rawLog(PRI0, ERR, scrubName(msgType), s);
+			} 
+		}
+
+		//@Override
+		public void warn(String msgType, String s) {
+			if (tracingEnabled) {
+			    rawLog(PRI1, WARN, scrubName(msgType), s);
+			}
+		}
+
+		@Override
+		public void info(String msgType, String s) {
+			if (tracingEnabled) {
+			    rawLog(PRI1, INFO, scrubName(msgType), s);
+			}			
+		}
+
+		@Override
+		public void trace(String msgType, String s) {
+			if (tracingEnabled) {
+			    rawLog(PRI2, TRACE, scrubName(msgType), s);
+			}
+		}
 		
 		@Override
 		public void pauseTracing() {
@@ -402,24 +422,7 @@ public class StructuredLogger  {
             }
         }
 
-		@Override
-		public void err(String msgType, String s) {
-			// TODO Auto-generated method stub
-			
-		}
-
-		@Override
-		public void warn(String msgType, String s) {
-			// TODO Auto-generated method stub
-			
-		}
-
-		@Override
-		public void info(String msgType, String s) {
-			// TODO Auto-generated method stub
-			
-		}
-
+		
 		@Override
 		public void startRTS() {
 			// TODO Auto-generated method stub
