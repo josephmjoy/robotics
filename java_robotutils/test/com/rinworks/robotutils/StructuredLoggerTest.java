@@ -9,7 +9,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.InetAddress;
 import java.net.SocketException;
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -135,7 +134,7 @@ class StructuredLoggerTest {
 		assert(rawLoggers==null);
 		rawLoggers = new MyRawLog[]{new MyRawLog("file"), new MyRawLog("network")};
 		assert(bossLogger == null);
-		bossLogger = new StructuredLogger(rawLoggers, "ROOT");
+		bossLogger = new StructuredLogger(rawLoggers, ROOT_LOG_NAME);
 		bossLogger.setAsseretionFailureHandler(s -> {
 			assertFalse(assertionHandlerCalled);
 			assertionHandlerCalled = true;
@@ -173,7 +172,7 @@ class StructuredLoggerTest {
 		// Check that the session beginning has been logged
 		for (MyRawLog rl: rawLoggers) {
 			assertTrue(rl.logCalled);
-			verifySessionMessage(rl.msgPri, rl.msgCat, rl.msgMsg);
+			verifySessionMessage(rl.msgPri, rl.msgCat, rl.msgMsg, true); // true == start
 		}
 
 	}
@@ -189,7 +188,7 @@ class StructuredLoggerTest {
 
 			// Check that the endSession message has been logged.
 			assertTrue(rl.logCalled);
-			verifySessionMessage(rl.msgPri, rl.msgCat, rl.msgMsg);
+			verifySessionMessage(rl.msgPri, rl.msgCat, rl.msgMsg, false); // false == stop
 
 			rl.flushCalled=false;
 			rl.closeCalled=false;
@@ -211,8 +210,8 @@ class StructuredLoggerTest {
 	}
 
 
-	// Verify that the right message was logged when a session has been ended.
-	private void verifySessionMessage(int pri, String cat, String msg) {
+	// Verify that the right message was logged when a session has started or (if {start} is false) has ended.
+	private void verifySessionMessage(int pri, String cat, String msg, boolean start) {
 		HashMap<String, String> map = StructuredMessageMapper.toHashMap(msg);
 		String mPri = map.getOrDefault(StructuredLogger.Log.PRI, "bad");
 		String mCat = map.getOrDefault(StructuredLogger.Log.CAT, "bad");
@@ -220,7 +219,8 @@ class StructuredLoggerTest {
 		String _msgField = map.getOrDefault(StructuredLogger.Log.DEF_MSG, "bad");
 		assertEquals(mPri, ""+StructuredLogger.PRI0);
 		assertEquals(mCat, StructuredLogger.INFO);
-		assertEquals(mType, StructuredLogger.Log.LOG_SESSION_START);
+		String expectedType = start ? StructuredLogger.Log.LOG_SESSION_START : StructuredLogger.Log.LOG_SESSION_END;
+		assertEquals(mType, expectedType);
 		// We must find the session description on the message part.
 		assertTrue(_msgField.indexOf(ROOT_LOG_NAME)>= 0);
 	}
