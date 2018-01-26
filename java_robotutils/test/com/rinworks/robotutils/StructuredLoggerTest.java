@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -78,6 +79,9 @@ class StructuredLoggerTest {
 			msgPri = pri;
 			msgCat = cat;
 			msgMsg = msg;
+			if (logName.equals("file")) {
+				System.out.println("raw message:" + msg);
+			}
 		}
 
 		@Override
@@ -178,6 +182,14 @@ class StructuredLoggerTest {
 	}
 
 
+	private void verifyMessageTag(String tagKey, Consumer<String> verifier) {
+		for (MyRawLog rl: rawLoggers) {
+			assertTrue(rl.logCalled);
+			HashMap<String, String> hm = StructuredMessageMapper.toHashMap(rl.msgMsg);
+			String tagValue = hm.get(tagKey); // Will be null if the tag doesn't exist	
+			verifier.accept(tagValue);
+		}
+	}
 
 	// Verify the state of bossLogger after the session has been ended.
 	private void verifyEndSessionState() {
@@ -262,6 +274,36 @@ class StructuredLoggerTest {
 		// Creating a new log object and logging to it.
 		StructuredLogger.Log log2 = log1.newLog("DRIVE");
 		log2.info("Hi!");
+		
+		tearDownBossLogger();
+	}
+	
+	@Test
+	void testRTS() {
+		setUpBossLogger();
+		StructuredLogger.Log log1 = bossLogger.defaultLog();
+		
+		// Log without RTS and verify that the _rts tag is not inserted.
+		log1.info("message1");
+		this.verifyMessageTag(StructuredLogger.Log.RELATIVE_TIMESTAMP, rtsValue -> {
+			assertTrue(rtsValue == null);		    
+		});
+		
+		// Turn on RTS and verify that there is an RTS value
+		log1.startRTS();
+		log1.info("message2");
+		this.verifyMessageTag(StructuredLogger.Log.RELATIVE_TIMESTAMP, rtsValue -> {
+			assertTrue(rtsValue != null);
+			long time = Long.parseLong(rtsValue);
+			assertTrue(time >= 0);
+		});
+		
+		// Turn RTS off and verify that once again _rts tags are not inserted.
+		log1.stopRTS();
+		log1.info("message1");
+		this.verifyMessageTag(StructuredLogger.Log.RELATIVE_TIMESTAMP, rtsValue -> {
+			assertTrue(rtsValue == null);		    
+		});
 		
 		tearDownBossLogger();
 	}

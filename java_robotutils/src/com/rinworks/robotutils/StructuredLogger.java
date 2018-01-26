@@ -276,6 +276,8 @@ public class StructuredLogger  {
 	private class LogImplementation implements Log {
         final String component;
         boolean tracingEnabled = true;
+        boolean rtsEnabled = false; // rts = relatie timestamp
+        long rtsStartTime = 0; // if rtsEnabled, gettimemillis value when startRTS was called.
 
         // {component} should be a short - 3-5 char - representation of the component.
         // The component hierarchy is represented using dotted notation, e.g.: root.a.b.c
@@ -404,11 +406,14 @@ public class StructuredLogger  {
             }
             
             int curSeq = seqNo.incrementAndGet();
-            long timestamp = System.currentTimeMillis() - sessionStart;
-            String output = String.format("%s:%s %s:%s %s:%s %s:%s %s:%s %s:%s %s:%s %s",
+            long millis = System.currentTimeMillis();
+            long timestamp =  millis - sessionStart;
+            String rtsKeyValue = (rtsEnabled) ? RELATIVE_TIMESTAMP + ":" + (millis - rtsStartTime) + " " : "";
+            String output = String.format("%s:%s %s:%s %s:%s %s%s:%s %s:%s %s:%s %s:%s %s",
                     Log.SESSION_ID, sessionId,
                     Log.SEQ_NO, curSeq,
                     Log.TIMESTAMP, timestamp,
+                    rtsKeyValue,
                     Log.COMPONENT, component,
                     Log.PRI, pri,
                     Log.CAT, cat,
@@ -422,17 +427,21 @@ public class StructuredLogger  {
             }
         }
 
+        // RTS implementation:
+        // We keep a boolean flag whether RTS is enabled,
+        // and keep the currentTimeMillis value when RTS was
+        // started. At logging time, we optionally insert the RTS (key,value)
 		
 		@Override
 		public void startRTS() {
-			// TODO Auto-generated method stub
-			
+			rtsStartTime = System.currentTimeMillis();
+			rtsEnabled = true;			
 		}
 
 		@Override
 		public void stopRTS() {
-			// TODO Auto-generated method stub
-			
+			rtsStartTime = 0;
+			rtsEnabled = false;			
 		}
 
 		@Override
