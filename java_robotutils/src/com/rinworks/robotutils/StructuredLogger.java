@@ -14,6 +14,8 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -28,6 +30,7 @@ public class StructuredLogger  {
     final static String ERR = "ERR";
     final static String WARN = "WARN";
 
+    
     private final RawLogger[] rawLoggers;
     private final String rootName;
     private final LogImplementation defaultLog;
@@ -37,6 +40,14 @@ public class StructuredLogger  {
     private boolean sessionEnded = false;
     private AtomicInteger seqNo = new AtomicInteger(0);
     private Consumer<String> assertionFailureHandler = null;
+    
+    // These control autoflush behaviour - logs are flushed if the buffered raw log messages
+    // exceed maxBufferedMessageCount or if pariodicFlushMillis has elapsed since the last
+    // periodic flush.
+    private final int DEFAULT_MAX_BUFFERED_MESSAGE_COUNT = 1000;
+    private final int DEFAULT_PERIODIC_FLUSH_MILLIS = 1000;
+	private int maxBufferedMessageCount = DEFAULT_MAX_BUFFERED_MESSAGE_COUNT;
+	private int periodicFlushMillis = DEFAULT_PERIODIC_FLUSH_MILLIS;
     
     // These are for scrubbing message type and message fields before logging.
     private static final Pattern BAD_NAME_PATTERN = Pattern.compile("[^-.\\w]");
@@ -146,8 +157,16 @@ public class StructuredLogger  {
 		// The following methods adds key (the 'tag') that gets inserted into
 		// every log message made from this particular log instance.
 		// Tags must be composed entirely of non-whitespace characters and can do not
-        // include the ':' (colon) character.
-		// [FUTURE: Special 'moustache' tags like would get dynamic values, like {TID} would set TID=<thread ID>]
+        // include the ':' (colon) character. To help catch this issue, characters in violation are replaced by the '#' character,
+		// and the tag inserted, though this is probably not what is wanted.
+		// If the tag already exists it's previous value is overridden.
+		// Warning: using tagging will incur an overhead of allocating a datastructure to maintain
+		// the <key,value> mappings. Add tag implementation creates an on-demand ConcurrentHashMap.
+		// Once created this map is not deleted (i.e., even if all tags are removed).
+		// Warning: Avoid adding tags to the same log from multiple threads. Doing so incurs
+		// a small risk of losing previously-added tags or not picking up the most recently added
+		// tag.
+		// [FUTURE: Special 'mustache' tags like would get dynamic values, like {TID} would set TID=<thread ID>]
 		void addTag(String tag); // A tag with an empty value. Can represent boolean conditions.
 		void addTag(String tag, String value); // A tag with the specified value (which could be an empty string).
 		
@@ -198,31 +217,56 @@ public class StructuredLogger  {
 	// Updates the assertion failure handler.
 	// The default handler is null, which means that assertion failures are logged but
 	// otherwise no action is taken.
-	// Note that there is no thread synchronization in this update - so it's best
-	// to set this up before calling beginLogging.
+	// Note it is recommended to call this before calling beginLogging to ensure
+	// that all assertion failures are caught.
 	public void setAsseretionFailureHandler(Consumer<String> _assertionFailureHandler) {
 		this.assertionFailureHandler = _assertionFailureHandler;
 	}
 
-    
+	// Automatic flushing is triggered if the number of buffered messages exceeds
+	// {maxBufferedMessageCount} or if {periodicFlushMillis} has elapsed since the last
+	// periodic flush. These times are honored to some degree of approximation because actuall I/O
+	// is performed by background threads subject to scheduling delays.
+	// This call must be called before logging has begin, else the call has no effect.
+    public void setAutoFlushParameters(int maxBfferedMessageCount, int periodicFlushMillis) {
+    	synchronized (this) {
+    		if (this.sessionStarted) {
+    			this.maxBufferedMessageCount = Math.max(maxBufferedMessageCount, 0);
+    			this.periodicFlushMillis = Math.max(periodicFlushMillis, 100); // We clamp very short period requests.
+    		} else {
+    			System.err.println("StructuredLogger: ignoring auto-flush parameter update because session has already started");
+    		}
+    	}
+    }
 
     // Begins the logging session. The Session timestamp is set.
     // Caller must ensure no other thread attempts to log concurrently with
     // this call - actual logging calls are not synchronized for performance
     // reasons.
     public synchronized void  beginLogging() {
-        assert(!this.sessionStarted && !this.sessionEnded);
-        long startTime = System.currentTimeMillis();
-        String sessionID = "" + startTime; // WAS String.format("%020d", startTime);
 
-        this.sessionId = sessionID;
-        this.sessionStart  = startTime;
-        this.sessionStarted = true;
-        seqNo.set(0); // First logged sequence number in the session is 1.
-        for (RawLogger rl: rawLoggers) {
-            rl.beginSession(sessionId);
-        }
-        defaultLog.pri0(Log.LOG_SESSION_START, this.rootName);
+        if (this.sessionStarted || this.sessionEnded) {
+    		System.err.println("Ignoring attempt to begin structured logger " + rootName + ":invalid state");
+    	} else {
+    		long startTime = System.currentTimeMillis();
+    		String sessionID = "" + startTime; // WAS String.format("%020d", startTime);
+
+    		this.sessionId = sessionID;
+    		this.sessionStart  = startTime;
+    		this.sessionStarted = true;
+    		seqNo.set(0); // First logged sequence number in the session is 1.
+
+    		for (RawLogger rl: rawLoggers) {
+    			rl.beginSession(sessionId);
+    		}
+    		String msg = String.format(
+    				"rootName:%s maxBuffered:%s autoFlushPeriod:%s", 
+    				this.rootName,
+    				this.maxBufferedMessageCount, 
+    				this.periodicFlushMillis);
+    		defaultLog.pri0(Log.LOG_SESSION_START, msg);
+    	}
+
     }
 
     // Caller must ensure no other thread attempts to log concurrently
@@ -231,15 +275,17 @@ public class StructuredLogger  {
     // WARNING - the StructuredLogger can only do a single session in its lifetime.
     // Once the session has been ended a new session can not be started.
     public synchronized void endLogging() {
-        assert(this.sessionStarted);
-        defaultLog.pri0(Log.LOG_SESSION_END, rootName);
-        this.sessionStarted = false;
-        this.sessionEnded = true;
-        for (RawLogger rl: rawLoggers) {
-	        rl.flush();
-	        rl.close();
-        }
-
+    	if (!this.sessionStarted) {
+    		System.err.println("Ignoring attempt to end structured logger " + rootName + ":invalid state");
+    	} else {
+    		defaultLog.pri0(Log.LOG_SESSION_END, "rootName:" + rootName);
+    		this.sessionStarted = false;
+    		this.sessionEnded = true;
+    		for (RawLogger rl: rawLoggers) {
+    			rl.flush();
+    			rl.close();
+    		}
+    	}
     }
 
 	
@@ -278,7 +324,8 @@ public class StructuredLogger  {
         boolean tracingEnabled = true;
         boolean rtsEnabled = false; // rts = relatie timestamp
         long rtsStartTime = 0; // if rtsEnabled, gettimemillis value when startRTS was called.
-
+        ConcurrentHashMap<String, String> tagMap = null; // Created on demand - see addTag
+        String tagsString = ""; // Linearized tag map - ready to be inserted into a raw log message.
         // {component} should be a short - 3-5 char - representation of the component.
         // The component hierarchy is represented using dotted notation, e.g.: root.a.b.c
         LogImplementation(String component) {
@@ -409,7 +456,7 @@ public class StructuredLogger  {
             long millis = System.currentTimeMillis();
             long timestamp =  millis - sessionStart;
             String rtsKeyValue = (rtsEnabled) ? RELATIVE_TIMESTAMP + ":" + (millis - rtsStartTime) + " " : "";
-            String output = String.format("%s:%s %s:%s %s:%s %s%s:%s %s:%s %s:%s %s:%s %s",
+            String output = String.format("%s:%s %s:%s %s:%s %s%s:%s %s:%s %s:%s %s:%s %s%s",
                     Log.SESSION_ID, sessionId,
                     Log.SEQ_NO, curSeq,
                     Log.TIMESTAMP, timestamp,
@@ -418,6 +465,7 @@ public class StructuredLogger  {
                     Log.PRI, pri,
                     Log.CAT, cat,
                     Log.TYPE, msgType,
+                    tagsString,
                     msg
                     );
             if (sessionStarted) {
@@ -446,20 +494,62 @@ public class StructuredLogger  {
 
 		@Override
 		public void addTag(String tag) {
-			// TODO Auto-generated method stub
+			addTag(tag, "");
 			
 		}
 
+		
+		// addTag implementation creates an on-demand ConcurrentHashMap.
+		// Once created this map is not deleted (i.e., even if all tags are removed).
+		// Any previously mapped value is discarded.
 		@Override
 		public void addTag(String tag, String value) {
-			// TODO Auto-generated method stub
+			if (tagMap == null) {
+				ConcurrentHashMap<String, String> hm = new ConcurrentHashMap<String, String>();		
+				// We synchronize on this just for setting up the tagMap. Once set up,
+				// this tag map is NEVER changed. This is a key invariant that allows
+				// add/removeTag to not have to acquire this lock before using the map.
+				synchronized(this) {
+					if (tagMap == null) {
+						tagMap = hm;
+					}
+				}
+			}
+			
+			// Now that we have a tag map, we can synchronize on it for properly isolating
+			// tag updates: if multiple threads are concurrently adding tags, the regenerated
+			// tag string will eventually include all the tags. Of course if multiple threads are
+			// attempting to add and remove the same tag, the end result is unpredictable, but that is
+			// expected.
+			synchronized (tagMap) {
+				tagMap.put(scrubName(tag), scrubMessage(value));
+				regenerateTagsString(); // We re-compute the string representation each time a tag is added.
+			}
 			
 		}
+		
+		// Regenerate the tags message (if there are no tags associated with this log, this
+		// string is empty. NOT synchronized - caller must take care of synchronization.
+		private void regenerateTagsString() {
+			if (tagMap!= null && tagMap.size()>0) {
+				StringBuilder sb = new StringBuilder();
+				String pre = "";
+				for (Entry<String, String> e: tagMap.entrySet()) {
+					String k = e.getKey();
+					String v = e.getValue();
+					sb.append(pre + k + ":" + v);
+					pre = " ";
+				}
+				tagsString = sb.toString();					
+			}
+		}
 
+		// Attempting to remove a null tag or a tag that does not exist has no effect.
 		@Override
 		public void removeTag(String tag) {
-			// TODO Auto-generated method stub
-			
+			if (tag!= null && tagMap!=null) {
+				tagMap.remove(tag);
+			}
 		}
 
 	}
