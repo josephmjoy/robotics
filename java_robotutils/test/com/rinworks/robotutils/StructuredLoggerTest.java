@@ -33,11 +33,11 @@ class StructuredLoggerTest {
 
 	StructuredLogger bossLogger;
 	boolean assertionHandlerCalled;
-	MyRawLogger[] rawLoggers;
-	final String SESSION_DESCRIPTION = "TEST SESSION DESCRIPTION"; // Make sure it doesn't have beginning or ending whitespace, and no colons.
+	MyRawLog[] rawLoggers;
+	final String ROOT_LOG_NAME = "ROOT LOG"; // Make sure it doesn't have beginning or ending whitespace, and no colons.
 	
 	
-	class MyRawLogger implements StructuredLogger.RawLogger {
+	class MyRawLog implements StructuredLogger.RawLogger {
 		final String logName;
 		boolean newSessionCalled;
 		boolean logCalled;
@@ -53,7 +53,7 @@ class StructuredLoggerTest {
 
 		String assertionFailureString;
 
-		MyRawLogger(String name) {
+		MyRawLog(String name) {
 			logName = name;
 		}
 
@@ -65,7 +65,7 @@ class StructuredLoggerTest {
 		}
 
 		@Override
-		public void newSession(String _sessionId) {
+		public void beginSession(String _sessionId) {
 			assertFalse(newSessionCalled);
 			newSessionCalled = true;
 			sessionId = _sessionId;
@@ -133,14 +133,15 @@ class StructuredLoggerTest {
 
 	private void setUpBossLogger() {	
 		assert(rawLoggers==null);
-		rawLoggers = new MyRawLogger[]{new MyRawLogger("file"), new MyRawLogger("network")};
+		rawLoggers = new MyRawLog[]{new MyRawLog("file"), new MyRawLog("network")};
 		assert(bossLogger == null);
-		bossLogger = new StructuredLogger(rawLoggers, "ROOT", s -> {
+		bossLogger = new StructuredLogger(rawLoggers, "ROOT");
+		bossLogger.setAsseretionFailureHandler(s -> {
 			assertFalse(assertionHandlerCalled);
 			assertionHandlerCalled = true;
 		});
 
-		bossLogger.beginSession(SESSION_DESCRIPTION);
+		bossLogger.beginLogging();
 		verifyBeginSessionState();
 		clearLoggedMessages(); // messages are logged when a session is started.
 	}
@@ -153,7 +154,7 @@ class StructuredLoggerTest {
 
 	private void tearDownBossLogger() {
 		clearLoggedMessages();
-		bossLogger.endSession();
+		bossLogger.endLogging();
 		verifyEndSessionState();
 		bossLogger = null;
 		rawLoggers = null;
@@ -162,7 +163,7 @@ class StructuredLoggerTest {
 
 
 	private void clearLoggedMessages() {
-		for (MyRawLogger rl: rawLoggers) {
+		for (MyRawLog rl: rawLoggers) {
 			rl.clearLoggedMsg();
 		}
 
@@ -170,7 +171,7 @@ class StructuredLoggerTest {
 
 	private void verifyBeginSessionState() {
 		// Check that the session beginning has been logged
-		for (MyRawLogger rl: rawLoggers) {
+		for (MyRawLog rl: rawLoggers) {
 			assertTrue(rl.logCalled);
 			verifySessionMessage(rl.msgPri, rl.msgCat, rl.msgMsg);
 		}
@@ -181,8 +182,8 @@ class StructuredLoggerTest {
 
 	// Verify the state of bossLogger after the session has been ended.
 	private void verifyEndSessionState() {
-		StructuredLogger.Logger rootLog = bossLogger.getRootLog();
-		for (MyRawLogger rl: rawLoggers) {
+		StructuredLogger.Log rootLog = bossLogger.defaultLog();
+		for (MyRawLog rl: rawLoggers) {
 			assertTrue(rl.flushCalled);
 			assertTrue(rl.closeCalled);
 
@@ -202,7 +203,7 @@ class StructuredLoggerTest {
 		rootLog.info("Hello!");
 		rootLog.loggedAssert(false,  "Foo");
 		assertTrue(assertionHandlerCalled); // even after session closing, handler should be called.
-		for (MyRawLogger rl: rawLoggers) {
+		for (MyRawLog rl: rawLoggers) {
 			assertFalse(rl.flushCalled);
 			assertFalse(rl.closeCalled);
 			assertFalse(rl.logCalled);
@@ -213,15 +214,15 @@ class StructuredLoggerTest {
 	// Verify that the right message was logged when a session has been ended.
 	private void verifySessionMessage(int pri, String cat, String msg) {
 		HashMap<String, String> map = StructuredMessageMapper.toHashMap(msg);
-		String mPri = map.getOrDefault(StructuredLogger.Logger.PRI, "bad");
-		String mCat = map.getOrDefault(StructuredLogger.Logger.CAT, "bad");
-		String mType = map.getOrDefault(StructuredLogger.Logger.TYPE, "bad");
-		String _msgField = map.getOrDefault(StructuredLogger.Logger.DEF_MSG, "bad");
+		String mPri = map.getOrDefault(StructuredLogger.Log.PRI, "bad");
+		String mCat = map.getOrDefault(StructuredLogger.Log.CAT, "bad");
+		String mType = map.getOrDefault(StructuredLogger.Log.TYPE, "bad");
+		String _msgField = map.getOrDefault(StructuredLogger.Log.DEF_MSG, "bad");
 		assertEquals(mPri, ""+StructuredLogger.PRI0);
 		assertEquals(mCat, StructuredLogger.INFO);
-		assertEquals(mType, StructuredLogger.Logger.LOGGER);
+		assertEquals(mType, StructuredLogger.Log.LOG_SESSION_START);
 		// We must find the session description on the message part.
-		assertTrue(_msgField.indexOf(SESSION_DESCRIPTION)>= 0);
+		assertTrue(_msgField.indexOf(ROOT_LOG_NAME)>= 0);
 	}
 
 	@Test
@@ -234,13 +235,12 @@ class StructuredLoggerTest {
 	@Test
 	void testSimpleLogUsage() {
 		setUpBossLogger();
-		StructuredLogger.Logger log1 = bossLogger.getRootLog();
+		StructuredLogger.Log log1 = bossLogger.defaultLog();
 		log1.info("test logging message");
 		log1.err("this is an error");
 		log1.loggedAssert(log1!=null, "unexpectedly, log1 is null.");
-		log1.logDeinitStart("Starting module foo");
 
-		StructuredLogger.Logger log2 = log1.newLogger("DRIVE");
+		StructuredLogger.Log log2 = log1.newLog("DRIVE");
 		log2.info("Hi!");
 		tearDownBossLogger();
 	}
@@ -253,13 +253,13 @@ class StructuredLoggerTest {
 		path.deleteOnExit();	// So tests don't leave stuff lying around.			
 
 		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(path, false); // false == do not append
-		rawLog.newSession("123");
+		rawLog.beginSession("123");
 		rawLog.log(3,  "INFO",  "Test raw message");
 		rawLog.flush();
 		rawLog.close();
 
 		rawLog = StructuredLogger.createFileLogger(path, true); // true == append
-		rawLog.newSession("456");
+		rawLog.beginSession("456");
 		rawLog.log(3,  "INFO",  "Another test raw message");
 		rawLog.flush();
 		rawLog.close();
@@ -274,13 +274,13 @@ class StructuredLoggerTest {
 		assert(dirPath.isDirectory());		
 
 		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", false); // false==don't append
-		rawLog.newSession("123");
+		rawLog.beginSession("123");
 		rawLog.log(3,  "INFO",  "Test raw message");
 		rawLog.flush();
 		rawLog.close();
 
 		rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", true); // true==append
-		rawLog.newSession("456");
+		rawLog.beginSession("456");
 		rawLog.log(3,  "INFO",  "Another test raw message");
 		rawLog.flush();
 		rawLog.close();
@@ -300,7 +300,7 @@ class StructuredLoggerTest {
 				"Test raw message 2",
 				"Test raw message 3"
 		};
-		rawLog.newSession("123");
+		rawLog.beginSession("123");
 		for (String msg: sendMsgs) {
 			rawLog.log(3,  "INFO",  msg );
 		}
