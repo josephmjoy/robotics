@@ -257,6 +257,11 @@ public class StructuredLogger  {
 		this.defaultLog.info(s);
 	}
 	
+	void flush() {
+		this.defaultLog.flush();
+	}
+	
+	
 	// Get the root ("top level") log object, which provides a much richer
 	// set of logging methods
     public Log defaultLog() {

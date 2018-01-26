@@ -233,15 +233,36 @@ class StructuredLoggerTest {
 	}
 
 	@Test
+	void testSimplestLogUsage() {
+		setUpBossLogger();
+		bossLogger.info("test logging message");
+		bossLogger.err("this is an error");
+		bossLogger.flush();
+		tearDownBossLogger();
+	}
+	
+	@Test
 	void testSimpleLogUsage() {
 		setUpBossLogger();
 		StructuredLogger.Log log1 = bossLogger.defaultLog();
+		
+		// Basic logging
 		log1.info("test logging message");
 		log1.err("this is an error");
-		log1.loggedAssert(log1!=null, "unexpectedly, log1 is null.");
-
+		log1.warn("this is a warning");
+		log1.trace("this is a trace");
+		
+		// Assertion check - passing and failing
+		log1.loggedAssert(true, "unexpectedly, log1 is null.");
+		assertFalse(assertionHandlerCalled);
+		log1.loggedAssert(false, "unexpectedly, log1 is null.");
+		assertTrue(assertionHandlerCalled);
+		assertionHandlerCalled = false;
+		
+		// Creating a new log object and logging to it.
 		StructuredLogger.Log log2 = log1.newLog("DRIVE");
 		log2.info("Hi!");
+		
 		tearDownBossLogger();
 	}
 
