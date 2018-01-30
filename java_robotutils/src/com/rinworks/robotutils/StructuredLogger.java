@@ -457,6 +457,37 @@ public class StructuredLogger  {
         		return; //               ******************** EARLY RETURN ******************
         	}
         	
+             
+            // Push it into each logger's buffer if they want it.
+        	// Note that if no logger wants it the raw message is not
+        	// even generated.
+            String rawMsg = null;
+        	for (BufferedRawLogger brl: bufferedLoggers) {
+        		if (brl.rawLogger.filter(pri, cat)) {
+        			if (rawMsg == null) {
+        				rawMsg = rawMessage(pri, cat, msgType, msg);
+        			}
+        			brl.buffer.add(rawMsg);
+        		}
+        	}
+        	
+        	// For now, also process all the buffers.
+        	for (BufferedRawLogger brl: bufferedLoggers) {
+        		String rm = brl.buffer.poll();
+        		while (rm != null) {
+        		    brl.rawLogger.log(rm);
+        		    rm = brl.buffer.poll();
+        		}
+        	}
+            
+        
+        }
+        
+        // Generates and returns the message that is actually logged to the raw logs.
+        // This includes the atomically-incremented sequence number, timestamp and 
+        // any extra tags.
+        private String rawMessage(int pri, String cat, String msgType, String msg) {  
+        	
             msgType = scrubName(msgType);
             msg = scrubMessage(msg);
             
@@ -487,13 +518,7 @@ public class StructuredLogger  {
                     tagsString,
                     Log.DEF_MSG, msg
                     );
-            if (sessionStarted) {
-            	for (BufferedRawLogger brl: bufferedLoggers) {
-            		if (brl.rawLogger.filter(pri, cat)) {
-            			brl.rawLogger.log(output);
-            		}
-            	}
-            }
+            return output;
         }
 
         // RTS implementation:
