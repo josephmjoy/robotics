@@ -60,7 +60,7 @@ public class StructuredLogger  {
     // or network.
 	public interface RawLogger {
 		
-		// Prepare to log a new session. For example, a file based logging system may
+		// Prepare to log a new session. For example, a file bgit desased logging system may
 		// open a new file. SessionId will not contain illegal characters for file names, such as
 		// slashes. This method will be called only once - when the owning structured logging
 		// object's beginSession method is called.
@@ -552,7 +552,9 @@ public class StructuredLogger  {
 		// Regenerate the tags message (if there are no tags associated with this log, this
 		// string is empty. NOT synchronized - caller must take care of synchronization.
 		private void regenerateTagsString() {
-			if (tagMap!= null && tagMap.size()>0) {
+			if (tagMap == null || tagMap.size()==0) {
+				tagsString = "";
+			} else {
 				StringBuilder sb = new StringBuilder();
 				for (Entry<String, String> e: tagMap.entrySet()) {
 					String k = e.getKey();
@@ -577,7 +579,9 @@ public class StructuredLogger  {
 				// attempting to add and remove the same tag, the end result is unpredictable, but that is
 				// expected.
 				synchronized (tagMap) {
+					System.out.println("Removing tag " + tag);
 					tagMap.remove(tag);
+					assert(tagMap.get(tag) == null);
 					regenerateTagsString(); // We re-compute the string representation each time a tag is added.
 				}			
 			}

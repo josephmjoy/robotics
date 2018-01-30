@@ -47,8 +47,6 @@ class StructuredLoggerTest {
 		String sessionId;
 
 		// Saved after each log message call.
-		int msgPri;
-		String msgCat;
 		String msgMsg;
 
 		String assertionFailureString;
@@ -59,8 +57,6 @@ class StructuredLoggerTest {
 
 		private void clearLoggedMsg() {
 			logCalled=false;
-			msgPri = -1;
-			msgCat = null;
 			msgMsg = null;
 		}
 
@@ -72,12 +68,10 @@ class StructuredLoggerTest {
 		}
 
 		@Override
-		public void log(int pri, String cat, String msg) {
+		public void log(String msg) {
 			assertTrue(newSessionCalled);
 			assertFalse(closeCalled);
 			logCalled = true;
-			msgPri = pri;
-			msgCat = cat;
 			msgMsg = msg;
 			if (logName.equals("file")) {
 				System.out.println("raw message:" + msg);
@@ -176,7 +170,7 @@ class StructuredLoggerTest {
 		// Check that the session beginning has been logged
 		for (MyRawLog rl: rawLoggers) {
 			assertTrue(rl.logCalled);
-			verifySessionMessage(rl.msgPri, rl.msgCat, rl.msgMsg, true); // true == start
+			verifySessionMessage(rl.msgMsg, true); // true == start
 		}
 
 	}
@@ -200,7 +194,7 @@ class StructuredLoggerTest {
 
 			// Check that the endSession message has been logged.
 			assertTrue(rl.logCalled);
-			verifySessionMessage(rl.msgPri, rl.msgCat, rl.msgMsg, false); // false == stop
+			verifySessionMessage(rl.msgMsg, false); // false == stop
 
 			rl.flushCalled=false;
 			rl.closeCalled=false;
@@ -223,7 +217,7 @@ class StructuredLoggerTest {
 
 
 	// Verify that the right message was logged when a session has started or (if {start} is false) has ended.
-	private void verifySessionMessage(int pri, String cat, String msg, boolean start) {
+	private void verifySessionMessage(String msg, boolean start) {
 		HashMap<String, String> map = StructuredMessageMapper.toHashMap(msg);
 		String mPri = map.getOrDefault(StructuredLogger.Log.PRI, "bad");
 		String mCat = map.getOrDefault(StructuredLogger.Log.CAT, "bad");
@@ -363,13 +357,13 @@ class StructuredLoggerTest {
 
 		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(path, false); // false == do not append
 		rawLog.beginSession("123");
-		rawLog.log(3,  "INFO",  "Test raw message");
+		rawLog.log("Test raw message");
 		rawLog.flush();
 		rawLog.close();
 
 		rawLog = StructuredLogger.createFileLogger(path, true); // true == append
 		rawLog.beginSession("456");
-		rawLog.log(3,  "INFO",  "Another test raw message");
+		rawLog.log("Another test raw message");
 		rawLog.flush();
 		rawLog.close();
 	}
@@ -384,13 +378,13 @@ class StructuredLoggerTest {
 
 		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", false); // false==don't append
 		rawLog.beginSession("123");
-		rawLog.log(3,  "INFO",  "Test raw message");
+		rawLog.log("Test raw message");
 		rawLog.flush();
 		rawLog.close();
 
 		rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", true); // true==append
 		rawLog.beginSession("456");
-		rawLog.log(3,  "INFO",  "Another test raw message");
+		rawLog.log("Another test raw message");
 		rawLog.flush();
 		rawLog.close();
 	}
@@ -411,7 +405,7 @@ class StructuredLoggerTest {
 		};
 		rawLog.beginSession("123");
 		for (String msg: sendMsgs) {
-			rawLog.log(3,  "INFO",  msg );
+			rawLog.log(msg );
 		}
 		rawLog.flush();
 		rawLog.close();
