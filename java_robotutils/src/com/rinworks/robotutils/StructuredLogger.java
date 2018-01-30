@@ -16,6 +16,7 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -31,7 +32,6 @@ public class StructuredLogger  {
     final static String WARN = "WARN";
 
     
-    private final RawLogger[] rawLoggers;
     private final String rootName;
     private final LogImplementation defaultLog;
     private String sessionId;
@@ -48,6 +48,9 @@ public class StructuredLogger  {
     private final int DEFAULT_PERIODIC_FLUSH_MILLIS = 1000;
 	private int maxBufferedMessageCount = DEFAULT_MAX_BUFFERED_MESSAGE_COUNT;
 	private int periodicFlushMillis = DEFAULT_PERIODIC_FLUSH_MILLIS;
+	
+	// Background processing of logged messages - one object per raw log
+	final BufferedRawLogger[] bufferedLoggers;
     
     // These are for scrubbing message type and message fields before logging.
     private static final Pattern BAD_NAME_PATTERN = Pattern.compile("[^-.\\w]");
@@ -63,8 +66,13 @@ public class StructuredLogger  {
 		// object's beginSession method is called.
 		void beginSession(String sessionId);
 		
+		// Optionally control which messages are logged. It is more efficient to reject messages
+		// by returning false here rather than ignoring it in the call to log because of the overhead of
+		// generating and buffering messages.
+		default boolean filter(int pri, String cat) {return true;}
+
 		// Log a string message
-		void log(int pri, String cat, String msg);
+		void log(String msg);
 		
 		// Flush the log to persistent storage if appropriate.
 		void flush();
@@ -203,7 +211,11 @@ public class StructuredLogger  {
 	// This version takes an array of rawLoggers so that logging output may be piped to multiple logger
 	// sinks.
 	public StructuredLogger(RawLogger[] _rawLoggers, String _rootName) {
-		this.rawLoggers = _rawLoggers;
+		this.bufferedLoggers = new BufferedRawLogger[_rawLoggers.length];
+		for (int i = 0; i< _rawLoggers.length; i++) {
+			this.bufferedLoggers[i] = new BufferedRawLogger(_rawLoggers[i]);
+		}
+		
         this.rootName = _rootName;
         this.defaultLog = this.commonNewLog(_rootName);
     }
@@ -225,7 +237,7 @@ public class StructuredLogger  {
 
 	// Automatic flushing is triggered if the number of buffered messages exceeds
 	// {maxBufferedMessageCount} or if {periodicFlushMillis} has elapsed since the last
-	// periodic flush. These times are honored to some degree of approximation because actuall I/O
+	// periodic flush. These times are honored to some degree of approximation because actual I/O
 	// is performed by background threads subject to scheduling delays.
 	// This call must be called before logging has begin, else the call has no effect.
     public void setAutoFlushParameters(int maxBfferedMessageCount, int periodicFlushMillis) {
@@ -256,8 +268,8 @@ public class StructuredLogger  {
     		this.sessionStarted = true;
     		seqNo.set(0); // First logged sequence number in the session is 1.
 
-    		for (RawLogger rl: rawLoggers) {
-    			rl.beginSession(sessionId);
+    		for (BufferedRawLogger brl: bufferedLoggers) {
+    			brl.rawLogger.beginSession(sessionId);
     		}
     		String msg = String.format(
     				"rootName:%s maxBuffered:%s autoFlushPeriod:%s", 
@@ -281,9 +293,9 @@ public class StructuredLogger  {
     		defaultLog.pri0(Log.LOG_SESSION_END, "rootName:" + rootName);
     		this.sessionStarted = false;
     		this.sessionEnded = true;
-    		for (RawLogger rl: rawLoggers) {
-    			rl.flush();
-    			rl.close();
+    		for (BufferedRawLogger brl: bufferedLoggers) {
+    			brl.rawLogger.flush();
+    			brl.rawLogger.close();
     		}
     	}
     }
@@ -425,8 +437,8 @@ public class StructuredLogger  {
 		@Override
 		public void flush() {
             if (sessionStarted) {
-            	for (RawLogger rl: rawLoggers) {
-                    rl.flush();
+            	for (BufferedRawLogger brl: bufferedLoggers) {
+                    brl.rawLogger.flush();
             	}
             }     
 		}
@@ -447,16 +459,23 @@ public class StructuredLogger  {
         	
             msgType = scrubName(msgType);
             msg = scrubMessage(msg);
-            // As a special case, if msg contains no colons, we prefix a special _msg key.
-            if (msg.indexOf(StructuredMessageMapper.COLON)==-1) {
-            	msg = DEF_MSG + StructuredMessageMapper.COLON + msg;
-            }
+            
+            //Keeping some old code because of the subtle issue it had.
+            // OLD: As a special case, if msg contains no colons, we prefix a special _msg key.
+            // NEW: We AWAYS prefix the special _msg key. This is to make sure that the previous
+            // key's value cannot be corrupted by a message. Besides, it's common for the user messagae to be
+            // something like "got info a:b c:d". In this case, the OLD way would tack on "got info" to the
+            // previous key, whatever that is, while in the NEW way, the _msg key will have value "got info", which
+            // is not bad  - the "a:b c:d" part will make its way into the dictionary.
+            // if (msg.indexOf(StructuredMessageMapper.COLON)==-1) {
+            //	msg = DEF_MSG + StructuredMessageMapper.COLON + msg;
+            //}
             
             int curSeq = seqNo.incrementAndGet();
             long millis = System.currentTimeMillis();
             long timestamp =  millis - sessionStart;
             String rtsKeyValue = (rtsEnabled) ? RELATIVE_TIMESTAMP + ":" + (millis - rtsStartTime) + " " : "";
-            String output = String.format("%s:%s %s:%s %s:%s %s%s:%s %s:%s %s:%s %s:%s %s%s",
+            String output = String.format("%s:%s %s:%s %s:%s %s%s:%s %s:%s %s:%s %s:%s %s%s:%s",
                     Log.SESSION_ID, sessionId,
                     Log.SEQ_NO, curSeq,
                     Log.TIMESTAMP, timestamp,
@@ -466,11 +485,13 @@ public class StructuredLogger  {
                     Log.CAT, cat,
                     Log.TYPE, msgType,
                     tagsString,
-                    msg
+                    Log.DEF_MSG, msg
                     );
             if (sessionStarted) {
-            	for (RawLogger rl: rawLoggers) {
-                    rl.log(pri, cat, output);
+            	for (BufferedRawLogger brl: bufferedLoggers) {
+            		if (brl.rawLogger.filter(pri, cat)) {
+            			brl.rawLogger.log(output);
+            		}
             	}
             }
         }
@@ -533,12 +554,13 @@ public class StructuredLogger  {
 		private void regenerateTagsString() {
 			if (tagMap!= null && tagMap.size()>0) {
 				StringBuilder sb = new StringBuilder();
-				String pre = "";
 				for (Entry<String, String> e: tagMap.entrySet()) {
 					String k = e.getKey();
 					String v = e.getValue();
-					sb.append(pre + k + ":" + v);
-					pre = " ";
+					sb.append(" " + k + ":" + v);
+				}
+				if (tagMap.size()>0) {
+					sb.append(" ");
 				}
 				tagsString = sb.toString();					
 			}
@@ -547,14 +569,37 @@ public class StructuredLogger  {
 		// Attempting to remove a null tag or a tag that does not exist has no effect.
 		@Override
 		public void removeTag(String tag) {
-			if (tag!= null && tagMap!=null) {
-				tagMap.remove(tag);
-			}
-		}
+			if (tag != null && tagMap != null) {
 
-	}
-        
+				// Now that we have a tag map, we can synchronize on it for properly isolating
+				// tag updates: if multiple threads are concurrently adding tags, the regenerated
+				// tag string will eventually include all the tags. Of course if multiple threads are
+				// attempting to add and remove the same tag, the end result is unpredictable, but that is
+				// expected.
+				synchronized (tagMap) {
+					tagMap.remove(tag);
+					regenerateTagsString(); // We re-compute the string representation each time a tag is added.
+				}			
+			}
+		}        
+	}	
+	
+	
+	// Maintains state associated with a single raw log, include
+	// message buffer for that log.
+	private class BufferedRawLogger {
+		final RawLogger rawLogger;
+		final ConcurrentLinkedQueue<String> buffer;
+		final AtomicInteger discardedMessages;
 		
+		BufferedRawLogger(RawLogger rl) {
+			rawLogger = rl;
+			buffer = new ConcurrentLinkedQueue<String>();
+			discardedMessages = new AtomicInteger();
+		}
+	}
+	
+	
     // Replace invalid chars by a '#'
     private static String scrubName(String msgType) {
     	// Presumably this is faster than using a Regex? Not sure.
@@ -626,7 +671,7 @@ public class StructuredLogger  {
 		}
 
 		@Override
-		public void log(int pri, String cat, String msg) {
+		public void log(String msg) {
 			try {
 				if (out !=null ) {
 					out.write(msg, 0, msg.length());
@@ -709,7 +754,7 @@ public class StructuredLogger  {
 		}
 
 		@Override
-		public void log(int pri, String cat, String msg) {
+		public void log(String msg) {
 			try {
 				if (canLog) {
 					byte[] sendData = msg.getBytes();

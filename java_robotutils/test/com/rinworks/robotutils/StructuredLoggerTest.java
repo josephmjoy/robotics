@@ -279,6 +279,7 @@ class StructuredLoggerTest {
 	}
 	
 	@Test
+	// RTS == relative timestamps
 	void testRTS() {
 		setUpBossLogger();
 		StructuredLogger.Log log1 = bossLogger.defaultLog();
@@ -308,6 +309,51 @@ class StructuredLoggerTest {
 		tearDownBossLogger();
 	}
 
+	@Test
+	// Tags - Dynamic tags that are inserted into every logged message.
+	void testTags() {
+		setUpBossLogger();
+		StructuredLogger.Log log = bossLogger.defaultLog();
+		String[] tags = {"TAG1", "TAG2", "TAG3"};
+		String[] values = {"", "hello", "a=b c=d"};
+		assert(tags.length == values.length);
+		
+		// Add a few tags and very that they show up in the next logged message.
+		
+		for (int i=0; i< tags.length; i++) {
+			log.addTag(tags[i], values[i]);
+		}
+		log.info("some random message with data a:b c:d");
+		
+		for (int i=0; i< tags.length; i++) {
+			final String vi = values[i];
+			this.verifyMessageTag(tags[i], val -> {
+				assertEquals(vi, val);		    
+			});
+		}
+		
+		// Now remove them all and check we don't find any of them
+		
+		for (int i=0; i< tags.length; i++) {
+			log.removeTag(tags[i]);
+		}
+		clearLoggedMessages();
+		
+		log.info("some other random message with data foo:bar");
+		
+		for (int i=0; i< tags.length; i++) {
+			this.verifyMessageTag(tags[i], val -> {
+				assertTrue(val == null);		    
+			});
+		}
+		
+		// Let's remove a value that doesn't exist.
+		log.removeTag("strange");
+		
+		tearDownBossLogger();
+	}
+	
+	
 	@Test
 	void testFileRawLogger1() throws IOException {
 
