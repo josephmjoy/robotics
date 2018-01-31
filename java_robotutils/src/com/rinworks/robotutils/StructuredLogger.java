@@ -290,15 +290,17 @@ public class StructuredLogger  {
     			} 		
     		};
     		this.oneshotFlushTask = null; // These are created on demand when we have to clear a backlog of buffered messages.
-    		
     		this.sessionId = sessionID;
     		this.sessionStart  = startTime;
-    		this.sessionStarted = true;
-    		seqNo.set(0); // First logged sequence number in the session is 1.
-
+     		seqNo.set(0); // First logged sequence number in the session is 1.
     		for (BufferedRawLogger brl: bufferedLoggers) {
     			brl.rawLogger.beginSession(sessionId);
     		}
+       		this.sessionStarted = true;
+       		
+       		this.timer.schedule(this.periodicFlushTask, this.periodicFlushMillis);
+       		
+       		// Log very first message...
     		String msg = String.format(
     				"rootName:%s maxBuffered:%s autoFlushPeriod:%s", 
     				this.rootName,
@@ -545,7 +547,7 @@ public class StructuredLogger  {
         	}
         	
         	// For now, also process all the buffers.
-        	processAllMessageBuffers();
+        	//processAllMessageBuffers();
         
         }
         

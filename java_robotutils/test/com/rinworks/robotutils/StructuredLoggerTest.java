@@ -168,6 +168,12 @@ class StructuredLoggerTest {
 	}
 
 	private void verifyBeginSessionState() {
+		try {
+			Thread.sleep(2000);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		// Check that the session beginning has been logged
 		for (MyRawLog rl: rawLoggers) {
 			assertTrue(rl.logCalled);
@@ -178,6 +184,12 @@ class StructuredLoggerTest {
 
 
 	private void verifyMessageTag(String tagKey, Consumer<String> verifier) {
+		try {
+			Thread.sleep(4000);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		for (MyRawLog rl: rawLoggers) {
 			assertTrue(rl.logCalled);
 			HashMap<String, String> hm = StructuredMessageMapper.toHashMap(rl.msgMsg);
