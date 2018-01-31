@@ -74,7 +74,8 @@ class StructuredLoggerTest {
 			logCalled = true;
 			msgMsg = msg;
 			if (logName.equals("file")) {
-				System.out.println("raw message:" + msg);
+				String prefix = "[" + Thread.currentThread().getName() + "]";
+				System.out.println(prefix + "raw message:" + msg);
 			}
 		}
 

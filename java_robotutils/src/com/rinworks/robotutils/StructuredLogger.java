@@ -15,8 +15,12 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.Map.Entry;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -51,7 +55,13 @@ public class StructuredLogger  {
 	
 	// Background processing of logged messages - one object per raw log
 	final BufferedRawLogger[] bufferedLoggers;
-    
+	
+	// These get initialized when logging starts (in startLogging(), and are cancelled in stopLogging()).
+    Timer timer;
+    TimerTask periodicFlushTask;
+    TimerTask oneshotFlushTask;
+    boolean finalRundown; // Set to true ONCE - when the session is being closed.
+	
     // These are for scrubbing message type and message fields before logging.
     private static final Pattern BAD_NAME_PATTERN = Pattern.compile("[^-.\\w]");
     private static final Pattern BAD_MSG_PATTERN = Pattern.compile("\\n\\r");
@@ -262,7 +272,25 @@ public class StructuredLogger  {
     	} else {
     		long startTime = System.currentTimeMillis();
     		String sessionID = "" + startTime; // WAS String.format("%020d", startTime);
+    		this.timer = new Timer("Structured Logger + [" + rootName + "]", true);// true == daemon task.
+    		this.periodicFlushTask = new TimerTask() {
+    			@Override
+    			public void run() {
+    				processAllMessageBuffers();
 
+    				for (BufferedRawLogger brl: bufferedLoggers) {
+    					if (finalRundown) {
+    						// We abandon flushing raw loggers (which could be time consuming)
+    						// if the logger is being closed. The closing code will handle flushing.
+    						break;
+    					}
+    					brl.rawLogger.flush();								
+    				}
+
+    			} 		
+    		};
+    		this.oneshotFlushTask = null; // These are created on demand when we have to clear a backlog of buffered messages.
+    		
     		this.sessionId = sessionID;
     		this.sessionStart  = startTime;
     		this.sessionStarted = true;
@@ -281,26 +309,63 @@ public class StructuredLogger  {
 
     }
 
-    // Caller must ensure no other thread attempts to log concurrently
+    
+
+	// Caller must ensure no other thread attempts to log concurrently
     // with this thread - actual logging calls are not synchronized for
     // performance reasons.
     // WARNING - the StructuredLogger can only do a single session in its lifetime.
     // Once the session has been ended a new session can not be started.
-    public synchronized void endLogging() {
-    	if (!this.sessionStarted) {
-    		System.err.println("Ignoring attempt to end structured logger " + rootName + ":invalid state");
-    	} else {
-    		defaultLog.pri0(Log.LOG_SESSION_END, "rootName:" + rootName);
-    		this.sessionStarted = false;
-    		this.sessionEnded = true;
-    		for (BufferedRawLogger brl: bufferedLoggers) {
-    			brl.rawLogger.flush();
-    			brl.rawLogger.close();
-    		}
+    public void endLogging() {
+    	
+    	boolean deinit = true;
+
+		defaultLog.pri0(Log.LOG_SESSION_END, "rootName:" + rootName);
+		
+    	synchronized(this) {
+    		if (!this.sessionStarted) {
+    			System.err.println("Ignoring attempt to end structured logger " + rootName + ":invalid state");
+    			deinit = false;
+     		} 
+   			this.sessionStarted = false; // no more messages will be logged.
+    	}
+    	if (deinit) {
+       	    // Wait some bounded time for the buffers to be written out. Not that no new log messages can be submitted.
+    		finalBlockingBuffersRundown();
+    		timer.cancel(); // No background flushing of tasks will be scheduled, though there could be one running 
+       		this.sessionEnded = true;
+			for (BufferedRawLogger brl: bufferedLoggers) {
+				brl.rawLogger.flush();		
+				brl.rawLogger.close();
+			}
     	}
     }
 
-	
+    // Launch a special one-time timer task to write out all buffered messages 
+    // to the raw logs, but NOT attempt to flush the logs. Wait until this task has
+    // completed execution or a timeout.
+	private void finalBlockingBuffersRundown() {
+		this.finalRundown = true; // this encourages a running timer task to NOT flush - just write buffers.
+		final CountDownLatch latch = new CountDownLatch(1);
+		TimerTask finalTask = new TimerTask() {
+			@Override
+			public void run() {
+				processAllMessageBuffers();
+				latch.countDown();
+			}
+		};
+		timer.schedule(finalTask, 0); // 0 == 'immediately'
+		try {
+			boolean done = latch.await(this.periodicFlushMillis, TimeUnit.MILLISECONDS);
+			if (!done) {
+				System.err.println("StructuredLogger: timed out waiting for final task to finish. Abandanoning any buffered messages and proceeding to flush all raw logs.");	
+			}
+		} catch (InterruptedException e) {
+			System.err.println("StructuredLogger: interrupt exception waiting for final task to finish. Abandanoning any buffered messages and proceeding to flush all raw logs.");
+			Thread.currentThread().interrupt(); // Notes that the interrupt happened. Blocking methods that happen later will probably throw another InterruptedException.;
+		}
+	}
+
 	// The base logger support some simple logging functions for
 	// convenience. Look at the Log interface methods for full documentation
 	void err(String s) {
@@ -326,8 +391,16 @@ public class StructuredLogger  {
         return this.defaultLog;
     }
     
-    
 
+	private void processAllMessageBuffers() {
+		for (BufferedRawLogger brl: bufferedLoggers) {
+    		String rm = brl.buffer.poll();
+    		while (rm != null) {
+    		    brl.rawLogger.log(rm);
+    		    rm = brl.buffer.poll();
+    		}
+    	}
+	}
     
     
     // This private class implements a Log object
@@ -472,14 +545,7 @@ public class StructuredLogger  {
         	}
         	
         	// For now, also process all the buffers.
-        	for (BufferedRawLogger brl: bufferedLoggers) {
-        		String rm = brl.buffer.poll();
-        		while (rm != null) {
-        		    brl.rawLogger.log(rm);
-        		    rm = brl.buffer.poll();
-        		}
-        	}
-            
+        	processAllMessageBuffers();
         
         }
         
