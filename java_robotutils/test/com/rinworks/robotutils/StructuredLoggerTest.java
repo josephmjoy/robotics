@@ -138,6 +138,7 @@ class StructuredLoggerTest {
 			assertFalse(assertionHandlerCalled);
 			assertionHandlerCalled = true;
 		});
+		bossLogger.setAutoFlushParameters(10000, 1);
 
 		bossLogger.beginLogging();
 		verifyBeginSessionState();
@@ -169,7 +170,7 @@ class StructuredLoggerTest {
 
 	private void verifyBeginSessionState() {
 		try {
-			Thread.sleep(2000);
+			Thread.sleep(500);
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -185,7 +186,7 @@ class StructuredLoggerTest {
 
 	private void verifyMessageTag(String tagKey, Consumer<String> verifier) {
 		try {
-			Thread.sleep(4000);
+			Thread.sleep(500);
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

@@ -252,7 +252,7 @@ public class StructuredLogger  {
 	// This call must be called before logging has begin, else the call has no effect.
     public void setAutoFlushParameters(int maxBfferedMessageCount, int periodicFlushMillis) {
     	synchronized (this) {
-    		if (this.sessionStarted) {
+    		if (!this.sessionStarted) {
     			this.maxBufferedMessageCount = Math.max(maxBufferedMessageCount, 0);
     			this.periodicFlushMillis = Math.max(periodicFlushMillis, 100); // We clamp very short period requests.
     		} else {
@@ -272,7 +272,7 @@ public class StructuredLogger  {
     	} else {
     		long startTime = System.currentTimeMillis();
     		String sessionID = "" + startTime; // WAS String.format("%020d", startTime);
-    		this.timer = new Timer("Structured Logger + [" + rootName + "]", true);// true == daemon task.
+    		this.timer = new Timer("Structured Logger (" + rootName + ")", true);// true == daemon task.
     		this.periodicFlushTask = new TimerTask() {
     			@Override
     			public void run() {
@@ -298,7 +298,7 @@ public class StructuredLogger  {
     		}
        		this.sessionStarted = true;
        		
-       		this.timer.schedule(this.periodicFlushTask, this.periodicFlushMillis);
+       		this.timer.schedule(this.periodicFlushTask, this.periodicFlushMillis, this.periodicFlushMillis);
        		
        		// Log very first message...
     		String msg = String.format(
