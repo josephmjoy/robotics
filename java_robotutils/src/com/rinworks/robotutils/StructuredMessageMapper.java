@@ -23,42 +23,42 @@ import java.util.regex.Pattern;
 // If there is an error, the special key "_errors" is either created or appended with a suitable
 // error message.
 public class StructuredMessageMapper {
-	
+
 	public static final char COLON = ':'; // Separates keys and values.
 	public static final String ERRORS_KEY = "_errors";
 	static final Pattern COLON_PAT = Pattern.compile("" + COLON);
-	static final Pattern KEY_PAT  = Pattern.compile("\\S+\\s*$");
-	
+	static final Pattern KEY_PAT = Pattern.compile("\\S+\\s*$");
+
 	public static HashMap<String, String> toHashMap(String msg) {
 		String[] parts = COLON_PAT.split(msg, -1); // -1 to keep all trailing empty strings
 		int n = parts.length;
-		assert(n>=1); // Even with an empty message, we should get one part.
-		int pairs = n-1; // Also equal to the number of colons.
+		assert (n >= 1); // Even with an empty message, we should get one part.
+		int pairs = n - 1; // Also equal to the number of colons.
 		HashMap<String, String> map = new HashMap<String, String>();
-		
+
 		if (pairs <= 0) {
 			// No colons, so no key-value pairs.
-			
-			if (msg.length()>0) {
+
+			if (msg.length() > 0) {
 				map.put(ERRORS_KEY, "no keys");
 			}
 			return map; // ****** EARLY RETURN **********
 		}
-		
+
 		String prevKey = "";
 		boolean emptyKey = false;
 		boolean duplicateKey = false;
 		for (int i = 0; i <= pairs; i++) {
 			String pre = parts[i];
-			String value=null;
+			String value = null;
 			String key = "";
-			if (i<pairs) {
+			if (i < pairs) {
 				Matcher m = KEY_PAT.matcher(pre);
 				if (m.find()) {
 					int kStart = m.start();
-					value = pre.substring(0,  kStart).trim();
+					value = pre.substring(0, kStart).trim();
 					key = pre.substring(kStart).trim();
-					assert key.length()>0;
+					assert key.length() > 0;
 				} else {
 					// Hmm, empty key
 					emptyKey = true;
@@ -68,27 +68,26 @@ public class StructuredMessageMapper {
 				value = pre.trim();
 			}
 
-			if (prevKey.length()>0) {
+			if (prevKey.length() > 0) {
 				if (map.containsKey(prevKey)) {
 					// Hmm, duplicate key
 					duplicateKey = true;
 				} else {
-				    map.put(prevKey, value);
+					map.put(prevKey, value);
 				}
 			}
 			prevKey = key;
 		}
 
 		if (emptyKey || duplicateKey) {
-			String errors = map.getOrDefault(ERRORS_KEY,  "");
-			errors += (emptyKey ? "; empty key(s)" : "") 
-					  + (duplicateKey ? "; duplicate key(s)" : "");
+			String errors = map.getOrDefault(ERRORS_KEY, "");
+			errors += (emptyKey ? "; empty key(s)" : "") + (duplicateKey ? "; duplicate key(s)" : "");
 			map.put(ERRORS_KEY, errors);
 		}
-		
+
 		return map;
 	}
-	
+
 	// Creates a string representation of the key-value map.
 	// WARNING - there is no order to how the mapping is serialized.
 	// If order is important, use the second overloaded method.
@@ -97,16 +96,16 @@ public class StructuredMessageMapper {
 		String[] keys = keySet.toArray(new String[0]);
 		return toString(map, keys);
 	}
-	
+
 	//
-	public static String toString(HashMap<String, String> map,  String[] keys) {
+	public static String toString(HashMap<String, String> map, String[] keys) {
 		StringBuilder sb = new StringBuilder();
 		String pre = "";
-		for (String key: keys) {
+		for (String key : keys) {
 			if (map.containsKey(key)) {
-			    String value = map.get(key);
-			    sb.append(pre + key + COLON + value);
-			    pre = " ";
+				String value = map.get(key);
+				sb.append(pre + key + COLON + value);
+				pre = " ";
 			}
 		}
 		return sb.toString();
