@@ -59,7 +59,9 @@ public class StructuredLogger  {
 	// These get initialized when logging starts (in startLogging(), and are cancelled in stopLogging()).
     Timer timer;
     TimerTask periodicFlushTask;
-    TimerTask oneshotFlushTask;
+    TimerTask oneshotProcessBuffersTask; // Keeps track of a one-shot task if any.
+    final Object oneShotTaskLock = new Object(); // to synchronize setting the above.
+    
     boolean finalRundown; // Set to true ONCE - when the session is being closed.
 	
     // These are for scrubbing message type and message fields before logging.
@@ -163,7 +165,7 @@ public class StructuredLogger  {
 		void pauseTracing(); // stop logging
 		void resumeTracing();// (re)start logging
 		
-		
+	 	
 		// Starts adding a relative time stamp. Subsequent logging will include a _RTS key whose value is the 
 		// time in milliseconds that has elapsed since this call was invoked. This applies only to this
 		// log instance.
@@ -273,23 +275,8 @@ public class StructuredLogger  {
     		long startTime = System.currentTimeMillis();
     		String sessionID = "" + startTime; // WAS String.format("%020d", startTime);
     		this.timer = new Timer("Structured Logger (" + rootName + ")", true);// true == daemon task.
-    		this.periodicFlushTask = new TimerTask() {
-    			@Override
-    			public void run() {
-    				processAllMessageBuffers();
-
-    				for (BufferedRawLogger brl: bufferedLoggers) {
-    					if (finalRundown) {
-    						// We abandon flushing raw loggers (which could be time consuming)
-    						// if the logger is being closed. The closing code will handle flushing.
-    						break;
-    					}
-    					brl.rawLogger.flush();								
-    				}
-
-    			} 		
-    		};
-    		this.oneshotFlushTask = null; // These are created on demand when we have to clear a backlog of buffered messages.
+    		this.periodicFlushTask = newBackgroundProcessor(false, null); // false, null== don't flush immediately, no latch
+    		this.oneshotProcessBuffersTask = null; // These are created on demand when we have to clear a backlog of buffered messages.
     		this.sessionId = sessionID;
     		this.sessionStart  = startTime;
      		seqNo.set(0); // First logged sequence number in the session is 1.
@@ -333,7 +320,7 @@ public class StructuredLogger  {
     	}
     	if (deinit) {
        	    // Wait some bounded time for the buffers to be written out. Not that no new log messages can be submitted.
-    		finalBlockingBuffersRundown();
+    		emptyBuffersOnShutdown_BLOCKING();
     		timer.cancel(); // No background flushing of tasks will be scheduled, though there could be one running 
        		this.sessionEnded = true;
 			for (BufferedRawLogger brl: bufferedLoggers) {
@@ -346,18 +333,13 @@ public class StructuredLogger  {
     // Launch a special one-time timer task to write out all buffered messages 
     // to the raw logs, but NOT attempt to flush the logs. Wait until this task has
     // completed execution or a timeout.
-	private void finalBlockingBuffersRundown() {
+	private void emptyBuffersOnShutdown_BLOCKING() {
 		this.finalRundown = true; // this encourages a running timer task to NOT flush - just write buffers.
 		final CountDownLatch latch = new CountDownLatch(1);
-		TimerTask finalTask = new TimerTask() {
-			@Override
-			public void run() {
-				processAllMessageBuffers();
-				latch.countDown();
-			}
-		};
+		TimerTask finalTask = newBackgroundProcessor(false, latch); // false=don't flush now
 		timer.schedule(finalTask, 0); // 0 == 'immediately'
 		try {
+			// This call will BLOCK until the above task is done (or rather calls latch.countDown()).
 			boolean done = latch.await(this.periodicFlushMillis, TimeUnit.MILLISECONDS);
 			if (!done) {
 				System.err.println("StructuredLogger: timed out waiting for final task to finish. Abandanoning any buffered messages and proceeding to flush all raw logs.");	
@@ -393,17 +375,50 @@ public class StructuredLogger  {
         return this.defaultLog;
     }
     
-
-	private void processAllMessageBuffers() {
-		for (BufferedRawLogger brl: bufferedLoggers) {
-    		String rm = brl.buffer.poll();
-    		while (rm != null) {
-    		    brl.rawLogger.log(rm);
-    		    rm = brl.buffer.poll();
-    		}
-    	}
+	
+	// Create the timer task that will process all
+	// queued messages and potentially flushing
+	// the raw logs. If {flushNow} is true, the logs will
+    // be flushed in the context of the task (except if the
+    // logging is being shutdown). If optional {latch} is
+    // non null, it will be counted-down.
+	private TimerTask newBackgroundProcessor(boolean flushNow, CountDownLatch latch) {
+		return new TimerTask() {
+			
+			@Override
+			public void run() {
+				
+				for (BufferedRawLogger brl: bufferedLoggers) {
+		    		brl.processAllBufferedMessages();
+		    	}
+				
+				// Now, we flush each log if necessary
+				for (BufferedRawLogger brl: bufferedLoggers) {
+					// Logs are never flushed in the background if {this}
+					// is being shut down (endLogging() has been called).
+					if (finalRundown) {
+						break;
+					}
+					if (flushNow || brl.msgsSinceLastFlush.get() > maxBufferedMessageCount) {
+						brl.rawLogger.flush(); // can potentially take some time.
+						brl.msgsSinceLastFlush.set(0); 
+					}
+		      	}
+				
+				if (latch != null) {
+					latch.countDown();
+				}
+				
+				// If we're a one-shot task clear the oneshot task.
+				// 
+				synchronized(oneShotTaskLock) {
+					if (oneshotProcessBuffersTask == this) {
+						oneshotProcessBuffersTask = null;
+					}
+				}
+			}
+		};
 	}
-    
     
     // This private class implements a Log object
 	private class LogImplementation implements Log {
@@ -512,9 +527,9 @@ public class StructuredLogger  {
 		@Override
 		public void flush() {
             if (sessionStarted) {
-            	for (BufferedRawLogger brl: bufferedLoggers) {
-                    brl.rawLogger.flush();
-            	}
+            	// Launch an immediate timer task
+        		TimerTask task = newBackgroundProcessor(true, null); // true, null == flush now, no latch
+        		timer.schedule(task, 0); // 0 == 'immediately'
             }     
 		}
 		
@@ -536,6 +551,7 @@ public class StructuredLogger  {
             // Push it into each logger's buffer if they want it.
         	// Note that if no logger wants it the raw message is not
         	// even generated.
+        	int maxNonFlushedMsgCount = 0;
             String rawMsg = null;
         	for (BufferedRawLogger brl: bufferedLoggers) {
         		if (brl.rawLogger.filter(pri, cat)) {
@@ -543,12 +559,36 @@ public class StructuredLogger  {
         				rawMsg = rawMessage(pri, cat, msgType, msg);
         			}
         			brl.buffer.add(rawMsg);
+        			
+           			int nonFlushedMsgs= brl.approxQueueLength.incrementAndGet() + brl.msgsSinceLastFlush.get();
+        			maxNonFlushedMsgCount = Math.max(maxNonFlushedMsgCount, nonFlushedMsgs);
         		}
         	}
         	
-        	// For now, also process all the buffers.
-        	//processAllMessageBuffers();
-        
+        	// If the max number of messages in any one queue is too large, it triggers
+        	// a oneshot task to clear all message buffers (provided one is not already
+        	// active!).
+        	if (maxNonFlushedMsgCount > maxBufferedMessageCount ) {
+
+    			if (oneshotProcessBuffersTask == null) {
+    				TimerTask task = newBackgroundProcessor(false, null); // false,null == don't flush immediately, no latch
+    				boolean scheduleTask = false;
+    				// We create the task optimistically expecting to
+    				// actually schedule it, but we may not. We do this
+    				// outside the lock to keep the lock holding time to
+    				// a minimum.
+    				synchronized(oneShotTaskLock) {
+    					if (oneshotProcessBuffersTask == null) {
+    						oneshotProcessBuffersTask = task;
+    						scheduleTask = true;
+    					}
+    				}
+    				
+    				if (scheduleTask) {
+    					timer.schedule(task, 0);
+    				}
+    			}
+        	}
         }
         
         // Generates and returns the message that is actually logged to the raw logs.
@@ -687,13 +727,36 @@ public class StructuredLogger  {
 	private class BufferedRawLogger {
 		final RawLogger rawLogger;
 		final ConcurrentLinkedQueue<String> buffer;
-		final AtomicInteger discardedMessages;
+		final AtomicInteger discardedMessages; // used to generate a log message.
+		final AtomicInteger approxQueueLength; // used to trigger oneshot buffer processing.
+		final AtomicInteger msgsSinceLastFlush; // used to trigger oneshot buffer processing.
 		
 		BufferedRawLogger(RawLogger rl) {
 			rawLogger = rl;
 			buffer = new ConcurrentLinkedQueue<String>();
 			discardedMessages = new AtomicInteger();
+			approxQueueLength = new AtomicInteger();
+			msgsSinceLastFlush = new AtomicInteger();
 		}
+
+		public void processAllBufferedMessages() {
+			String rm = this.buffer.poll();
+    		int loggedCount = 0;
+    		while (rm != null) {
+    		    this.rawLogger.log(rm);
+    		    loggedCount++;
+    		    rm = this.buffer.poll();
+    		}
+       		this.msgsSinceLastFlush.addAndGet(loggedCount);
+
+    		// We set this to 0, but it would not be
+    		// accurate because concurrently messages could
+    		// be inserted into the buffer and that count would 
+    		// be lost. We could decrement the amount we took out, but
+    		// keeping an accurate count over long periods of time is
+    		// unnecessary.
+    		this.approxQueueLength.set(0);    		
+ 		}
 	}
 	
 	
