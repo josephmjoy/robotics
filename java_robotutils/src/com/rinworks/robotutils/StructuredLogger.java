@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -41,7 +42,7 @@ public class StructuredLogger {
 	private long sessionStart;
 	private boolean sessionStarted = false;
 	private boolean sessionEnded = false;
-	private AtomicInteger seqNo = new AtomicInteger(0);
+	private AtomicLong seqNo = new AtomicLong(0);
 	private Consumer<String> assertionFailureHandler = null;
 
 	// These control autoflush behaviour - logs are flushed if the buffered raw log
@@ -688,7 +689,7 @@ public class StructuredLogger {
 			// msg = DEF_MSG + StructuredMessageMapper.COLON + msg;
 			// }
 
-			int curSeq = seqNo.incrementAndGet();
+			long curSeq = seqNo.incrementAndGet();
 			long millis = System.currentTimeMillis();
 			long timestamp = millis - sessionStart;
 			String rtsKeyValue = (rtsEnabled) ? RELATIVE_TIMESTAMP + ":" + (millis - rtsStartTime) + " " : "";

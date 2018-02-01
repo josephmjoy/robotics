@@ -2,9 +2,9 @@
 These are informal notes and TODO lists for the project.
 
 #TODO
-1. StructuredLogger.flush()- should invoke background message processing and buffering 'immediately'.
-1. StructuredLogger - implement protocol for dealing with per-message buffers exceeding maximum.
-1. StructuredLogger - keep track of % of timer period taken up by processing of periodic and one-shot tasks
+1. StructuredLogger: Add some perf numbers to the final logged message.
+1  StructuredLogger: Build more comprehensive unit tests, especially stress tests.
+1. StructuredLogger: Keep track of % of timer period taken up by processing of periodic and one-shot tasks
 1. StructuredLogger: Make sure that it can never throw an exception or assertion
    failure
 1. [POSTPONED-unclear if this is a benefit as bigger packets may have higher

@@ -476,5 +476,17 @@ class StructuredLoggerTest {
 
 		return messages;
 	}
+	
+	// A more comprehensive 'stress' test:
+	// Sets up N thread. Each thread creates a sub Log object and inserts a unique tag identifying that thread. It also maintains
+	// a thread-specific sequence number.
+	// Each thread then logs messages like crazy and invokes a variety of log calls for variety. The message encodes the per-thread sequence 
+	// number. 
+	//
+	// Sets up two raw loggers:
+	//  - One accepts every message - it's log method verify it receives every message in sequence (thread-specific sequence numbers are 
+	//    strictly in order with nothing message.
+	//  - The other only accepts p1 messages. It's log method verifies that it only receives p1 messages.
+
 
 }
