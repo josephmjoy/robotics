@@ -15,14 +15,17 @@ These are informal notes and TODO lists for the project.
 
 # Jan 30, 2018 Design Note on Threadsafe and background Logging
 Goals:
-1. Thread safe - integrity of individual log messages is preserved. Log messages submitted in the context of any one thread is logged sequentially.
-2. Max buffered limit is honored on a per-raw log basis. If any individual raw log's max buffered  message is reached, subsequent messages WILL be discarded. A log message is generated periodically if any messages were discarded in the previous period. This message identifies the raw log(s) and the number of deleted messages.
-3. No attempt is made to generate and buffer a log message if no raw logs will accept it. IMP: before the message is generated, each raw log is queried to see if it will accept it based on (pri, cat, type).
-4. Raw log's log() message is never called in the context of a client's logging method (info, trace, etc.). This is so that there is no unknown (and potentially) high in-line cost while logging.
-2. StructuredLogger.flush will trigger immediate flushing of buffered messages inn the background. It can 
- potentially (TBD) take a wait parameter - where it will wait for the message queues to be empty (or have
- flushed all the messages buffered at the start of the call to flush()).
-5. There is a max overhead of one background thread per StructuredLoggine object. IMP: THis is for a timer object.
+1. [Done]Thread safe - integrity of individual log messages is preserved. Log messages submitted in the context of any one thread is logged sequentially.
+2. [Done] Max buffered limit is honored on a per-raw log basis. If any individual raw log's max buffered  message is reached, flushing of logs WILL be triggered.
+3. [Done] Message deletion policy: If too many messages are being buffered - messages are being logged too fast for the logger to keep up,
+   a chunk of buffered messages WILL be discarded. For now "too many" is based on an internal constant (nominally 10,000). If some constant fraction (nominally 0.25) of this
+   limit is reached, immediate processing of buffered messages is triggered to attempt to bring down the queue sizes. If the limit is reached, a constant fraction (nominally 0.1) of
+   the buffered messages are DELETED. This is done on a per-raw-log basis, so logs that have not reached this limit are not penalized. A log message is generated periodically 
+   if any messages were discarded in the previous period. This message identifies the raw log(s) and the number of deleted messages.
+3. [Done]No attempt is made to generate and buffer a log message if no raw logs will accept it. IMP: before the message is generated, each raw log is queried to see if it will accept it based on (pri, cat, type).
+4. [Done] Raw log's log() message is never called in the context of a client's logging method (info, trace, etc.). This is so that there is no unknown (and potentially) high in-line cost while logging, also this is to ensure thread-safe behavior.
+2. [Done] StructuredLogger.flush will trigger immediate flushing of buffered messages in the background.
+5. [Done] There is a max overhead of one background thread per StructuredLoggine object. IMP: THis is for a timer object.
 
 Design:
 1. IMP: All writing to raw loggers MUST be done by a single thread, else messages can be corrupted when writing to
@@ -34,6 +37,7 @@ Design:
     -- Pointer to the raw log.
     -- A ConcurrentLinkedQueue of strings that contains the buffer messages for that log.
     -- An atomic counter of deleted messages since the last logged 'messages were deleted' message was logged.
+    -- Additional atomic counters,  e.g., count of messages written since last flush.
 2. StructuredLogger.rawLog does the following for each raw log:
   - Check if it will accept the message by calling filter(pri, cat, type). If no it ignores the message.
   - If accepted, checks if that raw log's max buffered message limit has been reached. If so, it increments the 'deleted messages' atomic counter and quits - the message will be discarded. Else, if needed the message to be
@@ -46,5 +50,5 @@ Design:
 3. A timer is setup to trigger periodic submission of buffered messages to the raw logs. It will flush each raw log
    after sending off all outstanding buffered messages from that log (in the mean time more messages could get
    added to the buffer by another thread).
-4. On close  
+4. On ending logging launch an 'immediate' task to write out all buffered messages, wait (block) for that task to complete, and then flush all logs.
     
