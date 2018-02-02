@@ -2,8 +2,6 @@
 These are informal notes and TODO lists for the project.
 
 #TODO
-1. StructuredLogger: Add some perf numbers to the final logged message.
-1  StructuredLogger: Build more comprehensive unit tests, especially stress tests.
 1. StructuredLogger: Keep track of % of timer period taken up by processing of periodic and one-shot tasks
 1. StructuredLogger: Make sure that it can never throw an exception or assertion
    failure
@@ -14,13 +12,15 @@ These are informal notes and TODO lists for the project.
 
 
 # Jan 30, 2018 Design Note on Threadsafe and background Logging
+[Last updated Feb2,2018]
 Goals:
 1. [Done]Thread safe - integrity of individual log messages is preserved. Log messages submitted in the context of any one thread is logged sequentially.
 2. [Done] Max buffered limit is honored on a per-raw log basis. If any individual raw log's max buffered  message is reached, flushing of logs WILL be triggered.
 3. [Done] Message deletion policy: If too many messages are being buffered - messages are being logged too fast for the logger to keep up,
-   a chunk of buffered messages WILL be discarded. For now "too many" is based on an internal constant (nominally 10,000). If some constant fraction (nominally 0.25) of this
-   limit is reached, immediate processing of buffered messages is triggered to attempt to bring down the queue sizes. If the limit is reached, a constant fraction (nominally 0.1) of
-   the buffered messages are DELETED. This is done on a per-raw-log basis, so logs that have not reached this limit are not penalized. A log message is generated periodically 
+   subsequent messages WILL BE discarded as long as the buffer is maxed out. For now "too many" is based on an internal constant (nominally 10,000).
+   If some constant fraction (nominally 0.25) of this limit is reached, immediate processing of buffered messages is triggered to attempt to bring down the queue sizes. 
+   [OLD LOGIC (NOT USED ANYMORE): If the limit is reached, a constant fraction (nominally 0.1) of the buffered messages are DELETED.]
+   This is done on a per-raw-log basis, so logs that have not reached this limit are not penalized. A log message is generated periodically 
    if any messages were discarded in the previous period. This message identifies the raw log(s) and the number of deleted messages.
 3. [Done]No attempt is made to generate and buffer a log message if no raw logs will accept it. IMP: before the message is generated, each raw log is queried to see if it will accept it based on (pri, cat, type).
 4. [Done] Raw log's log() message is never called in the context of a client's logging method (info, trace, etc.). This is so that there is no unknown (and potentially) high in-line cost while logging, also this is to ensure thread-safe behavior.
