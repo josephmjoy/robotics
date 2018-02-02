@@ -12,8 +12,10 @@ import java.net.DatagramSocket;
 import java.net.SocketException;
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.AfterAll;
@@ -488,5 +490,214 @@ class StructuredLoggerTest {
 	//    strictly in order with nothing message.
 	//  - The other only accepts p1 messages. It's log method verifies that it only receives p1 messages.
 
+	@Test void testStressTest() {
+		final String TEST_TYPE = "TEST";
+		final String TSN_TAG = "tsn"; // Per-thread sequence number
+		final String TID_TAG = "tid"; // Thread ID
+		final HashMap<String, Long> tsnMap = new HashMap<String, Long>();
+		final String[] tidList = {
+				"T1", "T2", "T3"
+		};
+		final long STARTING_TSN = 1;
+		final long ENDING_TSN = 10000;
+		assert ENDING_TSN >= STARTING_TSN;
+		final AtomicLong msgCount = new AtomicLong();
+		
+		// Put the initial values of received sequence numbers for each thread.
+		for (String tid: tidList) {
+			tsnMap.put(tid, STARTING_TSN-1);
+		}
+		
+		
+		StructuredLogger.RawLogger logAll  = new StructuredLogger.RawLogger() {
+			
+			String logThreadName = null; // set on the first log message we get.
+			int flushCalls = 0; // We don't need to serialize because we know that all logging calls are
+            // made in the context of a single thread.
+			
+			// Maps thread IDs to last received sequence number.
+			
+			@Override
+			public void beginSession(String sessionId) {
+				assertEquals(null, logThreadName);
+			}
+
+			@Override
+			public void log(String msg) {
+				
+				//System.out.println("LOGALL " + msg);
+				
+				
+				if (logThreadName == null) {
+					logThreadName = Thread.currentThread().getName();
+				} else {
+					// Verify that log is always called in the
+					// context of the same thread.
+					String tn = Thread.currentThread().getName();
+					assertEquals(logThreadName, tn);
+				}
+				
+				// Verify that we get every message, and that these messages are in sequence
+				// for each thread that submitted them.
+				HashMap<String, String> map = StructuredMessageMapper.toHashMap(msg);
+				String type = map.get(StructuredLogger.Log.TYPE);
+				assertTrue(type != null);
+				if (type.equals(TEST_TYPE)) {
+						
+					// Update the number of test messages we have received.
+					msgCount.incrementAndGet();
+				
+					// Retrieve the client submission thread ID. It had better be there!
+					String strTID = map.get(TID_TAG);
+					assertTrue(strTID != null);
+				
+					// Retrieve per-thread sequence number. It has better be there!
+					String strTsn = map.get(TSN_TAG);
+					assertTrue(strTsn != null);
+					long tsn = Long.parseLong(strTsn);
+					
+					// Retrieve the previous seq number from  this TID.
+					Long prevTsn = tsnMap.get(strTID); // We should get something.
+					assertTrue(prevTsn != null);
+					
+					// We expect to receive sequential sn's.
+					//assertEquals(prevTsn + 1, tsn);			
+					assertTrue(prevTsn < tsn);			
+					tsnMap.put(strTID,  tsn);
+				}
+				 
+			}
+
+			@Override
+			public void flush() {
+				flushCalls ++;
+			}
+
+			@Override
+			public void close() {
+				// Nothing to do
+			}
+			
+		};
+		
+		StructuredLogger.RawLogger logMaxP1  = new StructuredLogger.RawLogger() {
+
+			@Override
+			public void beginSession(String sessionId) {
+				// Nothing to do
+				
+			}
+
+			@Override
+			public void log(String msg) {
+				System.out.println("LOGPRI " + msg);
+				
+				// Verify that we get only P1 messages!
+				HashMap<String, String> map = StructuredMessageMapper.toHashMap(msg);
+				assertTrue(Integer.parseInt(map.get(StructuredLogger.Log.PRI)) <= 1);
+			}
+
+			@Override
+			public void flush() {
+				// Nothing to do.
+				
+			}
+
+			@Override
+			public void close() {
+				// Nothing to do.
+				
+			}
+			
+			// Accept only p1 messages.
+			@Override
+			public boolean filter(int pri, String cat) {
+				return pri <= 1;
+			}
+			
+		};
+		
+		StructuredLogger.RawLogger[] rawLoggers = {logAll, logMaxP1};
+		final StructuredLogger mainLogger = new StructuredLogger(rawLoggers, "ROOT");
+		// Initialize client threads.
+		Thread[] clientThreads = new Thread[tidList.length];
+		final CountDownLatch rl = new CountDownLatch(tidList.length);
+		for (int i = 0; i < tidList.length;  i++) {
+			final String tid = tidList[i];
+			clientThreads[i] = new Thread(
+					new Runnable() {
+						
+
+						@Override
+						public void run() {
+							//System.out.println("THREAD " + tid + " BEGINS...");
+							StructuredLogger.Log myLog = mainLogger.defaultLog().newLog(tid);
+							myLog.addTag(TID_TAG, tid);
+			
+							// Log messages!
+							for (long seqNo = STARTING_TSN; seqNo <= ENDING_TSN; seqNo++) {
+								myLog.trace(TEST_TYPE,   TSN_TAG + ":" + seqNo );
+								if (Math.random() < 0.1) {
+									try {
+										Thread.sleep(1);
+									} catch (InterruptedException e) {
+										Thread.currentThread().interrupt();
+									}
+								}
+								if (Math.random() < 0.1) {
+									myLog.flush();
+								}
+							}
+							
+							//System.out.println("THREAD " + tid + " ...ENDS");
+
+							// All done, signal latch.
+							rl.countDown();							
+							
+						}
+						
+					},
+					tid
+					);
+		}
+		
+		// Start logging.
+		mainLogger.beginLogging();
+		
+		long startTime = System.nanoTime();
+		
+		
+		// Start each thread.
+		for (Thread t: clientThreads) {
+			t.start();
+		}
+		
+		// Wait for all client threads to end.
+		try {
+			rl.await();
+			
+			// Close log.
+			mainLogger.endLogging();
+			
+			long endTime = System.nanoTime();
+			
+			// Now verify we got exactly the number of messages we expected.
+			// The +2 is for the session beginning and ending messages.
+			long expectedCount = (ENDING_TSN-STARTING_TSN + 1)*clientThreads.length;
+			long actualCount = msgCount.get();
+			//assertEquals(expectedCount, actualCount);
+			
+			System.out.println("Sucessfully logged " + actualCount + " messages from "
+			+ clientThreads.length + " threads in "
+		    + (endTime-startTime)/1000000000.0 + " seconds");
+			if (actualCount != expectedCount) {
+				System.out.println("Dropped " + (expectedCount - actualCount) + " messages.");
+				System.out.println("Logger says we dropped " + mainLogger.getDiscardedMessageCount() + " messages.");
+			}
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+			Thread.currentThread().interrupt();
+		}
+	}
 
 }

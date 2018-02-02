@@ -29,7 +29,7 @@ import java.util.regex.Pattern;
 public class StructuredLogger {
 
 	final static int PRI0 = 0; // Tag indicating pri0
-	final static int PRI1 = 2; // Tag indicating pri1
+	final static int PRI1 = 1; // Tag indicating pri1
 	final static int PRI2 = 2; // Tag indicating pri2
 	final static String INFO = "INFO";
 	final static String TRACE = "TRACE";
@@ -43,6 +43,7 @@ public class StructuredLogger {
 	private boolean sessionStarted = false;
 	private boolean sessionEnded = false;
 	private AtomicLong seqNo = new AtomicLong(0);
+	private AtomicLong totalDiscardedMessageCount = new AtomicLong(0);
 	private Consumer<String> assertionFailureHandler = null;
 
 	// These control autoflush behaviour - logs are flushed if the buffered raw log
@@ -429,6 +430,12 @@ public class StructuredLogger {
 	public Log defaultLog() {
 		return this.defaultLog;
 	}
+	
+	// Gets the total number of deleted messages
+	// thus far.
+	public long getDiscardedMessageCount() {
+		return this.totalDiscardedMessageCount.get();
+	}
 
 	// Create the timer task that will process all
 	// queued messages and potentially flushing
@@ -693,7 +700,7 @@ public class StructuredLogger {
 			long millis = System.currentTimeMillis();
 			long timestamp = millis - sessionStart;
 			String rtsKeyValue = (rtsEnabled) ? RELATIVE_TIMESTAMP + ":" + (millis - rtsStartTime) + " " : "";
-			String output = String.format("%s:%s %s:%s %s:%s %s%s:%s %s:%s %s:%s %s:%s %s%s:%s", Log.SESSION_ID,
+			String output = String.format("%s:%s %s:%s %s:%s %s%s:%s %s:%s %s:%s %s:%s %s%s: %s", Log.SESSION_ID,
 					sessionId, Log.SEQ_NO, curSeq, Log.TIMESTAMP, timestamp, rtsKeyValue, Log.COMPONENT, component,
 					Log.PRI, pri, Log.CAT, cat, Log.TYPE, msgType, tagsString, Log.DEF_MSG, msg);
 			return output;
@@ -826,6 +833,7 @@ public class StructuredLogger {
 				rm = this.buffer.poll();
 			}	
 			discardedMessages.addAndGet(count);
+			totalDiscardedMessageCount.addAndGet(count);
 			return;
 		}
 
