@@ -26,15 +26,32 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
+/**
+ * Thread-safe logging of 'structured text' - Strings  of the form "key1: value1  key2:value2".
+ * The client provides the low-level log consumers that implement the StructuredLogger.RawLogger interface.
+ */
 public class StructuredLogger {
 
-	final static int PRI0 = 0; // Tag indicating pri0
-	final static int PRI1 = 1; // Tag indicating pri1
-	final static int PRI2 = 2; // Tag indicating pri2
-	final static String INFO = "INFO";
-	final static String TRACE = "TRACE";
-	final static String ERR = "ERR";
-	final static String WARN = "WARN";
+	// These control autoflush behavior - logs are flushed if the buffered raw log
+	// messages
+	// exceed maxBufferedMessageCount or if pariodicFlushMillis has elapsed since
+	// the last
+	// periodic flush.
+	public static final int DEFAULT_MAX_BUFFERED_MESSAGE_COUNT = 1000;
+	public static final double ABSOLUTE_BUFFERED_MESSAGE_TRIGGER__FRACTION = 0.25; // at what fraction we trigger processing buffers.
+	public static final int DEFAULT_PERIODIC_FLUSH_MILLIS = 1000;
+	 
+	// This limit to per-rawlog buffered messages is never exceeded. Messages
+	// are deleted in chunks as this limit is approached. See impnotes.
+	public static final int ABSOLUTE_BUFFERED_MESSAGE_LIMIT = 10000;
+	public static final int MAX_WAIT_ON_ENDLOGGING = 1000;// Max time (in ms) endLoggin() waits for backgound logging tasks to complete.
+	public final static int PRI0 = 0; // Tag indicating pri0
+	public final static int PRI1 = 1; // Tag indicating pri1
+	public final static int PRI2 = 2; // Tag indicating pri2
+	public final static String INFO = "INFO";
+	public final static String TRACE = "TRACE";
+	public final static String ERR = "ERR";
+	public final static String WARN = "WARN";
 
 	private final String rootName;
 	private final LogImplementation defaultLog;
@@ -46,75 +63,70 @@ public class StructuredLogger {
 	private AtomicLong totalDiscardedMessageCount = new AtomicLong(0);
 	private Consumer<String> assertionFailureHandler = null;
 
-	// These control autoflush behaviour - logs are flushed if the buffered raw log
-	// messages
-	// exceed maxBufferedMessageCount or if pariodicFlushMillis has elapsed since
-	// the last
-	// periodic flush.
-	private final int DEFAULT_MAX_BUFFERED_MESSAGE_COUNT = 1000;
-	private final int DEFAULT_PERIODIC_FLUSH_MILLIS = 1000;
 	private int maxBufferedMessageCount = DEFAULT_MAX_BUFFERED_MESSAGE_COUNT;
 	private int periodicFlushMillis = DEFAULT_PERIODIC_FLUSH_MILLIS;
 
 	// Background processing of logged messages - one object per raw log
-	final BufferedRawLogger[] bufferedLoggers;
+	private final BufferedRawLogger[] bufferedLoggers;
 
 	// These get initialized when logging starts (in startLogging(), and are
 	// cancelled in stopLogging()).
-	Timer timer;
-	TimerTask periodicFlushTask;
-	TimerTask oneshotProcessBuffersTask; // Keeps track of a one-shot task if any.
-	final Object oneShotTaskLock = new Object(); // to synchronize setting the above.
+	private Timer timer;
+	private TimerTask periodicFlushTask;
+	private TimerTask oneshotProcessBuffersTask; // Keeps track of a one-shot task if any.
+	private final Object oneShotTaskLock = new Object(); // to synchronize setting the above.
 
-	boolean finalRundown; // Set to true ONCE - when the session is being closed.
+	private boolean finalRundown; // Set to true ONCE - when the session is being closed.
 
 	// These are for scrubbing message type and message fields before logging.
 	private static final Pattern BAD_NAME_PATTERN = Pattern.compile("[^-.\\w]");
 	private static final Pattern BAD_MSG_PATTERN = Pattern.compile("\\n\\r");
-	
-	// This limit to per-rawlog buffered messages is never exceeded. Messages
-	// are deleted in chunks as this limit is approached. See impnotes.
-	public static final int ABSOLUTE_BUFFERED_MESSAGE_LIMIT = 10000;
-	public static final double ABSOLUTE_BUFFERED_MESSAGE_TRIGGER__FRACTION = 0.25; // at what fraction we trigger processing buffers.
-	public static final int MAX_WAIT_ON_ENDLOGGING = 1000;// Max time (in ms) endLoggin() waits for backgound logging tasks to complete.
 
-	// Clients provide this to actually write log messages to some system like the
-	// file system
-	// or network.
+	/**
+	 *  Clients provide this to actually write log messages to some system like the file system
+     *  or network.
+	 */
 	public interface RawLogger {
 
-		// Prepare to log a new session. For example, a file bgit desased logging system
-		// may
-		// open a new file. SessionId will not contain illegal characters for file
-		// names, such as
-		// slashes. This method will be called only once - when the owning structured
-		// logging
-		// object's beginSession method is called.
+		/**
+		 * Prepare to write logs for a new session. For example, a file-based logging system
+		 * may open a new file. {sessionId} will not contain illegal characters for file
+		 * names, such as slashes. This method will be called only once - when the owning structured
+		 * logging object's beginSession method is called.
+		 */
 		void beginSession(String sessionId);
 
-		// Optionally control which messages are logged. It is more efficient to reject
-		// messages
-		// by returning false here rather than ignoring it in the call to log because of
-		// the overhead of
-		// generating and buffering messages.
+		/**
+		 * Optionally control which messages are written to this sink. It is more efficient to reject
+		 * messages by returning false here rather than ignoring it in the call to write because of
+		 * the overhead of generating and buffering messages.
+		 */
 		default boolean filter(int pri, String cat) {
 			return true;
 		}
 
-		// Log a string message
+		/**
+		 * Write {msg} to the underlying log sink.
+		 */
 		void log(String msg);
 
-		// Flush the log to persistent storage if appropriate.
+		/**
+		 *  If appropriate, flush unbuffered data to the underlying store.
+		 */
 		void flush();
 
-		// Close any open resources (no further calls to log or flush will follow the
-		// call to close)
+		/**
+		 * Close any open resources (no further calls to log or flush will follow the
+		 * call to close).
+		 */
 		void close();
 
 	}
 
-	// The core logger interface - multiple log objects can be built - for
-	// each component/sub-component or even transient logging tasks.
+	/**
+	 *  The core logger interface - multiple log objects can be built - one for
+	 *  each component/sub-component or even for transient logging tasks.
+	 */
 	public interface Log {
 
 		// These are reserved key names - don't use them for generating key-value
@@ -279,14 +291,6 @@ public class StructuredLogger {
 		this.defaultLog = this.commonNewLog(_rootName);
 	}
 
-	// Consolidates calls to create a new log objects, incase we want to do
-	// something more
-	// like keep a list of logs. At present we don't keep a global list of allocated
-	// log objects.
-	private LogImplementation commonNewLog(String name) {
-		return new LogImplementation(name);
-	}
-
 	// Updates the assertion failure handler.
 	// The default handler is null, which means that assertion failures are logged
 	// but
@@ -383,6 +387,106 @@ public class StructuredLogger {
 			}
 		}
 	}
+	
+	// The base logger support some simple logging functions for
+	// convenience. Look at the Log interface methods for full documentation
+	public void err(String s) {
+		this.defaultLog.err(s);
+	}
+
+	public void warn(String s) {
+		this.defaultLog.warn(s);
+	}
+
+	public void info(String s) {
+		this.defaultLog.info(s);
+	}
+
+	public void flush() {
+		this.defaultLog.flush();
+	}
+
+	// Get the root ("top level") log object, which provides a much richer
+	// set of logging methods
+	public Log defaultLog() {
+		return this.defaultLog;
+	}
+	
+	// Gets the total number of deleted messages
+	// thus far.
+	public long getDiscardedMessageCount() {
+		return this.totalDiscardedMessageCount.get();
+	}
+	
+	/**
+	 * Creates a logger that generates per-session log files of the form
+	 * {perfix}{session id}{suffix}. No IOExceptions are thrown. Instead error
+	 * messages are written to System.err.
+	 * 
+	 * @param logDirectory
+	 *            - directory where log files will reside.
+	 * @param prefix
+	 *            - filename prefix
+	 * @param suffix
+	 *            - filename suffix
+	 * @param append
+	 *            - true: append to the file if it exist; false: overwrite the file
+	 *            if it exists.
+	 * @return A StructuredLogger.Logger object that may be passed into a
+	 *         StructuredLogger constructor
+	 */
+	public static RawLogger createFileLogger(File logDirectory, String prefix, String suffix, boolean append) {
+		FileRawLogger fileLogger = new FileRawLogger(logDirectory, prefix, suffix, append);
+		return fileLogger;
+
+	}
+
+	/**
+	 * Creates a logger that logs multiple sessions to a single file. No
+	 * IOExceptions are thrown. Instead error messages are written to System.err.
+	 * 
+	 * @param logFile
+	 *            - File object representing log file path.
+	 * @param append
+	 *            - true: append to the file if it exist; false: overwrite the file
+	 *            if it exists.
+	 * @return A StructuredLogger.Logger object that may be passed into a
+	 *         StructuredLogger constructor
+	 */
+	public static RawLogger createFileLogger(File logFile, boolean append) {
+		FileRawLogger fileLogger = new FileRawLogger(logFile, append);
+		return fileLogger;
+
+	}
+
+	/**
+	 * Creates a logger that transmits log messages as UDP packets to the specified
+	 * destination.
+	 * 
+	 * @param address
+	 *            - Destination host name or IP Address
+	 * @param port
+	 *            - Destination port.
+	 * @return A StructuredLogger.Logger object that may be passed into a
+	 *         StructuredLogger constructor
+	 */
+	public static RawLogger createUDPLogger(String address, int port) {
+		UDPRawLogger fileLogger = new UDPRawLogger(address, port);
+		return fileLogger;
+	}
+
+	// **********************************************************************************
+	//                               End of public methods
+	// ********************************************************************************
+	
+	
+	// Consolidates calls to create a new log objects, incase we want to do
+	// something more
+	// like keep a list of logs. At present we don't keep a global list of allocated
+	// log objects.
+	private LogImplementation commonNewLog(String name) {
+		return new LogImplementation(name);
+	}
 
 	// Launch a special one-time timer task to write out all buffered messages
 	// to the raw logs, but NOT attempt to flush the logs. Wait until this task has
@@ -407,38 +511,8 @@ public class StructuredLogger {
 			// will probably throw another InterruptedException.;
 		}
 	}
-
-	// The base logger support some simple logging functions for
-	// convenience. Look at the Log interface methods for full documentation
-	void err(String s) {
-		this.defaultLog.err(s);
-	}
-
-	void warn(String s) {
-		this.defaultLog.warn(s);
-	}
-
-	void info(String s) {
-		this.defaultLog.info(s);
-	}
-
-	void flush() {
-		this.defaultLog.flush();
-	}
-
-	// Get the root ("top level") log object, which provides a much richer
-	// set of logging methods
-	public Log defaultLog() {
-		return this.defaultLog;
-	}
 	
-	// Gets the total number of deleted messages
-	// thus far.
-	public long getDiscardedMessageCount() {
-		return this.totalDiscardedMessageCount.get();
-	}
-	
-	public void logDiscardedMessageCount() {
+	private void logDiscardedMessageCount() {
 		for (BufferedRawLogger brl : bufferedLoggers) {
 			int discarded = brl.discardedMessages.getAndSet(0);
 			if (discarded > 0) {
@@ -839,7 +913,7 @@ public class StructuredLogger {
 	// Trigger a one-shot background task to process buffers, if 
 	// there isn't one already. The task will force-flush
 	// if {flushNow} is true.
-	public void triggerBackgroundTaskIfNotRunning(boolean flushNow) {
+	private void triggerBackgroundTaskIfNotRunning(boolean flushNow) {
 		if (oneshotProcessBuffersTask == null) {
 			TimerTask task = newBackgroundProcessor(flushNow, null); // null == no latch
 			// latch
@@ -1028,61 +1102,5 @@ public class StructuredLogger {
 
 	}
 
-	/**
-	 * Creates a logger that generates per-session log files of the form
-	 * {perfix}{session id}{suffix}. No IOExceptions are thrown. Instead error
-	 * messages are written to System.err.
-	 * 
-	 * @param logDirectory
-	 *            - directory where log files will reside.
-	 * @param prefix
-	 *            - filename prefix
-	 * @param suffix
-	 *            - filename suffix
-	 * @param append
-	 *            - true: append to the file if it exist; false: overwrite the file
-	 *            if it exists.
-	 * @return A StructuredLogger.Logger object that may be passed into a
-	 *         StructuredLogger constructor
-	 */
-	public static RawLogger createFileLogger(File logDirectory, String prefix, String suffix, boolean append) {
-		FileRawLogger fileLogger = new FileRawLogger(logDirectory, prefix, suffix, append);
-		return fileLogger;
-
-	}
-
-	/**
-	 * Creates a logger that logs multiple sessions to a single file. No
-	 * IOExceptions are thrown. Instead error messages are written to System.err.
-	 * 
-	 * @param logFile
-	 *            - File object representing log file path.
-	 * @param append
-	 *            - true: append to the file if it exist; false: overwrite the file
-	 *            if it exists.
-	 * @return A StructuredLogger.Logger object that may be passed into a
-	 *         StructuredLogger constructor
-	 */
-	public static RawLogger createFileLogger(File logFile, boolean append) {
-		FileRawLogger fileLogger = new FileRawLogger(logFile, append);
-		return fileLogger;
-
-	}
-
-	/**
-	 * Creates a logger that transmits log messages as UDP packets to the specified
-	 * destination.
-	 * 
-	 * @param address
-	 *            - Destination host name or IP Address
-	 * @param port
-	 *            - Destination port.
-	 * @return A StructuredLogger.Logger object that may be passed into a
-	 *         StructuredLogger constructor
-	 */
-	public static RawLogger createUDPLogger(String address, int port) {
-		UDPRawLogger fileLogger = new UDPRawLogger(address, port);
-		return fileLogger;
-	}
 
 }
