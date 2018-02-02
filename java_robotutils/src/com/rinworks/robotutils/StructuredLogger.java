@@ -38,7 +38,7 @@ public class StructuredLogger {
 	// the last
 	// periodic flush.
 	public static final int DEFAULT_MAX_BUFFERED_MESSAGE_COUNT = 1000;
-	public static final double ABSOLUTE_BUFFERED_MESSAGE_TRIGGER__FRACTION = 0.25; // at what fraction we trigger processing buffers.
+	public static final double ABSOLUTE_BUFFERED_MESSAGE_TRIGGER_FRACTION = 0.25; // at what fraction we trigger processing buffers.
 	public static final int DEFAULT_PERIODIC_FLUSH_MILLIS = 1000;
 	 
 	// This limit to per-rawlog buffered messages is never exceeded. Messages
@@ -62,7 +62,6 @@ public class StructuredLogger {
 	private AtomicLong seqNo = new AtomicLong(0);
 	private AtomicLong totalDiscardedMessageCount = new AtomicLong(0);
 	private Consumer<String> assertionFailureHandler = null;
-
 	private int maxBufferedMessageCount = DEFAULT_MAX_BUFFERED_MESSAGE_COUNT;
 	private int periodicFlushMillis = DEFAULT_PERIODIC_FLUSH_MILLIS;
 
@@ -73,9 +72,9 @@ public class StructuredLogger {
 	// cancelled in stopLogging()).
 	private Timer timer;
 	private TimerTask periodicFlushTask;
+	
 	private TimerTask oneshotProcessBuffersTask; // Keeps track of a one-shot task if any.
 	private final Object oneShotTaskLock = new Object(); // to synchronize setting the above.
-
 	private boolean finalRundown; // Set to true ONCE - when the session is being closed.
 
 	// These are for scrubbing message type and message fields before logging.
@@ -167,59 +166,89 @@ public class StructuredLogger {
 		//
 		// Actual logging methods - logged with message type "_OTHER"
 		//
+		
+		/*
+		 * Log an error. (pri, cat, type) = (0, "ERR", "_OTHER")
+		 */
 		void err(String s); // Log an error - Pri 0
 
+		
+		/*
+		 * Log a warning. (pri, cat, type) = (1, "WARN", "_OTHER")
+		 */
 		void warn(String s); // Log a warning - Pri 1
 
+		/*
+		 * Log an important information message. (pri, cat, type) = (1, "INFO", "_OTHER")
+		 */		
 		void info(String s); // Log some information - Pri 1
 
 		// The same logging methods, with a user-suppled message type.
+		
+		/*
+		 * Log an error. (pri, cat, type) = (0, "ERR", {typpe})
+		 */
 		void err(String msgType, String s);
 
+		/*
+		 * Log a warning. (pri, cat, type) = (1, "WARN",{type})
+		 */
 		void warn(String msgType, String s);
 
+		/*
+		 * Log an important information message. (pri, cat, type) = (1, "INFO", {type})
+		 */	
 		void info(String msgType, String s);
 
-		// Traces are like the earlier logging methods, except they can be dynamically
-		// enabled or disabled using the pauseTracing/resumeTracing methods.
+		/*
+		 * Log a high-volume trace message. (pri, cat, type) = (1, "TRACE", "_OTHER").
+		 * Traces can be dynamically enabled or disabled using the pauseTracing or
+		 * resumeTracing methods.
+		 */	
 		void trace(String s); // Log potentially high-volume trace data - Pri 2
 
+		/*
+		 * Log a high-volume trace message. (pri, cat, type) = (1, "TRACE", {type}).
+		 * Traces can be dynamically enabled or disabled using the pauseTracing or
+		 * resumeTracing methods.
+		 */	
 		void trace(String msgType, String s); // As above, with a user-defined message data type
 
-		// FUTURE: Concept of an optional 'location specifier' integer that is set to a
-		// random integer that is with
-		// very high priority unique across the source code - to be able to quickly
-		// identify the source code where the log method
-		// was invoked. In Python it could be a named parameter, ls=0 so we don't cause
-		// an explosion in the number
-		// of logging statements.
 
-		// If {cond} is false log an error, flush the log. If there is an assertion
-		// failure handler associated with the structured logger, the handler is called.
-		// The handler may be set by calling setAssertionFailureHandler.
-		//
+		/**
+		 * If {cond} is false log an error, appending {s} to the message, and flush the log. If there is an assertion
+		 * failure handler associated with the structured logger, the handler is called.
+		 * The handler is set by calling setAssertionFailureHandler.
+		 */
 		void loggedAssert(boolean cond, String s);
 
-		// Tracing is enabled by default, but may be paused/resumed
-		// dynamically - useful for selectively tracing extremely verbose
-		// data. This applies only to this log instance.
+		/**
+		* Tracing is enabled by default, but may be paused/resumed
+		* dynamically - useful for selectively tracing extremely verbose
+		* data. Applies ONLY to this StructuredLogger.Log instance.
+		*/
 		void pauseTracing(); // stop logging
 
+		/**
+		 * Resumes tracing. See pauseTracing() for more context.
+		 */
 		void resumeTracing();// (re)start logging
 
-		// Starts adding a relative time stamp. Subsequent logging will include a _RTS
-		// key whose value is the
-		// time in milliseconds that has elapsed since this call was invoked. This
-		// applies only to this
-		// log instance.
+		/**
+		 * Starts adding a relative time stamp (RTS). Subsequent logging will include a "_RTS"
+		 * key whose value is the time in milliseconds that has elapsed since this call was invoked. 
+		 * Applies ONLY to this log instance.
+		 */
 		void startRTS();
 
-		// Stops adding the relative stamps for this log instance.
+		/*
+		 * Stops adding the relative stamps for this log instance. See startRTS() for more context.
+		 */
 		void stopRTS();
 
 		// The following methods adds key (the 'tag') that gets inserted into
 		// every log message made from this particular log instance.
-		// Tags must be composed entirely of non-whitespace characters and can do not
+		// Tags must be composed entirely of non-whitespace characters and must not
 		// include the ':' (colon) character. To help catch this issue, characters in
 		// violation are replaced by the '#' character,
 		// and the tag inserted, though this is probably not what is wanted.
@@ -260,6 +289,14 @@ public class StructuredLogger {
 		// or absent) at a future time.
 		// Perhaps these could be added as named parameters in Python, otherwise
 		// additional methods to add, assert and remove tags.)
+
+		// FUTURE: Concept of an optional 'location specifier' integer that is set to a
+		// random integer that is with
+		// very high priority unique across the source code - to be able to quickly
+		// identify the source code where the log method
+		// was invoked. In Python it could be a named parameter, ls=0 so we don't cause
+		// an explosion in the number
+		// of logging statements.
 
 	}
 
@@ -722,7 +759,7 @@ public class StructuredLogger {
 						totalDiscardedMessageCount.incrementAndGet();
 					}
 					
-					final int TRIGGER_LIMIT = (int) (ABSOLUTE_BUFFERED_MESSAGE_LIMIT * ABSOLUTE_BUFFERED_MESSAGE_TRIGGER__FRACTION);
+					final int TRIGGER_LIMIT = (int) (ABSOLUTE_BUFFERED_MESSAGE_LIMIT * ABSOLUTE_BUFFERED_MESSAGE_TRIGGER_FRACTION);
 					int nonFlushedMsgs =  queueLength + brl.msgsSinceLastFlush.get();
 					triggerTask = triggerTask || nonFlushedMsgs > TRIGGER_LIMIT;
 				}
@@ -1099,8 +1136,5 @@ public class StructuredLogger {
 				clientSocket = null;
 			}
 		}
-
 	}
-
-
 }
