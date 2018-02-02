@@ -658,7 +658,6 @@ public class StructuredLogger {
 			// a oneshot task to clear all message buffers (provided one is not already
 			// active!).
 			if (triggerTask) {
-
 				triggerBackgroundTaskIfNotRunning(false);
 			}
 		}
@@ -814,6 +813,12 @@ public class StructuredLogger {
 
 
 		public void processAllBufferedMessages() {
+			
+			// We set this to 0 NOW before we will briefly clear the buffer below. It is 
+			// possible that this count could go up even if the responsible messages are
+			// cleared here - that's fine. It's just an estimate to trigger a BG task.
+			this.approxQueueLength.set(0);
+			
 			String rm = this.buffer.poll();
 			int loggedCount = 0;
 			while (rm != null) {
@@ -822,14 +827,6 @@ public class StructuredLogger {
 				rm = this.buffer.poll();
 			}
 			this.msgsSinceLastFlush.addAndGet(loggedCount);
-
-			// We set this to 0, but it would not be
-			// accurate because concurrently messages could
-			// be inserted into the buffer and that count would
-			// be lost. We could decrement the amount we took out, but
-			// keeping an accurate count over long periods of time is
-			// unnecessary.
-			this.approxQueueLength.set(0);
 		}
 	}
 

@@ -525,8 +525,7 @@ class StructuredLoggerTest {
 			@Override
 			public void log(String msg) {
 				
-				//System.out.println("LOGALL " + msg);
-				
+				//System.out.println("LOGALL " + msg);				
 				
 				if (logThreadName == null) {
 					logThreadName = Thread.currentThread().getName();
