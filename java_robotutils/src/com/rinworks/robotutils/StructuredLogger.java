@@ -170,18 +170,18 @@ public class StructuredLogger {
 		/*
 		 * Log an error. (pri, cat, type) = (0, "ERR", "_OTHER")
 		 */
-		void err(String s); // Log an error - Pri 0
+		void err(String s);
 
 		
 		/*
 		 * Log a warning. (pri, cat, type) = (1, "WARN", "_OTHER")
 		 */
-		void warn(String s); // Log a warning - Pri 1
+		void warn(String s);
 
 		/*
 		 * Log an important information message. (pri, cat, type) = (1, "INFO", "_OTHER")
 		 */		
-		void info(String s); // Log some information - Pri 1
+		void info(String s);
 
 		// The same logging methods, with a user-suppled message type.
 		
@@ -205,14 +205,14 @@ public class StructuredLogger {
 		 * Traces can be dynamically enabled or disabled using the pauseTracing or
 		 * resumeTracing methods.
 		 */	
-		void trace(String s); // Log potentially high-volume trace data - Pri 2
+		void trace(String s);
 
 		/*
 		 * Log a high-volume trace message. (pri, cat, type) = (1, "TRACE", {type}).
 		 * Traces can be dynamically enabled or disabled using the pauseTracing or
 		 * resumeTracing methods.
 		 */	
-		void trace(String msgType, String s); // As above, with a user-defined message data type
+		void trace(String msgType, String s);
 
 
 		/**
@@ -227,12 +227,12 @@ public class StructuredLogger {
 		* dynamically - useful for selectively tracing extremely verbose
 		* data. Applies ONLY to this StructuredLogger.Log instance.
 		*/
-		void pauseTracing(); // stop logging
+		void pauseTracing();
 
 		/**
 		 * Resumes tracing. See pauseTracing() for more context.
 		 */
-		void resumeTracing();// (re)start logging
+		void resumeTracing();
 
 		/**
 		 * Starts adding a relative time stamp (RTS). Subsequent logging will include a "_RTS"
@@ -241,7 +241,7 @@ public class StructuredLogger {
 		 */
 		void startRTS();
 
-		/*
+		/**
 		 * Stops adding the relative stamps for this log instance. See startRTS() for more context.
 		 */
 		void stopRTS();
