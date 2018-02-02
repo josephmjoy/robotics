@@ -75,8 +75,8 @@ public class StructuredLogger {
 	// This limit to per-rawlog buffered messages is never exceeded. Messages
 	// are deleted in chunks as this limit is approached. See impnotes.
 	public static final int ABSOLUTE_BUFFERED_MESSAGE_LIMIT = 10000;
-	public static final double ABSOLUTE_BUFFERED_MESSAGE_PURGE_FRACTION = 0.1; // what fraction to trim if limit exceeded.
-	public static final double ABSOLUTE_BUFFERED_MESSAGE_TRIGGER__FRACTION = 0.5; // at what fraction we trigger processing buffers.
+	public static final double ABSOLUTE_BUFFERED_MESSAGE_TRIGGER__FRACTION = 0.25; // at what fraction we trigger processing buffers.
+	public static final int MAX_WAIT_ON_ENDLOGGING = 1000;// Max time (in ms) endLoggin() waits for backgound logging tasks to complete.
 
 	// Clients provide this to actually write log messages to some system like the
 	// file system
@@ -360,6 +360,7 @@ public class StructuredLogger {
 
 		boolean deinit = true;
 
+		logDiscardedMessageCount();
 		defaultLog.pri0(Log.LOG_SESSION_END, "rootName:" + rootName);
 
 		synchronized (this) {
@@ -371,7 +372,7 @@ public class StructuredLogger {
 		}
 		if (deinit) {
 			// Wait some bounded time for the buffers to be written out. Not that no new log
-			// messages can be submitted.
+			// messa ges can be submitted.
 			emptyBuffersOnShutdown_BLOCKING();
 			timer.cancel(); // No background flushing of tasks will be scheduled, though there could be one
 			// running
@@ -394,7 +395,7 @@ public class StructuredLogger {
 		try {
 			// This call will BLOCK until the above task is done (or rather calls
 			// latch.countDown()).
-			boolean done = latch.await(this.periodicFlushMillis, TimeUnit.MILLISECONDS);
+			boolean done = latch.await(Math.min(this.periodicFlushMillis, StructuredLogger.MAX_WAIT_ON_ENDLOGGING), TimeUnit.MILLISECONDS);
 			if (!done) {
 				System.err.println(
 						"StructuredLogger: timed out waiting for final task to finish. Abandanoning any buffered messages and proceeding to flush all raw logs.");
@@ -436,6 +437,15 @@ public class StructuredLogger {
 	public long getDiscardedMessageCount() {
 		return this.totalDiscardedMessageCount.get();
 	}
+	
+	public void logDiscardedMessageCount() {
+		for (BufferedRawLogger brl : bufferedLoggers) {
+			int discarded = brl.discardedMessages.getAndSet(0);
+			if (discarded > 0) {
+				defaultLog().warn(Log.LOG_MESSAGES_DISCARDED, "log:" + brl.rawLogger + " discardedCount: " + discarded);
+			}
+		}
+	}
 
 	// Create the timer task that will process all
 	// queued messages and potentially flushing
@@ -448,12 +458,12 @@ public class StructuredLogger {
 
 			@Override
 			public void run() {
+				
+				// System.out.println("In BGP task");
 
+				logDiscardedMessageCount();
+				
 				for (BufferedRawLogger brl : bufferedLoggers) {
-					int discarded = brl.discardedMessages.getAndSet(0);
-					if (discarded > 0) {
-						defaultLog().warn(Log.LOG_MESSAGES_DISCARDED, "log:" + brl.rawLogger + " discardedCount: " + discarded);
-					}
 					brl.processAllBufferedMessages();
 				}
 
@@ -596,8 +606,7 @@ public class StructuredLogger {
 		public void flush() {
 			if (sessionStarted) {
 				// Launch an immediate timer task
-				TimerTask task = newBackgroundProcessor(true, null); // true, null == flush now, no latch
-				timer.schedule(task, 0); // 0 == 'immediately'
+				triggerBackgroundTaskIfNotRunning(true); // true == force flush
 			}
 		}
 
@@ -624,24 +633,24 @@ public class StructuredLogger {
 			String rawMsg = null;
 			for (BufferedRawLogger brl : bufferedLoggers) {
 				if (brl.rawLogger.filter(pri, cat)) {
+					int queueLength = brl.approxQueueLength.get();
+					if (queueLength < ABSOLUTE_BUFFERED_MESSAGE_LIMIT) {
+						if (rawMsg == null) {
+							rawMsg = rawMessage(pri, cat, msgType, msg);
+						}
+						brl.approxQueueLength.incrementAndGet();
+						brl.buffer.add(rawMsg);	
+					}
+					else 
+					{
+						// Not a good situation -  we have exceeded the limit.
+						brl.discardedMessages.incrementAndGet();
+						totalDiscardedMessageCount.incrementAndGet();
+					}
+					
 					final int TRIGGER_LIMIT = (int) (ABSOLUTE_BUFFERED_MESSAGE_LIMIT * ABSOLUTE_BUFFERED_MESSAGE_TRIGGER__FRACTION);
-					if (rawMsg == null) {
-						rawMsg = rawMessage(pri, cat, msgType, msg);
-					}
-					int bufLength = brl.approxQueueLength.incrementAndGet();
-					// Do we need to delete buffered messages because they are simply too
-					// many.
-					if (bufLength > ABSOLUTE_BUFFERED_MESSAGE_LIMIT) {
-						// Not a good situation, but we have exceeded the limit.
-						final int PURGE_AMOUNT = (int) (ABSOLUTE_BUFFERED_MESSAGE_LIMIT * ABSOLUTE_BUFFERED_MESSAGE_PURGE_FRACTION);
-						brl.trimBuffer(PURGE_AMOUNT);
-					}
-					
-					// Actually add the message to the buffer (after potential trimming)
-					brl.buffer.add(rawMsg);
-					
-					int nonFlushedMsgs =  bufLength + brl.msgsSinceLastFlush.get();
-					triggerTask = nonFlushedMsgs > TRIGGER_LIMIT;
+					int nonFlushedMsgs =  queueLength + brl.msgsSinceLastFlush.get();
+					triggerTask = triggerTask || nonFlushedMsgs > TRIGGER_LIMIT;
 				}
 			}
 
@@ -650,25 +659,7 @@ public class StructuredLogger {
 			// active!).
 			if (triggerTask) {
 
-				if (oneshotProcessBuffersTask == null) {
-					TimerTask task = newBackgroundProcessor(false, null); // false,null == don't flush immediately, no
-					// latch
-					boolean scheduleTask = false;
-					// We create the task optimistically expecting to
-					// actually schedule it, but we may not. We do this
-					// outside the lock to keep the lock holding time to
-					// a minimum.
-					synchronized (oneShotTaskLock) {
-						if (oneshotProcessBuffersTask == null) {
-							oneshotProcessBuffersTask = task;
-							scheduleTask = true;
-						}
-					}
-
-					if (scheduleTask) {
-						timer.schedule(task, 0);
-					}
-				}
+				triggerBackgroundTaskIfNotRunning(false);
 			}
 		}
 
@@ -821,21 +812,6 @@ public class StructuredLogger {
 			msgsSinceLastFlush = new AtomicInteger();
 		}
 
-		// Delete at most {trimCouunt} messages from
-		// the buffer. It removes the oldest
-		// items because that is more time-efficient
-		// to do.
-		public void trimBuffer(int trimCount) {
-			String rm = this.buffer.poll();
-			int count = 0;
-			while (rm != null && count < trimCount) {
-				count ++;
-				rm = this.buffer.poll();
-			}	
-			discardedMessages.addAndGet(count);
-			totalDiscardedMessageCount.addAndGet(count);
-			return;
-		}
 
 		public void processAllBufferedMessages() {
 			String rm = this.buffer.poll();
@@ -861,6 +837,32 @@ public class StructuredLogger {
 	private static String scrubName(String msgType) {
 		// Presumably this is faster than using a Regex? Not sure.
 		return BAD_NAME_PATTERN.matcher(msgType).replaceAll("#");
+	}
+
+	// Trigger a one-shot background task to process buffers, if 
+	// there isn't one already. The task will force-flush
+	// if {flushNow} is true.
+	public void triggerBackgroundTaskIfNotRunning(boolean flushNow) {
+		if (oneshotProcessBuffersTask == null) {
+			TimerTask task = newBackgroundProcessor(flushNow, null); // null == no latch
+			// latch
+			boolean scheduleTask = false;
+			// We create the task optimistically expecting to
+			// actually schedule it, but we may not. We do this
+			// outside the lock to keep the lock holding time to
+			// a minimum.
+			synchronized (oneShotTaskLock) {
+				if (oneshotProcessBuffersTask == null) {
+					oneshotProcessBuffersTask = task;
+					scheduleTask = true;
+				}
+			}
+
+			if (scheduleTask) {
+				//System.out.println("Triggering BGP");
+				timer.schedule(task, 0);
+			}
+		}
 	}
 
 	// Replace invalid chars by a '#'

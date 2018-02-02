@@ -499,7 +499,7 @@ class StructuredLoggerTest {
 				"T1", "T2", "T3"
 		};
 		final long STARTING_TSN = 1;
-		final long ENDING_TSN = 10000;
+		final long ENDING_TSN = 30000;
 		assert ENDING_TSN >= STARTING_TSN;
 		final AtomicLong msgCount = new AtomicLong();
 		
@@ -630,6 +630,9 @@ class StructuredLoggerTest {
 
 						@Override
 						public void run() {
+							final long count = ENDING_TSN - STARTING_TSN + 1;
+							final double sleepFrac = 0.1; // sleep every 10th message
+							final double flushFrac = 10.0/count; // flush on avg. 10 times total
 							//System.out.println("THREAD " + tid + " BEGINS...");
 							StructuredLogger.Log myLog = mainLogger.defaultLog().newLog(tid);
 							myLog.addTag(TID_TAG, tid);
@@ -637,14 +640,16 @@ class StructuredLoggerTest {
 							// Log messages!
 							for (long seqNo = STARTING_TSN; seqNo <= ENDING_TSN; seqNo++) {
 								myLog.trace(TEST_TYPE,   TSN_TAG + ":" + seqNo );
-								if (Math.random() < 0.1) {
+								// Set check below to < 0.01 to see messages being
+								// discarded
+								if (Math.random() < sleepFrac) {
 									try {
 										Thread.sleep(1);
 									} catch (InterruptedException e) {
 										Thread.currentThread().interrupt();
 									}
 								}
-								if (Math.random() < 0.1) {
+								if (Math.random() < flushFrac) {
 									myLog.flush();
 								}
 							}
