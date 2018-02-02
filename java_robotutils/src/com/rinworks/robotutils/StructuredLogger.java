@@ -246,42 +246,59 @@ public class StructuredLogger {
 		 */
 		void stopRTS();
 
-		// The following methods adds key (the 'tag') that gets inserted into
-		// every log message made from this particular log instance.
-		// Tags must be composed entirely of non-whitespace characters and must not
-		// include the ':' (colon) character. To help catch this issue, characters in
-		// violation are replaced by the '#' character,
-		// and the tag inserted, though this is probably not what is wanted.
-		// If the tag already exists it's previous value is overridden.
-		// Warning: using tagging will incur an overhead of allocating a datastructure
-		// to maintain
-		// the <key,value> mappings. Add tag implementation creates an on-demand
-		// ConcurrentHashMap.
-		// Once created this map is not deleted (i.e., even if all tags are removed).
-		// Warning: Avoid adding tags to the same log from multiple threads. Doing so
-		// incurs
-		// a small risk of losing previously-added tags or not picking up the most
-		// recently added
-		// tag.
+
+
+		/**
+		 * Adds a key (the 'tag') with empty value that gets inserted into
+		 * every log message made from this particular StructuredLogger.Log instance. The tag
+		 * can represent a boolean condition by it's absence/presence. See addTag(tag, value)
+		 * for more context.
+		 */
+		void addTag(String tag);
+
+		/**
+		 * Adds a key-value pair (the 'tag') that gets inserted into
+		 * every log message made from this particular StructuredLogger.Log instance.
+		 * Tags must be composed entirely of non-whitespace characters and must not
+		 * include the ':' (colon) character. To help catch this issue, characters in
+		 * violation are replaced by the '#' character,
+		 * and the tag inserted, though this is probably not what is wanted.
+		 * If the tag already exists it's previous value is overridden.
+		 * Warning: using tagging will incur an overhead of allocating a data structure
+		 * to maintain the <key,value> mappings. Once created this map is not
+		 * deleted (i.e., even if all tags are removed).
+		 * Warning: Avoid adding tags to the same log from multiple threads. Doing so
+		 * incurs a small risk of losing previously-added tags or not picking up the most
+		 * recently added tag.
+		 * 
+		 * @param tag - the tag
+		 * @param value - the value (can be an empty string)
+		 */
 		// [FUTURE: Special 'mustache' tags like would get dynamic values, like {TID}
 		// would set TID=<thread ID>]
-		void addTag(String tag); // A tag with an empty value. Can represent boolean conditions.
+		void addTag(String tag, String value);
 
-		void addTag(String tag, String value); // A tag with the specified value (which could be an empty string).
-
-		// Removes a previously added tag. Attempting to remove a null, empty or
-		// nonexistant tag is silently ignored.
+		/**
+		 *  Removes a previously added tag. Attempting to remove a null, empty or
+		 * Nonexistent tag is silently ignored. See addTag(key, value) for more context.
+		 */
 		void removeTag(String tag);
 
-		// Flush the ENTIRE log, not just this sub-component.
+		/**
+		 *  Initiate flushing the ENTIRE log, not just messages logged to this instance of StructuredLoggere.Log. Flushing happens in
+		 *  a background thread, but an attempt is made to initiate flushing 'immediately'. The call returns without waiting
+		 *  for the flush to complete.
+		 */
 		void flush();
 
-		// Creates a new log object. This is equivalent to calling the root
-		// StructureLoggerObject's newLog method - there is no special relationship
-		// between
-		// the current instance and the newly created logs. A hierarchical relationship
-		// can be established
-		// by following a suitable naming convention such as dotted-namespace notation.
+		/**
+		 * Creates a new StructuredLogger.Log object identified by {name}. This is equivalent to calling the root
+		 * StructureLoggerObject's newLog method - there is no special relationship
+		 * between the current instance and the newly created logs. 
+		 * @param name - a short (single word) name describing this instance of StructuredLogger.Log. A hierarchical relationship
+		 * can be established by following a suitable naming convention such as dotted-namespace notation, for example,
+		 * "ROBOT", "ROBOT.ARM", "ROBOT.SCHEDULER", "ROBOT.ARM.MOTOR".
+		 */
 		Log newLog(String name);
 
 		// FUTURE
