@@ -361,13 +361,13 @@ class StructuredLoggerTest {
 		File path = File.createTempFile("testLog", ".txt");
 		path.deleteOnExit(); // So tests don't leave stuff lying around.
 
-		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(path, false); // false == do not append
+		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(path, false, null); // false == do not append
 		rawLog.beginSession("123");
 		rawLog.log("Test raw message");
 		rawLog.flush();
 		rawLog.close();
 
-		rawLog = StructuredLogger.createFileLogger(path, true); // true == append
+		rawLog = StructuredLogger.createFileLogger(path, true, null); // true == append
 		rawLog.beginSession("456");
 		rawLog.log("Another test raw message");
 		rawLog.flush();
@@ -382,14 +382,14 @@ class StructuredLoggerTest {
 		File dirPath = new File(tempDir);
 		assert (dirPath.isDirectory());
 
-		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", false); // false==don't
+		StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", false, null); // false==don't
 		// append
 		rawLog.beginSession("123");
 		rawLog.log("Test raw message");
 		rawLog.flush();
 		rawLog.close();
 
-		rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", true); // true==append
+		rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", true, null); // true==append
 		rawLog.beginSession("456");
 		rawLog.log("Another test raw message");
 		rawLog.flush();
@@ -400,7 +400,7 @@ class StructuredLoggerTest {
 	void testUDPRawLogger() throws SocketException, InterruptedException {
 		final int PORT = 9876;
 		ConcurrentLinkedQueue<String> receivedMessageQueue = new ConcurrentLinkedQueue<String>();
-		StructuredLogger.RawLogger rawLog = StructuredLogger.createUDPLogger("localhost", PORT); // false==don't append
+		StructuredLogger.RawLogger rawLog = StructuredLogger.createUDPLogger("localhost", PORT, null); // false==don't append
 		DatagramSocket serverSocket = new DatagramSocket(PORT);
 
 		setupToReceiveUDPMessage(serverSocket, receivedMessageQueue);

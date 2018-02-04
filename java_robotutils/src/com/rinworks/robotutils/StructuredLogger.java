@@ -478,6 +478,18 @@ public class StructuredLogger {
 	}
 	
 	/**
+	 * Utility raw log constructors takes this filter object to provide the caller control
+	 * of filtering messages.
+	 */
+	public interface Filter {
+		/**
+		 * Return true to accept messages from the StructuredLogger.Log instance with name 
+		 * {logName}, and with priority {pri} and category {cat}.
+		 */
+		boolean filter(String logName, int pri, String cat);
+	}
+	
+	/**
 	 * Creates a logger that generates per-session log files of the form
 	 * {perfix}{session id}{suffix}. No IOExceptions are thrown. Instead error
 	 * messages are written to System.err.
@@ -491,11 +503,14 @@ public class StructuredLogger {
 	 * @param append
 	 *            - true: append to the file if it exist; false: overwrite the file
 	 *            if it exists.
+	 @param filter
+	 *            - if null: accept all messages, else this method is call to determine whether or
+	 *            not to accept messages with the specified attributes.
 	 * @return A StructuredLogger.Logger object that may be passed into a
 	 *         StructuredLogger constructor
 	 */
-	public static RawLogger createFileLogger(File logDirectory, String prefix, String suffix, boolean append) {
-		FileRawLogger fileLogger = new FileRawLogger(logDirectory, prefix, suffix, append);
+	public static RawLogger createFileLogger(File logDirectory, String prefix, String suffix, boolean append, Filter filter) {
+		FileRawLogger fileLogger = new FileRawLogger(logDirectory, prefix, suffix, append, filter);
 		return fileLogger;
 
 	}
@@ -509,11 +524,14 @@ public class StructuredLogger {
 	 * @param append
 	 *            - true: append to the file if it exist; false: overwrite the file
 	 *            if it exists.
+	 * @param filter
+	 *            - if null: accept all messages, else this method is call to determine whether or
+	 *            not to accept messages with the specified attributes.
 	 * @return A StructuredLogger.Logger object that may be passed into a
 	 *         StructuredLogger constructor
 	 */
-	public static RawLogger createFileLogger(File logFile, boolean append) {
-		FileRawLogger fileLogger = new FileRawLogger(logFile, append);
+	public static RawLogger createFileLogger(File logFile, boolean append, Filter filter) {
+		FileRawLogger fileLogger = new FileRawLogger(logFile, append, filter);
 		return fileLogger;
 
 	}
@@ -529,8 +547,8 @@ public class StructuredLogger {
 	 * @return A StructuredLogger.Logger object that may be passed into a
 	 *         StructuredLogger constructor
 	 */
-	public static RawLogger createUDPLogger(String address, int port) {
-		UDPRawLogger fileLogger = new UDPRawLogger(address, port);
+	public static RawLogger createUDPLogger(String address, int port, Filter filter) {
+		UDPRawLogger fileLogger = new UDPRawLogger(address, port, filter);
 		return fileLogger;
 	}
 
@@ -1004,6 +1022,7 @@ public class StructuredLogger {
 		final boolean perSessionLog;
 		final boolean append;
 		final File logDirectory;
+		final Filter filter;
 		File logFile;
 		final String prefix;
 		final String suffix;
@@ -1011,12 +1030,13 @@ public class StructuredLogger {
 		boolean logErrorNotified; // we generate on err msg on write error.
 
 		// Logger that creates per-session log files
-		public FileRawLogger(File _logDirectory, String _prefix, String _suffix, boolean _append) {
+		public FileRawLogger(File _logDirectory, String _prefix, String _suffix, boolean _append, Filter _filter) {
 			perSessionLog = true;
 			logDirectory = _logDirectory;
 			prefix = _prefix;
 			suffix = _suffix;
 			append = _append;
+			filter = _filter;
 			// We don't throw any exceptions on error, just write the error to the err
 			// console.
 			if (!logDirectory.canWrite()) {
@@ -1026,13 +1046,15 @@ public class StructuredLogger {
 		}
 
 		// Logger that logs to a single log file
-		public FileRawLogger(File _logFile, boolean _append) {
+		public FileRawLogger(File _logFile, boolean _append, Filter _filter) {
 			perSessionLog = false;
 			logDirectory = null;
 			logFile = _logFile;
 			prefix = null;
 			suffix = null;
 			append = _append;
+			filter = _filter;
+			
 		}
 
 		@Override
@@ -1052,6 +1074,12 @@ public class StructuredLogger {
 								logDirectory.getAbsolutePath(), e));
 				out = null;
 			}
+		}
+		
+		
+		@Override
+		public boolean filter(String logName, int pri, String cat) {
+			return filter == null || this.filter.filter(logName, pri, cat);
 		}
 
 		@Override
@@ -1100,15 +1128,17 @@ public class StructuredLogger {
 	private static class UDPRawLogger implements RawLogger {
 		final String destAddress;
 		final int destPort;
+		final Filter filter;
 		boolean logErrorNotified; // we generate one err msg if there is an error message on write..
 		DatagramSocket clientSocket;
 		InetAddress destIPAddress;
 		boolean canLog = false;
 
 		// Logger that logs by sending UDP traffic to the specified address and port.
-		public UDPRawLogger(String _address, int _port) {
+		public UDPRawLogger(String _address, int _port, Filter _filter) {
 			destAddress = _address;
 			destPort = _port;
+			filter = _filter;
 		}
 
 		@Override
@@ -1128,6 +1158,11 @@ public class StructuredLogger {
 			canLog = true;
 		}
 
+		@Override
+		public boolean filter(String logName, int pri, String cat) {
+			return filter == null || this.filter.filter(logName, pri, cat);
+		}
+		
 		@Override
 		public void log(String msg) {
 			try {
