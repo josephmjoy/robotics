@@ -172,47 +172,47 @@ public class StructuredLogger {
 		// Actual logging methods - logged with message type "_OTHER"
 		//
 		
-		/*
+		/**
 		 * Log an error. (pri, cat, type) = (0, "ERR", "_OTHER")
 		 */
 		void err(String s);
 
 		
-		/*
+		/**
 		 * Log a warning. (pri, cat, type) = (1, "WARN", "_OTHER")
 		 */
 		void warn(String s);
 
-		/*
+		/**
 		 * Log an important information message. (pri, cat, type) = (1, "INFO", "_OTHER")
 		 */		
 		void info(String s);
 
 		// The same logging methods, with a user-suppled message type.
 		
-		/*
+		/**
 		 * Log an error. (pri, cat, type) = (0, "ERR", {typpe})
 		 */
 		void err(String msgType, String s);
 
-		/*
+		/**
 		 * Log a warning. (pri, cat, type) = (1, "WARN",{type})
 		 */
 		void warn(String msgType, String s);
 
-		/*
+		/**
 		 * Log an important information message. (pri, cat, type) = (1, "INFO", {type})
 		 */	
 		void info(String msgType, String s);
 
-		/*
+		/**
 		 * Log a high-volume trace message. (pri, cat, type) = (1, "TRACE", "_OTHER").
 		 * Traces can be dynamically enabled or disabled using the pauseTracing or
 		 * resumeTracing methods.
 		 */	
 		void trace(String s);
 
-		/*
+		/**
 		 * Log a high-volume trace message. (pri, cat, type) = (1, "TRACE", {type}).
 		 * Traces can be dynamically enabled or disabled using the pauseTracing or
 		 * resumeTracing methods.
@@ -322,24 +322,22 @@ public class StructuredLogger {
 
 	}
 
-	// Creates the containing logger object. This object can be used to
-	// create the hierarchy of Logger objects. (Start by calling beginSession and
-	// then getRootLog).
-	//
-	// {_assertionFailureHandler} is an optional handler of assertion failures - it
-	// is
-	// called if the call to loggedAssert fails the assertion tes (failure has
-	// already been logged and flush() called)).
-	// One implementation is to simply call assert(false) after an error message to
-	// debug putput. Another is to throw an
-	// exception. WARNING: Will be invoked even if there is no active session.
+	/**
+	 * Creates the main structured logging object, typically one per system. {_rawLogger} is a
+	 * low-level consumer of generated log messages. {rootName} is the top-level name. Any
+	 * StructuredLogger.Log object created have {rootName} prefixed to their own log name when
+	 * generating the component tag for each log message.
+	 */
 	public StructuredLogger(RawLogger _rawLogger, String _rootName) {
-		this(new RawLogger[] { _rawLogger }, _rootName);
+		this(new RawLogger[] { _rawLogger }, _rootName); 
 	}
 
-	// This version takes an array of rawLoggers so that logging output may be piped
-	// to multiple logger
-	// sinks.
+	/**
+	 * Creates the main structured logging object, typically one per system. {_rawLoggers} is an
+	 * array of low-level consumers of generated log messages. {rootName} is the top-level name. Any
+	 * StructuredLogger.Log object created have {rootName} prefixed to their own log name when
+	 * generating the component tag for each log message.
+	 */
 	public StructuredLogger(RawLogger[] _rawLoggers, String _rootName) {
 		this.bufferedLoggers = new BufferedRawLogger[_rawLoggers.length];
 		for (int i = 0; i < _rawLoggers.length; i++) {
@@ -350,24 +348,26 @@ public class StructuredLogger {
 		this.defaultLog = this.commonNewLog(_rootName);
 	}
 
-	// Updates the assertion failure handler.
-	// The default handler is null, which means that assertion failures are logged
-	// but
-	// otherwise no action is taken.
-	// Note it is recommended to call this before calling beginLogging to ensure
-	// that all assertion failures are caught.
+	
+	/**
+	 * Sets the assertion failure handler. The default handler is null, which means that 
+	 * assertion failures are logged but otherwise no action is taken.
+	 * Note it is recommended to call this before calling beginLogging to ensure
+	 * that all assertion failures are caught.
+	 */
 	public void setAsseretionFailureHandler(Consumer<String> _assertionFailureHandler) {
 		this.assertionFailureHandler = _assertionFailureHandler;
 	}
 
-	// Automatic flushing is triggered if the number of buffered messages exceeds
-	// {maxBufferedMessageCount} or if {periodicFlushMillis} has elapsed since the
-	// last
-	// periodic flush. These times are honored to some degree of approximation
-	// because actual I/O
-	// is performed by background threads subject to scheduling delays.
-	// This call must be called before logging has begin, else the call has no
-	// effect.
+	/**
+	 * Sets parameters that control when messages are flushed.
+	 * Automatic flushing is triggered if the number of buffered messages exceeds
+	 * {maxBufferedMessageCount} or if {periodicFlushMillis} has elapsed since the
+	 * last periodic flush. These times are honored to some degree of approximation
+	 * because actual I/O is performed by background threads subject to scheduling delays.
+	 * This call must be called before logging has begin, else the call has no
+	 * effect.
+	 */
 	public void setAutoFlushParameters(int maxBfferedMessageCount, int periodicFlushMillis) {
 		synchronized (this) {
 			if (!this.sessionStarted) {
@@ -380,10 +380,12 @@ public class StructuredLogger {
 		}
 	}
 
-	// Begins the logging session. The Session timestamp is set.
-	// Caller must ensure no other thread attempts to log concurrently with
-	// this call - actual logging calls are not synchronized for performance
-	// reasons.
+	/**
+	 * Begins the logging session. The Session timestamp is set.
+	 * Caller must ensure no other thread attempts to log concurrently with
+	 * this call - actual logging calls are not synchronized for performance
+	 * reasons.
+	 */
 	public synchronized void beginLogging() {
 
 		if (this.sessionStarted || this.sessionEnded) {
@@ -414,11 +416,13 @@ public class StructuredLogger {
 
 	}
 
-	// Caller must ensure no other thread attempts to log concurrently
-	// with this thread - actual logging calls are not synchronized for
-	// performance reasons.
-	// WARNING - the StructuredLogger can only do a single session in its lifetime.
-	// Once the session has been ended a new session can not be started.
+	/**
+	 * Ends the logging session. Once the session has been ended a new session can not be started with
+	 * this instance.
+	 * Caller must ensure no other thread attempts to log concurrently
+	 * with this thread - actual logging calls are not synchronized for
+	 * performance reasons.
+	 */
 	public void endLogging() {
 
 		boolean deinit = true;
@@ -435,7 +439,7 @@ public class StructuredLogger {
 		}
 		if (deinit) {
 			// Wait some bounded time for the buffers to be written out. Not that no new log
-			// messa ges can be submitted.
+			// messages can be submitted.
 			emptyBuffersOnShutdown_BLOCKING();
 			timer.cancel(); // No background flushing of tasks will be scheduled, though there could be one
 			// running
@@ -447,32 +451,51 @@ public class StructuredLogger {
 		}
 	}
 	
-	// The base logger support some simple logging functions for
-	// convenience. Look at the Log interface methods for full documentation
+	/**
+	 * Log an error. (pri, cat, type) = (0, "ERR", "_OTHER")
+	 */
 	public void err(String s) {
 		this.defaultLog.err(s);
 	}
 
+	/**
+	 * Log a warning. (pri, cat, type) = (1, "WARN", "_OTHER")
+	 */
 	public void warn(String s) {
 		this.defaultLog.warn(s);
 	}
 
+	/**
+	 * Log an important information message. (pri, cat, type) = (1, "INFO", {type}). To log
+	 * high volumes of messages, retrieve the default StructuredLogger.Log object by calling
+	 * defaultLog() or create a new Log object by calling newLog(), and call one of
+	 * the Log object's trace methods.
+	 */	
 	public void info(String s) {
 		this.defaultLog.info(s);
 	}
 
+	/**
+	 *  Initiate flushing the ENTIRE log, not just messages logged to this instance of StructuredLoggere.Log. Flushing happens in
+	 *  a background thread, but an attempt is made to initiate flushing 'immediately'. The call returns without waiting
+	 *  for the flush to complete.
+	 */
 	public void flush() {
 		this.defaultLog.flush();
 	}
 
-	// Get the root ("top level") log object, which provides a much richer
-	// set of logging methods
+	/**
+	 * Get the root ("top level") log object, which provides a much richer
+	 * set of logging methods
+	*/
 	public Log defaultLog() {
 		return this.defaultLog;
 	}
 	
-	// Gets the total number of deleted messages
-	// thus far.
+	/**
+	 *  Gets the total number of deleted messages
+	 * 
+     */
 	public long getDiscardedMessageCount() {
 		return this.totalDiscardedMessageCount.get();
 	}
