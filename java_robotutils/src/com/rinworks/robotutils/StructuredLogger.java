@@ -527,7 +527,7 @@ public class StructuredLogger {
     }
 
     /**
-     * Creates a logger that generates per-session log files of the form
+     * Creates a raw logger that generates per-session log files of the form
      * {prefix}{session id}{suffix}. If a file already exists with the same name
      * when StructuredLogger.openSession is called, that file WILL NOT be touched,
      * and no logging will be done. No IOExceptions are thrown. Instead various
@@ -549,7 +549,7 @@ public class StructuredLogger {
      * @return A StructuredLogger.RawLogger object that may be passed into a
      *         StructuredLogger constructor
      */
-    public static RawLogger createFileLogger(File logDirectory, String prefix, String suffix, long maxSize,
+    public static RawLogger createFileRawLogger(File logDirectory, String prefix, String suffix, long maxSize,
             Filter filter) {
         FileRawLogger fileLogger = new FileRawLogger(logDirectory, prefix, suffix, maxSize, filter);
         return fileLogger;
@@ -557,7 +557,7 @@ public class StructuredLogger {
     }
 
     /**
-     * Creates a logger that logs multiple sessions to a single file. If a file
+     * Creates a raw logger that logs multiple sessions to a single file. If a file
      * already exists with the same name when StructuredLogger.openSession is
      * called, that file WILL be appended to. The path name MUST contain the string
      * "log" (a case-insensitive check is made). No IOExceptions are thrown. Instead
@@ -575,7 +575,7 @@ public class StructuredLogger {
      * @return A StructuredLogger.Logger object that may be passed into a
      *         StructuredLogger constructor
      */
-    public static RawLogger createFileLogger(File logFile, long maxSize, Filter filter) {
+    public static RawLogger createFileRawLogger(File logFile, long maxSize, Filter filter) {
         FileRawLogger fileLogger = new FileRawLogger(logFile, maxSize, filter);
         return fileLogger;
 

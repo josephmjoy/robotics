@@ -10,7 +10,7 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
-# Feb 4, 2018 Design Note - revision of StructuredLogger.CreateFileLogger methods
+# Feb 4, 2018 Design Note - revision of StructuredLogger.CreateFileRawLogger methods
     It used to be that we support an 'append' flag. That has gone. The behavior is now that if a specific file is specified and it exists, new
     logs are APPENDED to this. Also, this path MUST contain the string "log" somewhere (a case-insensitive comparison is made). If a session-specific
     file is automatically generated, then it is expected that this file does not exist. If it DOES exist, it is treated as an error condition,

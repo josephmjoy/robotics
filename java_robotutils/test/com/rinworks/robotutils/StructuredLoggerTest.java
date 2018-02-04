@@ -363,21 +363,21 @@ class StructuredLoggerTest {
         path.deleteOnExit(); // So tests don't leave stuff lying around.
 
         System.out.println("FileLogging: Logging to specific file " + path.getAbsolutePath());
-        StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(path, 10000, null);
+        StructuredLogger.RawLogger rawLog = StructuredLogger.createFileRawLogger(path, 10000, null);
         rawLog.beginSession("123");
         rawLog.log("Test raw message 1");
         rawLog.flush();
         rawLog.close();
         
         // Let's do it a 2nd time.
-        StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileLogger(path, 10000, null);
+        StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileRawLogger(path, 10000, null);
         rawLog2.beginSession("123");
         rawLog2.log("Test raw message 2");
         rawLog2.flush();
         rawLog2.close();
         
         // And a 3rd time, specififying a tiny max size.
-        StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileLogger(path, 10, null);
+        StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileRawLogger(path, 10, null);
         System.out.println("TEST: Ignore subsequent error message - it is expected");
         rawLog3.beginSession("123");
         rawLog3.log("Test raw message 3");
@@ -406,14 +406,14 @@ class StructuredLoggerTest {
         dirPath.listFiles(); //(dir, n) => {return s.indexOf(txt)>=0;});
 
         System.out.println("FileLogging: Per-session logs are under " + dirPath.getAbsolutePath());
-        StructuredLogger.RawLogger rawLog = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", 1000, null); 
+        StructuredLogger.RawLogger rawLog = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000, null); 
         rawLog.beginSession("123");
         rawLog.log("Test raw message 1");
         rawLog.flush();
         rawLog.close();
         
         // Let's attempt to create the same exact session again - it should fail because the file exists...
-        StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", 1000, null); 
+        StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000, null); 
         System.out.println("TEST: Ignore subsequent error message - it is expected");
         rawLog2.beginSession("123");
         rawLog2.log("Test raw message 2");
@@ -422,7 +422,7 @@ class StructuredLoggerTest {
         
         // Let's attempt to create a session with a really small max capacity - should fail!
         System.out.println("FileLogging: Per-session logs are under " + dirPath.getAbsolutePath());
-        StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileLogger(dirPath, "testLog", ".txt", 10, null); 
+        StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 10, null); 
         rawLog3.beginSession("456");
         System.out.println("TEST: Ignore subsequent error message - it is expected");
         rawLog3.log("Test raw message 1");
