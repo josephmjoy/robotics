@@ -27,8 +27,9 @@ import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 /**
- * Thread-safe logging of 'structured text' - Strings  of the form "key1: value1  key2:value2".
- * The client provides the low-level log consumers that implement the StructuredLogger.RawLogger interface.
+ * Thread-safe logging of 'structured text' - Strings of the form "key1: value1
+ * key2:value2". The client provides the low-level log consumers that implement
+ * the StructuredLogger.RawLogger interface.
  */
 public class StructuredLogger {
 
@@ -38,13 +39,15 @@ public class StructuredLogger {
 	// the last
 	// periodic flush.
 	public static final int DEFAULT_MAX_BUFFERED_MESSAGE_COUNT = 1000;
-	public static final double ABSOLUTE_BUFFERED_MESSAGE_TRIGGER_FRACTION = 0.25; // at what fraction we trigger processing buffers.
+	public static final double ABSOLUTE_BUFFERED_MESSAGE_TRIGGER_FRACTION = 0.25; // at what fraction we trigger
+																					// processing buffers.
 	public static final int DEFAULT_PERIODIC_FLUSH_MILLIS = 1000;
-	 
+
 	// This limit to per-rawlog buffered messages is never exceeded. Messages
 	// are deleted in chunks as this limit is approached. See impnotes.
 	public static final int ABSOLUTE_BUFFERED_MESSAGE_LIMIT = 10000;
-	public static final int MAX_WAIT_ON_ENDLOGGING = 1000;// Max time (in ms) endLoggin() waits for backgound logging tasks to complete.
+	public static final int MAX_WAIT_ON_ENDLOGGING = 1000;// Max time (in ms) endLoggin() waits for backgound logging
+															// tasks to complete.
 	public final static int PRI0 = 0; // Tag indicating pri0
 	public final static int PRI1 = 1; // Tag indicating pri1
 	public final static int PRI2 = 2; // Tag indicating pri2
@@ -72,7 +75,7 @@ public class StructuredLogger {
 	// cancelled in stopLogging()).
 	private Timer timer;
 	private TimerTask periodicFlushTask;
-	
+
 	private TimerTask oneshotProcessBuffersTask; // Keeps track of a one-shot task if any.
 	private final Object oneShotTaskLock = new Object(); // to synchronize setting the above.
 	private boolean finalRundown; // Set to true ONCE - when the session is being closed.
@@ -82,27 +85,32 @@ public class StructuredLogger {
 	private static final Pattern BAD_MSG_PATTERN = Pattern.compile("\\n\\r");
 
 	/**
-	 *  Clients provide this to actually write log messages to some system like the file system
-     *  or network.
+	 * Clients provide this to actually write log messages to some system like the
+	 * file system or network.
 	 */
 	public interface RawLogger {
 
 		/**
-		 * Prepare to write logs for a new session. For example, a file-based logging system
-		 * may open a new file. {sessionId} will not contain illegal characters for file
-		 * names, such as slashes. This method will be called only once - when the owning structured
-		 * logging object's beginSession method is called.
+		 * Prepare to write logs for a new session. For example, a file-based logging
+		 * system may open a new file. {sessionId} will not contain illegal characters
+		 * for file names, such as slashes. This method will be called only once - when
+		 * the owning structured logging object's beginSession method is called.
 		 */
 		void beginSession(String sessionId);
 
 		/**
-		 * Optionally control which messages are written to this sink. It is more efficient to reject
-		 * messages by returning false here rather than ignoring it in the call to write because of
-		 * the overhead of generating and buffering messages.
+		 * Optionally control which messages are written to this sink. It is more
+		 * efficient to reject messages by returning false here rather than ignoring it
+		 * in the call to write because of the overhead of generating and buffering
+		 * messages.
 		 * 
-		 * @param logName - name of the StructuredLogger.Log object that submitted the message.
-		 * @param pri - priority
-		 * @param cat - category
+		 * @param logName
+		 *            - name of the StructuredLogger.Log object that submitted the
+		 *            message.
+		 * @param pri
+		 *            - priority
+		 * @param cat
+		 *            - category
 		 * @return
 		 */
 		default boolean filter(String logName, int pri, String cat) {
@@ -115,7 +123,7 @@ public class StructuredLogger {
 		void log(String msg);
 
 		/**
-		 *  If appropriate, flush unbuffered data to the underlying store.
+		 * If appropriate, flush unbuffered data to the underlying store.
 		 */
 		void flush();
 
@@ -128,8 +136,8 @@ public class StructuredLogger {
 	}
 
 	/**
-	 *  The core logger interface - multiple log objects can be built - one for
-	 *  each component/sub-component or even for transient logging tasks.
+	 * The core logger interface - multiple log objects can be built - one for each
+	 * component/sub-component or even for transient logging tasks.
 	 */
 	public interface Log {
 
@@ -156,7 +164,8 @@ public class StructuredLogger {
 		final String LOG_TRACING_PAUSED = "_LOG_TRACING_PAUSED";
 		final String LOG_TRACING_RESUMED = "_LOG_TRACING_RESUMED";
 		final String ASSERTFAIL = "_ASSERTION_FAILURE"; // Message generated by loggedAssert
-		final String LOG_MESSAGES_DISCARDED = "_LOG_MESSAGES_DISCARDED"; // Messages were discarded because too many were buffered
+		final String LOG_MESSAGES_DISCARDED = "_LOG_MESSAGES_DISCARDED"; // Messages were discarded because too many
+																			// were buffered
 		final String OTHER = "_OTHER"; // Unspecified user message type
 
 		// Recommended message types. These are not used by the logging system itself,
@@ -171,25 +180,25 @@ public class StructuredLogger {
 		//
 		// Actual logging methods - logged with message type "_OTHER"
 		//
-		
+
 		/**
 		 * Log an error. (pri, cat, type) = (0, "ERR", "_OTHER")
 		 */
 		void err(String s);
 
-		
 		/**
 		 * Log a warning. (pri, cat, type) = (1, "WARN", "_OTHER")
 		 */
 		void warn(String s);
 
 		/**
-		 * Log an important information message. (pri, cat, type) = (1, "INFO", "_OTHER")
-		 */		
+		 * Log an important information message. (pri, cat, type) = (1, "INFO",
+		 * "_OTHER")
+		 */
 		void info(String s);
 
 		// The same logging methods, with a user-suppled message type.
-		
+
 		/**
 		 * Log an error. (pri, cat, type) = (0, "ERR", {typpe})
 		 */
@@ -202,36 +211,36 @@ public class StructuredLogger {
 
 		/**
 		 * Log an important information message. (pri, cat, type) = (1, "INFO", {type})
-		 */	
+		 */
 		void info(String msgType, String s);
 
 		/**
 		 * Log a high-volume trace message. (pri, cat, type) = (1, "TRACE", "_OTHER").
 		 * Traces can be dynamically enabled or disabled using the pauseTracing or
 		 * resumeTracing methods.
-		 */	
+		 */
 		void trace(String s);
 
 		/**
 		 * Log a high-volume trace message. (pri, cat, type) = (1, "TRACE", {type}).
 		 * Traces can be dynamically enabled or disabled using the pauseTracing or
 		 * resumeTracing methods.
-		 */	
+		 */
 		void trace(String msgType, String s);
 
-
 		/**
-		 * If {cond} is false log an error, appending {s} to the message, and flush the log. If there is an assertion
-		 * failure handler associated with the structured logger, the handler is called.
-		 * The handler is set by calling setAssertionFailureHandler.
+		 * If {cond} is false log an error, appending {s} to the message, and flush the
+		 * log. If there is an assertion failure handler associated with the structured
+		 * logger, the handler is called. The handler is set by calling
+		 * setAssertionFailureHandler.
 		 */
 		void loggedAssert(boolean cond, String s);
 
 		/**
-		* Tracing is enabled by default, but may be paused/resumed
-		* dynamically - useful for selectively tracing extremely verbose
-		* data. Applies ONLY to this StructuredLogger.Log instance.
-		*/
+		 * Tracing is enabled by default, but may be paused/resumed dynamically - useful
+		 * for selectively tracing extremely verbose data. Applies ONLY to this
+		 * StructuredLogger.Log instance.
+		 */
 		void pauseTracing();
 
 		/**
@@ -240,69 +249,74 @@ public class StructuredLogger {
 		void resumeTracing();
 
 		/**
-		 * Starts adding a relative time stamp (RTS). Subsequent logging will include a "_RTS"
-		 * key whose value is the time in milliseconds that has elapsed since this call was invoked. 
-		 * Applies ONLY to this log instance.
+		 * Starts adding a relative time stamp (RTS). Subsequent logging will include a
+		 * "_RTS" key whose value is the time in milliseconds that has elapsed since
+		 * this call was invoked. Applies ONLY to this log instance.
 		 */
 		void startRTS();
 
 		/**
-		 * Stops adding the relative stamps for this log instance. See startRTS() for more context.
+		 * Stops adding the relative stamps for this log instance. See startRTS() for
+		 * more context.
 		 */
 		void stopRTS();
 
-
-
 		/**
-		 * Adds a key (the 'tag') with empty value that gets inserted into
-		 * every log message made from this particular StructuredLogger.Log instance. The tag
-		 * can represent a boolean condition by it's absence/presence. See addTag(tag, value)
-		 * for more context.
+		 * Adds a key (the 'tag') with empty value that gets inserted into every log
+		 * message made from this particular StructuredLogger.Log instance. The tag can
+		 * represent a boolean condition by it's absence/presence. See addTag(tag,
+		 * value) for more context.
 		 */
 		void addTag(String tag);
 
 		/**
-		 * Adds a key-value pair (the 'tag') that gets inserted into
-		 * every log message made from this particular StructuredLogger.Log instance.
-		 * Tags must be composed entirely of non-whitespace characters and must not
-		 * include the ':' (colon) character. To help catch this issue, characters in
-		 * violation are replaced by the '#' character,
-		 * and the tag inserted, though this is probably not what is wanted.
-		 * If the tag already exists it's previous value is overridden.
-		 * Warning: using tagging will incur an overhead of allocating a data structure
-		 * to maintain the <key,value> mappings. Once created this map is not
-		 * deleted (i.e., even if all tags are removed).
-		 * Warning: Avoid adding tags to the same log from multiple threads. Doing so
-		 * incurs a small risk of losing previously-added tags or not picking up the most
-		 * recently added tag.
+		 * Adds a key-value pair (the 'tag') that gets inserted into every log message
+		 * made from this particular StructuredLogger.Log instance. Tags must be
+		 * composed entirely of non-whitespace characters and must not include the ':'
+		 * (colon) character. To help catch this issue, characters in violation are
+		 * replaced by the '#' character, and the tag inserted, though this is probably
+		 * not what is wanted. If the tag already exists it's previous value is
+		 * overridden. Warning: using tagging will incur an overhead of allocating a
+		 * data structure to maintain the <key,value> mappings. Once created this map is
+		 * not deleted (i.e., even if all tags are removed). Warning: Avoid adding tags
+		 * to the same log from multiple threads. Doing so incurs a small risk of losing
+		 * previously-added tags or not picking up the most recently added tag.
 		 * 
-		 * @param tag - the tag
-		 * @param value - the value (can be an empty string)
+		 * @param tag
+		 *            - the tag
+		 * @param value
+		 *            - the value (can be an empty string)
 		 */
 		// [FUTURE: Special 'mustache' tags like would get dynamic values, like {TID}
 		// would set TID=<thread ID>]
 		void addTag(String tag, String value);
 
 		/**
-		 *  Removes a previously added tag. Attempting to remove a null, empty or
+		 * Removes a previously added tag. Attempting to remove a null, empty or
 		 * Nonexistent tag is silently ignored. See addTag(key, value) for more context.
 		 */
 		void removeTag(String tag);
 
 		/**
-		 *  Initiate flushing the ENTIRE log, not just messages logged to this instance of StructuredLoggere.Log. Flushing happens in
-		 *  a background thread, but an attempt is made to initiate flushing 'immediately'. The call returns without waiting
-		 *  for the flush to complete.
+		 * Initiate flushing the ENTIRE log, not just messages logged to this instance
+		 * of StructuredLoggere.Log. Flushing happens in a background thread, but an
+		 * attempt is made to initiate flushing 'immediately'. The call returns without
+		 * waiting for the flush to complete.
 		 */
 		void flush();
 
 		/**
-		 * Creates a new StructuredLogger.Log object identified by {logName}. This is equivalent to calling the root
-		 * StructureLoggerObject's newLog method - there is no special relationship
-		 * between the current instance and the newly created logs. 
-		 * @param name - a short (single word) name describing this instance of StructuredLogger.Log. A hierarchical relationship
-		 * can be established by following a suitable naming convention such as dotted-namespace notation, for example,
-		 * "ROBOT", "ROBOT.ARM", "ROBOT.SCHEDULER", "ROBOT.ARM.MOTOR".
+		 * Creates a new StructuredLogger.Log object identified by {logName}. This is
+		 * equivalent to calling the root StructureLoggerObject's newLog method - there
+		 * is no special relationship between the current instance and the newly created
+		 * logs.
+		 * 
+		 * @param name
+		 *            - a short (single word) name describing this instance of
+		 *            StructuredLogger.Log. A hierarchical relationship can be
+		 *            established by following a suitable naming convention such as
+		 *            dotted-namespace notation, for example, "ROBOT", "ROBOT.ARM",
+		 *            "ROBOT.SCHEDULER", "ROBOT.ARM.MOTOR".
 		 */
 		Log newLog(String logName);
 
@@ -323,20 +337,22 @@ public class StructuredLogger {
 	}
 
 	/**
-	 * Creates the main structured logging object, typically one per system. {_rawLogger} is a
-	 * low-level consumer of generated log messages. {rootName} is the top-level name. Any
-	 * StructuredLogger.Log object created have {rootName} prefixed to their own log name when
-	 * generating the component tag for each log message.
+	 * Creates the main structured logging object, typically one per system.
+	 * {_rawLogger} is a low-level consumer of generated log messages. {rootName} is
+	 * the top-level name. Any StructuredLogger.Log object created have {rootName}
+	 * prefixed to their own log name when generating the component tag for each log
+	 * message.
 	 */
 	public StructuredLogger(RawLogger _rawLogger, String _rootName) {
-		this(new RawLogger[] { _rawLogger }, _rootName); 
+		this(new RawLogger[] { _rawLogger }, _rootName);
 	}
 
 	/**
-	 * Creates the main structured logging object, typically one per system. {_rawLoggers} is an
-	 * array of low-level consumers of generated log messages. {rootName} is the top-level name. Any
-	 * StructuredLogger.Log object created have {rootName} prefixed to their own log name when
-	 * generating the component tag for each log message.
+	 * Creates the main structured logging object, typically one per system.
+	 * {_rawLoggers} is an array of low-level consumers of generated log messages.
+	 * {rootName} is the top-level name. Any StructuredLogger.Log object created
+	 * have {rootName} prefixed to their own log name when generating the component
+	 * tag for each log message.
 	 */
 	public StructuredLogger(RawLogger[] _rawLoggers, String _rootName) {
 		this.bufferedLoggers = new BufferedRawLogger[_rawLoggers.length];
@@ -348,25 +364,24 @@ public class StructuredLogger {
 		this.defaultLog = this.commonNewLog(_rootName);
 	}
 
-	
 	/**
-	 * Sets the assertion failure handler. The default handler is null, which means that 
-	 * assertion failures are logged but otherwise no action is taken.
-	 * Note it is recommended to call this before calling beginLogging to ensure
-	 * that all assertion failures are caught.
+	 * Sets the assertion failure handler. The default handler is null, which means
+	 * that assertion failures are logged but otherwise no action is taken. Note it
+	 * is recommended to call this before calling beginLogging to ensure that all
+	 * assertion failures are caught.
 	 */
 	public void setAsseretionFailureHandler(Consumer<String> _assertionFailureHandler) {
 		this.assertionFailureHandler = _assertionFailureHandler;
 	}
 
 	/**
-	 * Sets parameters that control when messages are flushed.
-	 * Automatic flushing is triggered if the number of buffered messages exceeds
+	 * Sets parameters that control when messages are flushed. Automatic flushing is
+	 * triggered if the number of buffered messages exceeds
 	 * {maxBufferedMessageCount} or if {periodicFlushMillis} has elapsed since the
 	 * last periodic flush. These times are honored to some degree of approximation
-	 * because actual I/O is performed by background threads subject to scheduling delays.
-	 * This call must be called before logging has begin, else the call has no
-	 * effect.
+	 * because actual I/O is performed by background threads subject to scheduling
+	 * delays. This call must be called before logging has begin, else the call has
+	 * no effect.
 	 */
 	public void setAutoFlushParameters(int maxBfferedMessageCount, int periodicFlushMillis) {
 		synchronized (this) {
@@ -381,10 +396,9 @@ public class StructuredLogger {
 	}
 
 	/**
-	 * Begins the logging session. The Session timestamp is set.
-	 * Caller must ensure no other thread attempts to log concurrently with
-	 * this call - actual logging calls are not synchronized for performance
-	 * reasons.
+	 * Begins the logging session. The Session timestamp is set. Caller must ensure
+	 * no other thread attempts to log concurrently with this call - actual logging
+	 * calls are not synchronized for performance reasons.
 	 */
 	public synchronized void beginLogging() {
 
@@ -417,11 +431,10 @@ public class StructuredLogger {
 	}
 
 	/**
-	 * Ends the logging session. Once the session has been ended a new session can not be started with
-	 * this instance.
-	 * Caller must ensure no other thread attempts to log concurrently
-	 * with this thread - actual logging calls are not synchronized for
-	 * performance reasons.
+	 * Ends the logging session. Once the session has been ended a new session can
+	 * not be started with this instance. Caller must ensure no other thread
+	 * attempts to log concurrently with this thread - actual logging calls are not
+	 * synchronized for performance reasons.
 	 */
 	public void endLogging() {
 
@@ -450,7 +463,7 @@ public class StructuredLogger {
 			}
 		}
 	}
-	
+
 	/**
 	 * Log an error. (pri, cat, type) = (0, "ERR", "_OTHER")
 	 */
@@ -466,52 +479,53 @@ public class StructuredLogger {
 	}
 
 	/**
-	 * Log an important information message. (pri, cat, type) = (1, "INFO", {type}). To log
-	 * high volumes of messages, retrieve the default StructuredLogger.Log object by calling
-	 * defaultLog() or create a new Log object by calling newLog(), and call one of
-	 * the Log object's trace methods.
-	 */	
+	 * Log an important information message. (pri, cat, type) = (1, "INFO", {type}).
+	 * To log high volumes of messages, retrieve the default StructuredLogger.Log
+	 * object by calling defaultLog() or create a new Log object by calling
+	 * newLog(), and call one of the Log object's trace methods.
+	 */
 	public void info(String s) {
 		this.defaultLog.info(s);
 	}
 
 	/**
-	 *  Initiate flushing the ENTIRE log, not just messages logged to this instance of StructuredLoggere.Log. Flushing happens in
-	 *  a background thread, but an attempt is made to initiate flushing 'immediately'. The call returns without waiting
-	 *  for the flush to complete.
+	 * Initiate flushing the ENTIRE log, not just messages logged to this instance
+	 * of StructuredLoggere.Log. Flushing happens in a background thread, but an
+	 * attempt is made to initiate flushing 'immediately'. The call returns without
+	 * waiting for the flush to complete.
 	 */
 	public void flush() {
 		this.defaultLog.flush();
 	}
 
 	/**
-	 * Get the root ("top level") log object, which provides a much richer
-	 * set of logging methods
-	*/
+	 * Get the root ("top level") log object, which provides a much richer set of
+	 * logging methods
+	 */
 	public Log defaultLog() {
 		return this.defaultLog;
 	}
-	
+
 	/**
-	 *  Gets the total number of deleted messages
+	 * Gets the total number of deleted messages
 	 * 
-     */
+	 */
 	public long getDiscardedMessageCount() {
 		return this.totalDiscardedMessageCount.get();
 	}
-	
+
 	/**
-	 * Utility raw log constructors takes this filter object to provide the caller control
-	 * of filtering messages.
+	 * Utility raw log constructors takes this filter object to provide the caller
+	 * control of filtering messages.
 	 */
 	public interface Filter {
 		/**
-		 * Return true to accept messages from the StructuredLogger.Log instance with name 
-		 * {logName}, and with priority {pri} and category {cat}.
+		 * Return true to accept messages from the StructuredLogger.Log instance with
+		 * name {logName}, and with priority {pri} and category {cat}.
 		 */
 		boolean filter(String logName, int pri, String cat);
 	}
-	
+
 	/**
 	 * Creates a logger that generates per-session log files of the form
 	 * {perfix}{session id}{suffix}. No IOExceptions are thrown. Instead error
@@ -526,13 +540,15 @@ public class StructuredLogger {
 	 * @param append
 	 *            - true: append to the file if it exist; false: overwrite the file
 	 *            if it exists.
-	 @param filter
-	 *            - if null: accept all messages, else this method is call to determine whether or
-	 *            not to accept messages with the specified attributes.
+	 * @param filter
+	 *            - if null: accept all messages, else this method is call to
+	 *            determine whether or not to accept messages with the specified
+	 *            attributes.
 	 * @return A StructuredLogger.Logger object that may be passed into a
 	 *         StructuredLogger constructor
 	 */
-	public static RawLogger createFileLogger(File logDirectory, String prefix, String suffix, boolean append, Filter filter) {
+	public static RawLogger createFileLogger(File logDirectory, String prefix, String suffix, boolean append,
+			Filter filter) {
 		FileRawLogger fileLogger = new FileRawLogger(logDirectory, prefix, suffix, append, filter);
 		return fileLogger;
 
@@ -548,8 +564,9 @@ public class StructuredLogger {
 	 *            - true: append to the file if it exist; false: overwrite the file
 	 *            if it exists.
 	 * @param filter
-	 *            - if null: accept all messages, else this method is call to determine whether or
-	 *            not to accept messages with the specified attributes.
+	 *            - if null: accept all messages, else this method is call to
+	 *            determine whether or not to accept messages with the specified
+	 *            attributes.
 	 * @return A StructuredLogger.Logger object that may be passed into a
 	 *         StructuredLogger constructor
 	 */
@@ -576,10 +593,9 @@ public class StructuredLogger {
 	}
 
 	// **********************************************************************************
-	//                               End of public methods
+	// End of public methods
 	// ********************************************************************************
-	
-	
+
 	// Consolidates calls to create a new log objects, in case we want to do
 	// something more
 	// like keep a list of logs. At present we don't keep a global list of allocated
@@ -599,7 +615,8 @@ public class StructuredLogger {
 		try {
 			// This call will BLOCK until the above task is done (or rather calls
 			// latch.countDown()).
-			boolean done = latch.await(Math.min(this.periodicFlushMillis, StructuredLogger.MAX_WAIT_ON_ENDLOGGING), TimeUnit.MILLISECONDS);
+			boolean done = latch.await(Math.min(this.periodicFlushMillis, StructuredLogger.MAX_WAIT_ON_ENDLOGGING),
+					TimeUnit.MILLISECONDS);
 			if (!done) {
 				System.err.println(
 						"StructuredLogger: timed out waiting for final task to finish. Abandanoning any buffered messages and proceeding to flush all raw logs.");
@@ -611,7 +628,7 @@ public class StructuredLogger {
 			// will probably throw another InterruptedException.;
 		}
 	}
-	
+
 	private void logDiscardedMessageCount() {
 		for (BufferedRawLogger brl : bufferedLoggers) {
 			int discarded = brl.discardedMessages.getAndSet(0);
@@ -632,11 +649,11 @@ public class StructuredLogger {
 
 			@Override
 			public void run() {
-				
+
 				// System.out.println("In BGP task");
 
 				logDiscardedMessageCount();
-				
+
 				for (BufferedRawLogger brl : bufferedLoggers) {
 					brl.processAllBufferedMessages();
 				}
@@ -813,17 +830,16 @@ public class StructuredLogger {
 							rawMsg = rawMessage(pri, cat, msgType, msg);
 						}
 						brl.approxQueueLength.incrementAndGet();
-						brl.buffer.add(rawMsg);	
-					}
-					else 
-					{
-						// Not a good situation -  we have exceeded the limit.
+						brl.buffer.add(rawMsg);
+					} else {
+						// Not a good situation - we have exceeded the limit.
 						brl.discardedMessages.incrementAndGet();
 						totalDiscardedMessageCount.incrementAndGet();
 					}
-					
-					final int TRIGGER_LIMIT = (int) (ABSOLUTE_BUFFERED_MESSAGE_LIMIT * ABSOLUTE_BUFFERED_MESSAGE_TRIGGER_FRACTION);
-					int nonFlushedMsgs =  queueLength + brl.msgsSinceLastFlush.get();
+
+					final int TRIGGER_LIMIT = (int) (ABSOLUTE_BUFFERED_MESSAGE_LIMIT
+							* ABSOLUTE_BUFFERED_MESSAGE_TRIGGER_FRACTION);
+					int nonFlushedMsgs = queueLength + brl.msgsSinceLastFlush.get();
 					triggerTask = triggerTask || nonFlushedMsgs > TRIGGER_LIMIT;
 				}
 			}
@@ -985,14 +1001,13 @@ public class StructuredLogger {
 			msgsSinceLastFlush = new AtomicInteger();
 		}
 
-
 		public void processAllBufferedMessages() {
-			
-			// We set this to 0 NOW before we will briefly clear the buffer below. It is 
+
+			// We set this to 0 NOW before we will briefly clear the buffer below. It is
 			// possible that this count could go up even if the responsible messages are
 			// cleared here - that's fine. It's just an estimate to trigger a BG task.
 			this.approxQueueLength.set(0);
-			
+
 			String rm = this.buffer.poll();
 			int loggedCount = 0;
 			while (rm != null) {
@@ -1010,7 +1025,7 @@ public class StructuredLogger {
 		return BAD_NAME_PATTERN.matcher(msgType).replaceAll("#");
 	}
 
-	// Trigger a one-shot background task to process buffers, if 
+	// Trigger a one-shot background task to process buffers, if
 	// there isn't one already. The task will force-flush
 	// if {flushNow} is true.
 	private void triggerBackgroundTaskIfNotRunning(boolean flushNow) {
@@ -1030,7 +1045,7 @@ public class StructuredLogger {
 			}
 
 			if (scheduleTask) {
-				//System.out.println("Triggering BGP");
+				// System.out.println("Triggering BGP");
 				timer.schedule(task, 0);
 			}
 		}
@@ -1077,7 +1092,7 @@ public class StructuredLogger {
 			suffix = null;
 			append = _append;
 			filter = _filter;
-			
+
 		}
 
 		@Override
@@ -1098,8 +1113,7 @@ public class StructuredLogger {
 				out = null;
 			}
 		}
-		
-		
+
 		@Override
 		public boolean filter(String logName, int pri, String cat) {
 			return filter == null || this.filter.filter(logName, pri, cat);
@@ -1185,7 +1199,7 @@ public class StructuredLogger {
 		public boolean filter(String logName, int pri, String cat) {
 			return filter == null || this.filter.filter(logName, pri, cat);
 		}
-		
+
 		@Override
 		public void log(String msg) {
 			try {
