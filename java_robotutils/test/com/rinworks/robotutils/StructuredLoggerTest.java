@@ -610,7 +610,7 @@ class StructuredLoggerTest {
 			
 			// Accept only p1 messages.
 			@Override
-			public boolean filter(int pri, String cat) {
+			public boolean filter(String name, int pri, String cat) {
 				return pri <= 1;
 			}
 			

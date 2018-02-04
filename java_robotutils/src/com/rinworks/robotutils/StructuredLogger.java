@@ -99,8 +99,13 @@ public class StructuredLogger {
 		 * Optionally control which messages are written to this sink. It is more efficient to reject
 		 * messages by returning false here rather than ignoring it in the call to write because of
 		 * the overhead of generating and buffering messages.
+		 * 
+		 * @param logName - name of the StructuredLogger.Log object that submitted the message.
+		 * @param pri - priority
+		 * @param cat - category
+		 * @return
 		 */
-		default boolean filter(int pri, String cat) {
+		default boolean filter(String logName, int pri, String cat) {
 			return true;
 		}
 
@@ -292,14 +297,14 @@ public class StructuredLogger {
 		void flush();
 
 		/**
-		 * Creates a new StructuredLogger.Log object identified by {name}. This is equivalent to calling the root
+		 * Creates a new StructuredLogger.Log object identified by {logName}. This is equivalent to calling the root
 		 * StructureLoggerObject's newLog method - there is no special relationship
 		 * between the current instance and the newly created logs. 
 		 * @param name - a short (single word) name describing this instance of StructuredLogger.Log. A hierarchical relationship
 		 * can be established by following a suitable naming convention such as dotted-namespace notation, for example,
 		 * "ROBOT", "ROBOT.ARM", "ROBOT.SCHEDULER", "ROBOT.ARM.MOTOR".
 		 */
-		Log newLog(String name);
+		Log newLog(String logName);
 
 		// FUTURE
 		// Hidden tags whose existence can be checked (or rather asserted to be present
@@ -534,7 +539,7 @@ public class StructuredLogger {
 	// ********************************************************************************
 	
 	
-	// Consolidates calls to create a new log objects, incase we want to do
+	// Consolidates calls to create a new log objects, in case we want to do
 	// something more
 	// like keep a list of logs. At present we don't keep a global list of allocated
 	// log objects.
@@ -625,7 +630,7 @@ public class StructuredLogger {
 
 	// This private class implements a Log object
 	private class LogImplementation implements Log {
-		final String component;
+		final String logName;
 		boolean tracingEnabled = true;
 		boolean rtsEnabled = false; // rts = relatie timestamp
 		long rtsStartTime = 0; // if rtsEnabled, gettimemillis value when startRTS was called.
@@ -635,18 +640,18 @@ public class StructuredLogger {
 		// The component hierarchy is represented using dotted notation, e.g.:
 		// root.a.b.c
 
-		LogImplementation(String component) {
-			this.component = scrubName(component); // Replace ':' etc (these shouldn't be there) by '#'
+		LogImplementation(String logName) {
+			this.logName = scrubName(logName); // Replace ':' etc (these shouldn't be there) by '#'
 		}
 
 		// See the Logger interface definition for documentation on
 		// these overridden methods.
 
 		@Override
-		public LogImplementation newLog(String component) {
+		public LogImplementation newLog(String logName) {
 			// Note: commonNewLog is actually a method of the *containing*
 			// class - an instance of StructuredLogger.
-			return commonNewLog(rootName + "." + component);
+			return commonNewLog(rootName + "." + logName);
 		}
 
 		@Override
@@ -760,7 +765,7 @@ public class StructuredLogger {
 			boolean triggerTask = false;
 			String rawMsg = null;
 			for (BufferedRawLogger brl : bufferedLoggers) {
-				if (brl.rawLogger.filter(pri, cat)) {
+				if (brl.rawLogger.filter(logName, pri, cat)) {
 					int queueLength = brl.approxQueueLength.get();
 					if (queueLength < ABSOLUTE_BUFFERED_MESSAGE_LIMIT) {
 						if (rawMsg == null) {
@@ -819,7 +824,7 @@ public class StructuredLogger {
 			long timestamp = millis - sessionStart;
 			String rtsKeyValue = (rtsEnabled) ? RELATIVE_TIMESTAMP + ":" + (millis - rtsStartTime) + " " : "";
 			String output = String.format("%s:%s %s:%s %s:%s %s%s:%s %s:%s %s:%s %s:%s %s%s: %s", Log.SESSION_ID,
-					sessionId, Log.SEQ_NO, curSeq, Log.TIMESTAMP, timestamp, rtsKeyValue, Log.COMPONENT, component,
+					sessionId, Log.SEQ_NO, curSeq, Log.TIMESTAMP, timestamp, rtsKeyValue, Log.COMPONENT, logName,
 					Log.PRI, pri, Log.CAT, cat, Log.TYPE, msgType, tagsString, Log.DEF_MSG, msg);
 			return output;
 		}
