@@ -10,7 +10,22 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
-
+# Feb 4, 2018 Design Note - revision of StructuredLogger.CreateFileLogger methods
+    It used to be that we support an 'append' flag. That has gone. The behavior is now that if a specific file is specified and it exists, new
+    logs are APPENDED to this. Also, this path MUST contain the string "log" somewhere (a case-insensitive comparison is made). If a session-specific
+    file is automatically generated, then it is expected that this file does not exist. If it DOES exist, it is treated as an error condition,
+    the error is written to stderr, and no logging is done.
+    
+    A new parameter has been added: maxSize, which is the max size in bytes
+    of the log file. Logging will stop if the size of this file approaches this max size (approximately). It is felt that this is the most
+    straightforward way to prevent logging from taking up too many resources.
+    
+    The built-in File (and UDP) file Loggers now take an optional filter parameter - if non-null, this parameter is an object that implements
+    the StructuredLogger.Filter interface - basically it has a method called filter that has the same semantics as Log.filter. This makes the
+    built-in raw loggers much more flexible.
+    
+    As before, the client can always make completely custom RawLoggers.
+    
 # Jan 30, 2018 Design Note on Threadsafe and background Logging
 [Last updated Feb2,2018]
 Goals:
