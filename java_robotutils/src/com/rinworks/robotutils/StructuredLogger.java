@@ -120,7 +120,7 @@ public class StructuredLogger {
         /**
          * Write {msg} to the underlying log sink.
          */
-        void log(String msg);
+        void write(String msg);
 
         /**
          * If appropriate, flush unbuffered data to the underlying store.
@@ -1016,7 +1016,7 @@ public class StructuredLogger {
             String rm = this.buffer.poll();
             int loggedCount = 0;
             while (rm != null) {
-                this.rawLogger.log(rm);
+                this.rawLogger.write(rm);
                 loggedCount++;
                 rm = this.buffer.poll();
             }
@@ -1180,7 +1180,7 @@ public class StructuredLogger {
         }
 
         @Override
-        public void log(String msg) {
+        public void write(String msg) {
 
             if (loggingDisabled)
                 return; // *** EARLY RETURN ****
@@ -1291,7 +1291,7 @@ public class StructuredLogger {
         }
 
         @Override
-        public void log(String msg) {
+        public void write(String msg) {
             try {
                 if (canLog) {
                     byte[] sendData = msg.getBytes();

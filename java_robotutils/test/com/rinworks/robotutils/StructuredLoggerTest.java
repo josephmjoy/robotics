@@ -70,7 +70,7 @@ class StructuredLoggerTest {
         }
 
         @Override
-        public void log(String msg) {
+        public void write(String msg) {
             assertTrue(newSessionCalled);
             assertFalse(closeCalled);
             logCalled = true;
@@ -365,14 +365,14 @@ class StructuredLoggerTest {
         System.out.println("FileLogging: Logging to specific file " + path.getAbsolutePath());
         StructuredLogger.RawLogger rawLog = StructuredLogger.createFileRawLogger(path, 10000, null);
         rawLog.beginSession("123");
-        rawLog.log("Test raw message 1");
+        rawLog.write("Test raw message 1");
         rawLog.flush();
         rawLog.close();
         
         // Let's do it a 2nd time.
         StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileRawLogger(path, 10000, null);
         rawLog2.beginSession("123");
-        rawLog2.log("Test raw message 2");
+        rawLog2.write("Test raw message 2");
         rawLog2.flush();
         rawLog2.close();
         
@@ -380,7 +380,7 @@ class StructuredLoggerTest {
         StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileRawLogger(path, 10, null);
         System.out.println("TEST: Ignore subsequent error message - it is expected");
         rawLog3.beginSession("123");
-        rawLog3.log("Test raw message 3");
+        rawLog3.write("Test raw message 3");
         rawLog3.flush();
         rawLog3.close();
 
@@ -408,7 +408,7 @@ class StructuredLoggerTest {
         System.out.println("FileLogging: Per-session logs are under " + dirPath.getAbsolutePath());
         StructuredLogger.RawLogger rawLog = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000, null); 
         rawLog.beginSession("123");
-        rawLog.log("Test raw message 1");
+        rawLog.write("Test raw message 1");
         rawLog.flush();
         rawLog.close();
         
@@ -416,7 +416,7 @@ class StructuredLoggerTest {
         StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000, null); 
         System.out.println("TEST: Ignore subsequent error message - it is expected");
         rawLog2.beginSession("123");
-        rawLog2.log("Test raw message 2");
+        rawLog2.write("Test raw message 2");
         rawLog2.flush();
         rawLog2.close();
         
@@ -425,7 +425,7 @@ class StructuredLoggerTest {
         StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 10, null); 
         rawLog3.beginSession("456");
         System.out.println("TEST: Ignore subsequent error message - it is expected");
-        rawLog3.log("Test raw message 1");
+        rawLog3.write("Test raw message 1");
         rawLog3.flush();
         rawLog3.close();
         
@@ -444,7 +444,7 @@ class StructuredLoggerTest {
         String[] sendMsgs = { "Test raw message 1", "Test raw message 2", "Test raw message 3" };
         rawLog.beginSession("123");
         for (String msg : sendMsgs) {
-            rawLog.log(msg);
+            rawLog.write(msg);
         }
         rawLog.flush();
         rawLog.close();
@@ -561,7 +561,7 @@ class StructuredLoggerTest {
             }
 
             @Override
-            public void log(String msg) {
+            public void write(String msg) {
 
                 // System.out.println("LOGALL " + msg);
 
@@ -626,7 +626,7 @@ class StructuredLoggerTest {
             }
 
             @Override
-            public void log(String msg) {
+            public void write(String msg) {
                 System.out.println("LOGPRI " + msg);
 
                 // Verify that we get only P1 messages!
