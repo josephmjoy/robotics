@@ -435,7 +435,7 @@ class StructuredLoggerTest {
     void testUDPRawLogger() throws SocketException, InterruptedException {
         final int PORT = 9876;
         ConcurrentLinkedQueue<String> receivedMessageQueue = new ConcurrentLinkedQueue<String>();
-        StructuredLogger.RawLogger rawLog = StructuredLogger.createUDPLogger("localhost", PORT, null); // false==don't
+        StructuredLogger.RawLogger rawLog = StructuredLogger.createUDPRawLogger("localhost", PORT, null); // false==don't
                                                                                                        // append
         DatagramSocket serverSocket = new DatagramSocket(PORT);
 

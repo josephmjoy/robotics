@@ -582,7 +582,7 @@ public class StructuredLogger {
     }
 
     /**
-     * Creates a logger that transmits log messages as UDP packets to the specified
+     * Creates a raw logger that transmits log messages as UDP packets to the specified
      * destination.
      * 
      * @param address
@@ -592,7 +592,7 @@ public class StructuredLogger {
      * @return A StructuredLogger.Logger object that may be passed into a
      *         StructuredLogger constructor
      */
-    public static RawLogger createUDPLogger(String address, int port, Filter filter) {
+    public static RawLogger createUDPRawLogger(String address, int port, Filter filter) {
         UDPRawLogger fileLogger = new UDPRawLogger(address, port, filter);
         return fileLogger;
     }
