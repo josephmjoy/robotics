@@ -835,9 +835,9 @@ public class StructuredLogger {
                         brl.discardedMessages.incrementAndGet();
                         totalDiscardedMessageCount.incrementAndGet();
                     }
-
-                    final int TRIGGER_LIMIT = (int) (ABSOLUTE_BUFFERED_MESSAGE_LIMIT
-                            * ABSOLUTE_BUFFERED_MESSAGE_TRIGGER_FRACTION);
+                    final int TRIGGER_LIMIT = Math.min(maxBufferedMessageCount,
+                            (int) (ABSOLUTE_BUFFERED_MESSAGE_LIMIT * ABSOLUTE_BUFFERED_MESSAGE_TRIGGER_FRACTION)
+                            );
                     int nonFlushedMsgs = queueLength + brl.msgsSinceLastFlush.get();
                     triggerTask = triggerTask || nonFlushedMsgs > TRIGGER_LIMIT;
                 }

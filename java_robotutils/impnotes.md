@@ -10,7 +10,18 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
-# Feb 4, 2018 Design Note - revision of StructuredLogger.CreateFileRawLogger methods
+#Feb 6, 2018 Design Note A - suggestions for log file naming
+To be able to collect log files from multiple machines (e.g. multiple robots and potentially multiple processors from each robot - rio, pi) the prefix for each log
+should read the machine name from a file, such as "~/machinename" that can contain a name that effectively identifies the machine, such as "TCpractice=RIO" and "TCpractice-pi".
+This same name CAN be also used as the root log name, though that may be overkill. When pulling logs into a database, we can keep eacah machine's log in a separate collection.
+
+#Feb 6, 2018 Design Note B - EXPLORATION (abandoned) -changing the filter functions from a Filter interface to a Functional interface
+Explored trying to use one of the predefined functional interfaces, in particular BiFunction<String, int>. Abandoned this because BiFunction<String, int> doesn't work, it has to
+be BiFunction<String, Integer> - that means the overhead of wrapping the priority in an Integer object for each call to filter! Also there was no TriFunction....
+Aside: Logname provides the ultimate way to discriminate as one can create a StructureddLogger.Log instance with a specialized log name and then a filter that
+looks for just that name. One quirk: the logName will have the root prefix appended to it.
+
+#Feb 4, 2018 Design Note - revision of StructuredLogger.CreateFileRawLogger methods
     It used to be that we support an 'append' flag. That has gone. The behavior is now that if a specific file is specified and it exists, new
     logs are APPENDED to this. Also, this path MUST contain the string "log" somewhere (a case-insensitive comparison is made). If a session-specific
     file is automatically generated, then it is expected that this file does not exist. If it DOES exist, it is treated as an error condition,
@@ -26,7 +37,7 @@ These are informal notes and TODO lists for the project.
     
     As before, the client can always make completely custom RawLoggers.
     
-# Jan 30, 2018 Design Note on Threadsafe and background Logging
+#Jan 30, 2018 Design Note on Threadsafe and background Logging
 [Last updated Feb2,2018]
 Goals:
 1. [Done]Thread safe - integrity of individual log messages is preserved. Log messages submitted in the context of any one thread is logged sequentially.
