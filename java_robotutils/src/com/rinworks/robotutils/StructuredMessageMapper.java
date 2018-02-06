@@ -111,4 +111,9 @@ public class StructuredMessageMapper {
 		}
 		return sb.toString();
 	}
+	
+	// Bogus private constructor to prevent instances from being created.
+	private StructuredMessageMapper() {
+	    assert false;
+	}
 }
