@@ -239,6 +239,116 @@ class StructuredLoggerTest {
         assertTrue(rootName.equals(ROOT_LOG_NAME));
     }
 
+    // Simple self-contained example that goes into README.md introductory text.
+    @Test
+    void testIntroductoryExample1() throws IOException {
+
+        // First we create a raw logger that will consume the low-level log messages
+        // produced by the
+        // structured logger. We create a temporary file
+        File logFile = File.createTempFile("testLog", ".txt");
+
+        int maxSize = 1000000;
+        StructuredLogger.RawLogger rawLogger = StructuredLogger.createFileRawLogger(logFile, maxSize, null);
+
+        // Then we create a structured logger. Typically there is just one of these per
+        // system.
+        StructuredLogger baseLogger = new StructuredLogger(rawLogger, "MY_SYSTEM");
+
+        // When we are ready to start login, we begin the logging session. This is when
+        // external resources (like files) are opened.
+        baseLogger.beginLogging();
+
+        // Then we log!
+        // Info messages are logged with priority 1 (a tag "_PRI:1" is inserted to the
+        // logged message)
+        baseLogger.info("Logging an informational message");
+
+        // Warning message are also logged with priority 1.
+        baseLogger.warn("Logging an error");
+
+        // Error messages are logged with priority 0.
+        baseLogger.err("Logging an error");
+
+        // When done, we end logging.
+        baseLogger.endLogging();
+    }
+
+    // Simple self-contained example that goes into README.md introductory text.
+    @Test
+    void TestIntroductoryExample2() {
+
+        // In this example, we create multiple raw loggers - one logs each logging
+        // session to a separate file, and another sends
+        // logging messages over a UDP port. We then perform a broader set of operations
+        // by operating on a StructuredLogger.Log object.
+        // First we create a raw logger that will consume the low-level log messages
+        // produced by the
+        // structured logger. This logger will create a new file for each logging
+        // session.
+        String tempDir = System.getProperty("java.io.tmpdir");
+        File logDir = new File(tempDir, "testLogs");
+        if (!logDir.exists()) {
+            logDir.mkdir();
+        }
+        int maxSize = 1000000; // Maximum size the logfile is allowed to grow.
+        StructuredLogger.RawLogger rawFileLogger = StructuredLogger.createFileRawLogger(logDir, "myLog", ".log",
+                maxSize, null);
+
+        // Let's create a second raw logger. This one logs only Priority 0 or 1 messages
+        // to a UDP port 31899 on the local host.
+        StructuredLogger.RawLogger rawUDPLogger = StructuredLogger.createUDPRawLogger("localhost", 31899,
+                new StructuredLogger.Filter() {
+                    @Override
+                    public boolean filter(String logName, int pri, String cat) {
+                        // TODO Auto-generated method stub
+                        return pri <= 1;
+                    }
+                });
+
+        // Then we create the structured logger. Passing in a list of loggers.
+        StructuredLogger.RawLogger[] rawLoggers = { rawFileLogger, rawUDPLogger };
+        StructuredLogger baseLogger = new StructuredLogger(rawLoggers, "MY_SYSTEM");
+
+        // When we are ready to start login, we begin the logging session. This is when
+        // external resources (like files) are opened.
+        baseLogger.beginLogging();
+
+        // Then we log! To get the full set of log methods, we need to access a
+        // StructuredLogger.Log object. These can be created on the fly, but
+        // there is one created by default.
+        StructuredLogger.Log log = baseLogger.defaultLog();
+
+        // Add a message type (first parameter) to classify log messages.
+        log.info("init", "Component Initialization");
+
+        // Triggere flushing the logs to persistant storage (if applicable) at any time.
+        log.flush();
+
+        // add the key-value pair "mode:auton" to all subsequent log messages.
+        log.addTag("mode", "auton");
+
+        // Start a 'relative timestamp' (RTS) all subsequent log messages from this log
+        // instance will have an '_rts' tag inserted with the time
+        // in milliseconds relative to this call, for example "_rts:293"
+        log.startRTS();
+
+        // Use the trace calls for high-frequency logging.
+        log.trace("This is a trace message");
+        log.trace("bearing", "x:3 b:2 angle:45");
+
+        // Tracing can be disabled and enabled on the fly. This effects just this log
+        // instance.
+        log.pauseTracing();
+        log.trace("This message will never be logged.");
+        log.resumeTracing();
+        log.trace("This message will be logged.");
+
+        // When done, we end logging.
+        baseLogger.endLogging();
+
+    }
+
     @Test
     void testBeginEndSession() {
         setUpBossLogger();
@@ -368,14 +478,14 @@ class StructuredLoggerTest {
         rawLog.write("Test raw message 1");
         rawLog.flush();
         rawLog.close();
-        
+
         // Let's do it a 2nd time.
         StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileRawLogger(path, 10000, null);
         rawLog2.beginSession("123");
         rawLog2.write("Test raw message 2");
         rawLog2.flush();
         rawLog2.close();
-        
+
         // And a 3rd time, specififying a tiny max size.
         StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileRawLogger(path, 10, null);
         System.out.println("TEST: Ignore subsequent error message - it is expected");
@@ -396,39 +506,43 @@ class StructuredLoggerTest {
             dirPath.mkdir();
         }
         assert (dirPath.isDirectory());
-        for (File f: dirPath.listFiles()) {
+        for (File f : dirPath.listFiles()) {
             String fn = f.getName();
             if (fn.indexOf(LOG_PREFIX) >= 0) {
                 System.out.println("Test: clearing out old file " + f.getAbsolutePath());
                 f.delete();
             }
         }
-        dirPath.listFiles(); //(dir, n) => {return s.indexOf(txt)>=0;});
+        dirPath.listFiles(); // (dir, n) => {return s.indexOf(txt)>=0;});
 
         System.out.println("FileLogging: Per-session logs are under " + dirPath.getAbsolutePath());
-        StructuredLogger.RawLogger rawLog = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000, null); 
+        StructuredLogger.RawLogger rawLog = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000,
+                null);
         rawLog.beginSession("123");
         rawLog.write("Test raw message 1");
         rawLog.flush();
         rawLog.close();
-        
-        // Let's attempt to create the same exact session again - it should fail because the file exists...
-        StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000, null); 
+
+        // Let's attempt to create the same exact session again - it should fail because
+        // the file exists...
+        StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000,
+                null);
         System.out.println("TEST: Ignore subsequent error message - it is expected");
         rawLog2.beginSession("123");
         rawLog2.write("Test raw message 2");
         rawLog2.flush();
         rawLog2.close();
-        
-        // Let's attempt to create a session with a really small max capacity - should fail!
+
+        // Let's attempt to create a session with a really small max capacity - should
+        // fail!
         System.out.println("FileLogging: Per-session logs are under " + dirPath.getAbsolutePath());
-        StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 10, null); 
+        StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 10, null);
         rawLog3.beginSession("456");
         System.out.println("TEST: Ignore subsequent error message - it is expected");
         rawLog3.write("Test raw message 1");
         rawLog3.flush();
         rawLog3.close();
-        
+
     }
 
     @Test
@@ -436,7 +550,7 @@ class StructuredLoggerTest {
         final int PORT = 9876;
         ConcurrentLinkedQueue<String> receivedMessageQueue = new ConcurrentLinkedQueue<String>();
         StructuredLogger.RawLogger rawLog = StructuredLogger.createUDPRawLogger("localhost", PORT, null); // false==don't
-                                                                                                       // append
+                                                                                                          // append
         DatagramSocket serverSocket = new DatagramSocket(PORT);
 
         setupToReceiveUDPMessage(serverSocket, receivedMessageQueue);
