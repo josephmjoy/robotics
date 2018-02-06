@@ -228,13 +228,13 @@ class StructuredLoggerTest {
     // {start} is false) has ended.
     private void verifySessionMessage(String msg, boolean start) {
         Map<String, String> map = StructuredMessageMapper.toMap(msg);
-        String mPri = map.getOrDefault(StructuredLogger.PRI, "bad");
-        String mCat = map.getOrDefault(StructuredLogger.CAT, "bad");
-        String mType = map.getOrDefault(StructuredLogger.TYPE, "bad");
+        String mPri = map.getOrDefault(StructuredLogger.TAG_PRI, "bad");
+        String mCat = map.getOrDefault(StructuredLogger.TAG_CAT, "bad");
+        String mType = map.getOrDefault(StructuredLogger.TAG_TYPE, "bad");
         String rootName = map.getOrDefault("rootName", "bad");
         assertEquals(mPri, "" + StructuredLogger.PRI0);
-        assertEquals(mCat, StructuredLogger.TAG_INFO);
-        String expectedType = start ? StructuredLogger.LOG_SESSION_START : StructuredLogger.LOG_SESSION_END;
+        assertEquals(mCat, StructuredLogger.CAT_INFO);
+        String expectedType = start ? StructuredLogger.TYPE_LOG_SESSION_START : StructuredLogger.TYPE_LOG_SESSION_END;
         assertEquals(mType, expectedType);
         // We must find the session description on the message part.
         assertTrue(rootName.equals(ROOT_LOG_NAME));
@@ -399,7 +399,7 @@ class StructuredLoggerTest {
 
         // Log without RTS and verify that the _rts tag is not inserted.
         log1.info("message1");
-        this.verifyMessageTag(StructuredLogger.RELATIVE_TIMESTAMP, rtsValue -> {
+        this.verifyMessageTag(StructuredLogger.TAG_RELATIVE_TIMESTAMP, rtsValue -> {
             assertTrue(rtsValue == null);
         });
 
@@ -415,7 +415,7 @@ class StructuredLoggerTest {
         // Turn RTS off and verify that once again _rts tags are not inserted.
         log1.stopRTS();
         log1.info("message1");
-        this.verifyMessageTag(StructuredLogger.RELATIVE_TIMESTAMP, rtsValue -> {
+        this.verifyMessageTag(StructuredLogger.TAG_RELATIVE_TIMESTAMP, rtsValue -> {
             assertTrue(rtsValue == null);
         });
 
@@ -692,7 +692,7 @@ class StructuredLoggerTest {
                 // Verify that we get every message, and that these messages are in sequence
                 // for each thread that submitted them.
                 Map<String, String> map = StructuredMessageMapper.toMap(msg);
-                String type = map.get(StructuredLogger.TYPE);
+                String type = map.get(StructuredLogger.TAG_TYPE);
                 assertTrue(type != null);
                 if (type.equals(TEST_TYPE)) {
 
@@ -746,7 +746,7 @@ class StructuredLoggerTest {
 
                 // Verify that we get only P1 messages!
                 Map<String, String> map = StructuredMessageMapper.toMap(msg);
-                assertTrue(Integer.parseInt(map.get(StructuredLogger.PRI)) <= 1);
+                assertTrue(Integer.parseInt(map.get(StructuredLogger.TAG_PRI)) <= 1);
             }
 
             @Override
