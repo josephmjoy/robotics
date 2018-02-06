@@ -406,7 +406,7 @@ class StructuredLoggerTest {
         // Turn on RTS and verify that there is an RTS value
         log1.startRTS();
         log1.info("message2");
-        this.verifyMessageTag(StructuredLogger.RELATIVE_TIMESTAMP, rtsValue -> {
+        this.verifyMessageTag(StructuredLogger.TAG_RELATIVE_TIMESTAMP, rtsValue -> {
             assertTrue(rtsValue != null);
             long time = Long.parseLong(rtsValue);
             assertTrue(time >= 0);
