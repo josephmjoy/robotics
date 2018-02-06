@@ -48,13 +48,13 @@ public class StructuredLogger {
     public static final int ABSOLUTE_BUFFERED_MESSAGE_LIMIT = 10000;
     public static final int MAX_WAIT_ON_ENDLOGGING = 1000;// Max time (in ms) endLoggin() waits for backgound logging
                                                           // tasks to complete.
-    public final static int PRI0 = 0; // Tag indicating pri0
-    public final static int PRI1 = 1; // Tag indicating pri1
-    public final static int PRI2 = 2; // Tag indicating pri2
-    public final static String INFO = "INFO";
-    public final static String TRACE = "TRACE";
-    public final static String ERR = "ERR";
-    public final static String WARN = "WARN";
+    public static final int PRI0 = 0; // Tag indicating pri0
+    public static final int PRI1 = 1; // Tag indicating pri1
+    public static final int PRI2 = 2; // Tag indicating pri2
+    public static final String INFO = "INFO";
+    public static final String TRACE = "TRACE";
+    public static final String ERR = "ERR";
+    public static final String WARN = "WARN";
 
     private final String rootName;
     private final LogImplementation defaultLog;
@@ -76,7 +76,7 @@ public class StructuredLogger {
     private Timer timer;
     private TimerTask periodicFlushTask;
 
-    private TimerTask oneshotProcessBuffersTask; // Keeps track of a one-shot task if any.
+    private volatile TimerTask oneshotProcessBuffersTask; // Keeps track of a one-shot task if any.
     private final Object oneShotTaskLock = new Object(); // to synchronize setting the above.
     private boolean finalRundown; // Set to true ONCE - when the session is being closed.
 
@@ -343,8 +343,8 @@ public class StructuredLogger {
      * prefixed to their own log name when generating the component tag for each log
      * message.
      */
-    public StructuredLogger(RawLogger _rawLogger, String _rootName) {
-        this(new RawLogger[] { _rawLogger }, _rootName);
+    public StructuredLogger(RawLogger rawLogger, String rootName) {
+        this(new RawLogger[] { rawLogger }, rootName);
     }
 
     /**
@@ -354,14 +354,14 @@ public class StructuredLogger {
      * have {rootName} prefixed to their own log name when generating the component
      * tag for each log message.
      */
-    public StructuredLogger(RawLogger[] _rawLoggers, String _rootName) {
-        this.bufferedLoggers = new BufferedRawLogger[_rawLoggers.length];
-        for (int i = 0; i < _rawLoggers.length; i++) {
-            this.bufferedLoggers[i] = new BufferedRawLogger(_rawLoggers[i]);
+    public StructuredLogger(RawLogger[] rawLoggers, String rootName) {
+        this.bufferedLoggers = new BufferedRawLogger[rawLoggers.length];
+        for (int i = 0; i < rawLoggers.length; i++) {
+            this.bufferedLoggers[i] = new BufferedRawLogger(rawLoggers[i]);
         }
 
-        this.rootName = _rootName;
-        this.defaultLog = this.commonNewLog(_rootName);
+        this.rootName = rootName;
+        this.defaultLog = this.commonNewLog(rootName);
     }
 
     /**
@@ -370,8 +370,8 @@ public class StructuredLogger {
      * is recommended to call this before calling beginLogging to ensure that all
      * assertion failures are caught.
      */
-    public void setAsseretionFailureHandler(Consumer<String> _assertionFailureHandler) {
-        this.assertionFailureHandler = _assertionFailureHandler;
+    public void setAsseretionFailureHandler(Consumer<String> assertionFailureHandler) {
+        this.assertionFailureHandler = assertionFailureHandler;
     }
 
     /**
@@ -551,9 +551,7 @@ public class StructuredLogger {
      */
     public static RawLogger createFileRawLogger(File logDirectory, String prefix, String suffix, long maxSize,
             Filter filter) {
-        FileRawLogger fileLogger = new FileRawLogger(logDirectory, prefix, suffix, maxSize, filter);
-        return fileLogger;
-
+        return new FileRawLogger(logDirectory, prefix, suffix, maxSize, filter);
     }
 
     /**
@@ -576,9 +574,7 @@ public class StructuredLogger {
      *         StructuredLogger constructor
      */
     public static RawLogger createFileRawLogger(File logFile, long maxSize, Filter filter) {
-        FileRawLogger fileLogger = new FileRawLogger(logFile, maxSize, filter);
-        return fileLogger;
-
+        return new FileRawLogger(logFile, maxSize, filter);
     }
 
     /**
@@ -593,8 +589,7 @@ public class StructuredLogger {
      *         StructuredLogger constructor
      */
     public static RawLogger createUDPRawLogger(String address, int port, Filter filter) {
-        UDPRawLogger fileLogger = new UDPRawLogger(address, port, filter);
-        return fileLogger;
+        return new UDPRawLogger(address, port, filter);
     }
 
     // **********************************************************************************
@@ -697,7 +692,7 @@ public class StructuredLogger {
         boolean tracingEnabled = true;
         boolean rtsEnabled = false; // rts = relatie timestamp
         long rtsStartTime = 0; // if rtsEnabled, gettimemillis value when startRTS was called.
-        ConcurrentHashMap<String, String> tagMap = null; // Created on demand - see addTag
+        volatile ConcurrentHashMap<String, String> tagMap = null; // Created on demand - see addTag
         String tagsString = ""; // Linearized tag map - ready to be inserted into a raw log message.
         // {component} should be a short - 3-5 char - representation of the component.
         // The component hierarchy is represented using dotted notation, e.g.:
@@ -885,10 +880,9 @@ public class StructuredLogger {
             long millis = System.currentTimeMillis();
             long timestamp = millis - sessionStart;
             String rtsKeyValue = (rtsEnabled) ? RELATIVE_TIMESTAMP + ":" + (millis - rtsStartTime) + " " : "";
-            String output = String.format("%s:%s %s:%s %s:%s %s%s:%s %s:%s %s:%s %s:%s %s%s: %s", Log.SESSION_ID,
+            return String.format("%s:%s %s:%s %s:%s %s%s:%s %s:%s %s:%s %s:%s %s%s: %s", Log.SESSION_ID,
                     sessionId, Log.SEQ_NO, curSeq, Log.TIMESTAMP, timestamp, rtsKeyValue, Log.COMPONENT, logName,
                     Log.PRI, pri, Log.CAT, cat, Log.TYPE, msgType, tagsString, Log.DEF_MSG, msg);
-            return output;
         }
 
         // RTS implementation:
@@ -1068,7 +1062,7 @@ public class StructuredLogger {
     // (and in fact anyways has no business accessing!) instance fields of
     // StructuredLogger.
     private static class FileRawLogger implements RawLogger {
-        final int MAX_EXCEPTION_COUNT = 100; // after which we will disable logging.
+        static final int MAX_EXCEPTION_COUNT = 100; // after which we will disable logging.
         final boolean perSessionLog;
         final long maxSize;
         final File logDirectory;
@@ -1176,7 +1170,7 @@ public class StructuredLogger {
 
         @Override
         public boolean filter(String logName, int pri, String cat) {
-            return loggingDisabled == false && (filter == null || this.filter.filter(logName, pri, cat));
+            return !loggingDisabled && (filter == null || this.filter.filter(logName, pri, cat));
         }
 
         @Override
@@ -1262,10 +1256,10 @@ public class StructuredLogger {
         boolean canLog = false;
 
         // Logger that logs by sending UDP traffic to the specified address and port.
-        public UDPRawLogger(String _address, int _port, Filter _filter) {
-            destAddress = _address;
-            destPort = _port;
-            filter = _filter;
+        public UDPRawLogger(String address, int port, Filter filter) {
+            this.destAddress = address;
+            this.destPort = port;
+            this.filter = filter;
         }
 
         @Override
