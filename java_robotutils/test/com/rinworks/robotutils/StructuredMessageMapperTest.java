@@ -7,6 +7,7 @@ package com.rinworks.robotutils;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.AfterAll;
@@ -37,7 +38,7 @@ class StructuredMessageMapperTest {
 
 	@Test
 	void testEmptyStringToMap() {
-		HashMap<String, String> map = StructuredMessageMapper.toHashMap("");
+		Map<String, String> map = StructuredMessageMapper.toMap("");
 		Set<String> keys = map.keySet();
 		assertEquals(keys.size(), 0);
 	}
@@ -52,7 +53,7 @@ class StructuredMessageMapperTest {
 	@Test
 	void testSingletonStringToMap() {
 		String input = "k:v";
-		HashMap<String, String> map = StructuredMessageMapper.toHashMap(input);
+		Map<String, String> map = StructuredMessageMapper.toMap(input);
 		Set<String> keys = map.keySet();
 		assertEquals(keys.size(), 1);
 		assertEquals(map.get("k"), "v");
@@ -69,7 +70,7 @@ class StructuredMessageMapperTest {
 	@Test
 	void testSimpleStringToMap() {
 		String input = "k1:v1 k2:v2 k3:v3";
-		HashMap<String, String> map = StructuredMessageMapper.toHashMap(input);
+		Map<String, String> map = StructuredMessageMapper.toMap(input);
 		Set<String> keys = map.keySet();
 		assertEquals(keys.size(), 3);
 		assertEquals(map.get("k1"), "v1");
@@ -131,7 +132,7 @@ class StructuredMessageMapperTest {
 		String input = sb.toString();
 		String cleanInput = sbClean.toString();
 
-		HashMap<String, String> map = StructuredMessageMapper.toHashMap(input);
+		Map<String, String> map = StructuredMessageMapper.toMap(input);
 
 		// Verify map contents.
 		for (int i = 0; i < keys.length; i++) {

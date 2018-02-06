@@ -12,6 +12,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketException;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -186,7 +187,7 @@ class StructuredLoggerTest {
         }
         for (MyRawLog rl : rawLoggers) {
             assertTrue(rl.logCalled);
-            HashMap<String, String> hm = StructuredMessageMapper.toHashMap(rl.msgMsg);
+            Map<String, String> hm = StructuredMessageMapper.toMap(rl.msgMsg);
             String tagValue = hm.get(tagKey); // Will be null if the tag doesn't exist
             verifier.accept(tagValue);
         }
@@ -226,7 +227,7 @@ class StructuredLoggerTest {
     // Verify that the right message was logged when a session has started or (if
     // {start} is false) has ended.
     private void verifySessionMessage(String msg, boolean start) {
-        HashMap<String, String> map = StructuredMessageMapper.toHashMap(msg);
+        Map<String, String> map = StructuredMessageMapper.toMap(msg);
         String mPri = map.getOrDefault(StructuredLogger.PRI, "bad");
         String mCat = map.getOrDefault(StructuredLogger.CAT, "bad");
         String mType = map.getOrDefault(StructuredLogger.TYPE, "bad");
@@ -690,7 +691,7 @@ class StructuredLoggerTest {
 
                 // Verify that we get every message, and that these messages are in sequence
                 // for each thread that submitted them.
-                HashMap<String, String> map = StructuredMessageMapper.toHashMap(msg);
+                Map<String, String> map = StructuredMessageMapper.toMap(msg);
                 String type = map.get(StructuredLogger.TYPE);
                 assertTrue(type != null);
                 if (type.equals(TEST_TYPE)) {
@@ -744,7 +745,7 @@ class StructuredLoggerTest {
                 System.out.println("LOGPRI " + msg);
 
                 // Verify that we get only P1 messages!
-                HashMap<String, String> map = StructuredMessageMapper.toHashMap(msg);
+                Map<String, String> map = StructuredMessageMapper.toMap(msg);
                 assertTrue(Integer.parseInt(map.get(StructuredLogger.PRI)) <= 1);
             }
 

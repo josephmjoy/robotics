@@ -1,6 +1,7 @@
 package com.rinworks.robotutils;
 
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,12 +30,12 @@ public class StructuredMessageMapper {
 	static final Pattern COLON_PAT = Pattern.compile("" + COLON);
 	static final Pattern KEY_PAT = Pattern.compile("\\S+\\s*$");
 
-	public static HashMap<String, String> toHashMap(String msg) {
+	public static Map<String, String> toMap(String msg) {
 		String[] parts = COLON_PAT.split(msg, -1); // -1 to keep all trailing empty strings
 		int n = parts.length;
 		assert (n >= 1); // Even with an empty message, we should get one part.
 		int pairs = n - 1; // Also equal to the number of colons.
-		HashMap<String, String> map = new HashMap<String, String>();
+		HashMap<String, String> map = new HashMap<>();
 
 		if (pairs <= 0) {
 			// No colons, so no key-value pairs.
@@ -91,14 +92,14 @@ public class StructuredMessageMapper {
 	// Creates a string representation of the key-value map.
 	// WARNING - there is no order to how the mapping is serialized.
 	// If order is important, use the second overloaded method.
-	public static String toString(HashMap<String, String> map) {
+	public static String toString(Map<String, String> map) {
 		Set<String> keySet = map.keySet();
 		String[] keys = keySet.toArray(new String[0]);
 		return toString(map, keys);
 	}
 
 	//
-	public static String toString(HashMap<String, String> map, String[] keys) {
+	public static String toString(Map<String, String> map, String[] keys) {
 		StringBuilder sb = new StringBuilder();
 		String pre = "";
 		for (String key : keys) {
