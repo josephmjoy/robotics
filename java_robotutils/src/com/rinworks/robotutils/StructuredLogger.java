@@ -1105,38 +1105,7 @@ public class StructuredLogger {
             // console.
 
             if (!loggingDisabled) {
-                if (perSessionLog) {
-
-                    if (!logDirectory.canWrite()) {
-                        printErr(String.format("FileRawLogger: log directory {%s} cannot be written to.",
-                                logDirectory.getAbsolutePath()));
-                    }
-                    String name = prefix + sessionId + suffix;
-                    logFile = new File(logDirectory, name);
-                    if (logFile.exists()) {
-                        // OOPS- we WILL not touch a log file that exists in per-session mode. This
-                        // should 'never'
-                        // happen because the file includes the supposedly unique session ID (which is
-                        // typically
-                        // System.currentTimeMillis()).
-                        printErr(
-                                String.format("FileRawLogger: log name {%s} already exists and will NOT be overridden.",
-                                        logFile.getAbsolutePath()));
-                        loggingDisabled = true;
-                    }
-
-                } else {
-
-                    // Check that the path name contains 'log'.
-                    String fullName = logFile.getAbsolutePath();
-                    if (fullName.toLowerCase().indexOf("log") < 0) {
-                        printErr(
-                                String.format("FileRawLogger: disabling logging because the specified log path {%s}"
-                                        + "does not contain the string \"log\"",
-                                        fullName));
-                        loggingDisabled = true;
-                    }
-                }
+                setFileName(sessionId);
             }
 
             if (!loggingDisabled) {
@@ -1242,7 +1211,41 @@ public class StructuredLogger {
                         logFile.getAbsolutePath(), e));
             }
         }
+        
+        private void setFileName(String sessionId) {
+            if (perSessionLog) {
 
+                if (!logDirectory.canWrite()) {
+                    printErr(String.format("FileRawLogger: log directory {%s} cannot be written to.",
+                            logDirectory.getAbsolutePath()));
+                }
+                String name = prefix + sessionId + suffix;
+                logFile = new File(logDirectory, name);
+                if (logFile.exists()) {
+                    // OOPS- we WILL not touch a log file that exists in per-session mode. This
+                    // should 'never'
+                    // happen because the file includes the supposedly unique session ID (which is
+                    // typically
+                    // System.currentTimeMillis()).
+                    printErr(
+                            String.format("FileRawLogger: log name {%s} already exists and will NOT be overridden.",
+                                    logFile.getAbsolutePath()));
+                    loggingDisabled = true;
+                }
+
+            } else {
+
+                // Check that the path name contains 'log'.
+                String fullName = logFile.getAbsolutePath();
+                if (fullName.toLowerCase().indexOf("log") < 0) {
+                    printErr(
+                            String.format("FileRawLogger: disabling logging because the specified log path {%s}"
+                                    + "does not contain the string \"log\"",
+                                    fullName));
+                    loggingDisabled = true;
+                }
+            }
+        }
     }
 
     private static class UDPRawLogger implements RawLogger {
