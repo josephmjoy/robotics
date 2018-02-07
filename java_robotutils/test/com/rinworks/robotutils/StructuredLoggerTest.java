@@ -266,7 +266,7 @@ class StructuredLoggerTest {
         baseLogger.info("Logging an informational message");
 
         // Warning message are also logged with priority 1.
-        baseLogger.warn("Logging an error");
+        baseLogger.warn("Logging a warning");
 
         // Error messages are logged with priority 0.
         baseLogger.err("Logging an error");
