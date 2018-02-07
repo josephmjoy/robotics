@@ -8,7 +8,7 @@ produced by the structured logger. We create a temporary file and pass that to
 utility method `StructuredLogger.createFileRawLogger`.
 ```Java
 File logFile = File.createTempFile("testLog", ".txt");
-int maxSize = 1000000; // max size in bytes the file is allowed to grow.
+int maxSize = 1000000; // max size in bytes the file is allowed to reach.
 StructuredLogger.RawLogger rawLogger = StructuredLogger.createFileRawLogger(logFile, maxSize, null);
 ```
 Then we create a structured logger. Typically there is just one of these per
@@ -39,7 +39,7 @@ When done, we end logging.
 baseLogger.endLogging();
 ```
 
-# Structure of Logged Messages
+## Structure of Logged Messages
  The primary purpose of structured logging is to generate log files that can be easily parsed by analysis programs. If we open the temporary file created by the session above, we will see that it contains lines that look like:
 ```
 _sid:1517976498636 _sn:1 _ts:0 _co:MY_SYSTEM _pri:0 _cat:INFO _ty:_LOG_SESSION_STARTED _msg: rootName:MY_SYSTEM maxBuffered:1000 autoFlushPeriod:1000
@@ -64,6 +64,6 @@ _rts | 25 | Relative timestamp. These are inserted if `StructuredLogger.Log.star
 
 Pre-defined 'reserved' tags and types start with underscores (these are all public constants in `StructuredLogger`.) Therefore it is NOT recommended to begin user-defined tags and types with underscores.
 
-## Disallowed Characters in Messages, Tags and Values
+### Disallowed Characters in Messages, Tags and Values
 Individual messages cannot have newlines, although one can embed `<br>` or other tags that log viewers may honor, though that is out of the scope of `StructuredLogger`. An attempt to log messages with embedded newlines results in all newlines replaced by the '#' character. 
 Tags and the values of the _ty (type) tag must only contain numbers, alphabets, the underscore, period or hyphen. The colon character ':' must  not be present in any value portion of the message. Attempting to do so will result in incorrect parsing of that specific log message, though other messages will be unaffected.
