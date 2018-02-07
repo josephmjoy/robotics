@@ -2,7 +2,7 @@
 This class provides thread-safe logging of 'structured text' - Strings of the form "key1: value1
 key2:value2". The client provides the low-level log consumers that implement
 the StructuredLogger.RawLogger interface.
-## StructuredLogger - Simple Usage
+## StructuredLogger - Basic Use
 First we create a raw logger that will consume the low-level log messages
 produced by the structured logger. We create a temporary file and pass that to
 utility method `StructuredLogger.createFileRawLogger`.
@@ -28,7 +28,7 @@ baseLogger.info("Logging an informational message");
 ```
 Warning message are also logged with priority 1.
 ```Java  
-baseLogger.warn("Logging an error");
+baseLogger.warn("Logging a warning");
 ```
 Error messages are logged with priority 0.
 ```Java
@@ -38,7 +38,7 @@ When done, we end logging.
 ```Java
 baseLogger.endLogging();
 ```
-
+The above code is also available as JUnit test `StruturedLoggerTest.testIntroductoryExample1`.
 ## Structure of Logged Messages
  The primary purpose of structured logging is to generate log files that can be easily parsed by analysis programs. If we open the temporary file created by the session above, we will see that it contains lines that look like:
 ```
@@ -67,3 +67,7 @@ Pre-defined 'reserved' tags and types start with underscores (these are all publ
 ### Disallowed Characters in Messages, Tags and Values
 Individual messages cannot have newlines, although one can embed `<br>` or other tags that log viewers may honor, though that is out of the scope of `StructuredLogger`. An attempt to log messages with embedded newlines results in all newlines replaced by the '#' character. 
 Tags and the values of the _ty (type) tag must only contain numbers, alphabets, the underscore, period or hyphen. The colon character ':' must  not be present in any value portion of the message. Attempting to do so will result in incorrect parsing of that specific log message, though other messages will be unaffected.
+
+## StructuredLogger - More Complex Use
+Lorem ipsum lorem ipsum
+lorem ipsum
