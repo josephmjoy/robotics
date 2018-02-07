@@ -153,7 +153,7 @@ instance.
 log2.pauseTracing();
 log2.trace("This message will never be logged.");
 ```
-Tace messages submitted to log1 will continue to be traced, however.
+Trace messages submitted to log1 will continue to be traced.
 ```Java
 log1.trace("This message will be logged.");
 log2.resumeTracing();
