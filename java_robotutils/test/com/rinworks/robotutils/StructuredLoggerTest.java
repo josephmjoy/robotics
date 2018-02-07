@@ -277,7 +277,7 @@ class StructuredLoggerTest {
 
     // Simple self-contained example that goes into README.md introductory text.
     @Test
-    void TestIntroductoryExample2() {
+    void testIntroductoryExample2() {
 
         // In this example, we create multiple raw loggers - one logs each logging
         // session to a separate file, and another sends

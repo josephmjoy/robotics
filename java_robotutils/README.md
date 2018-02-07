@@ -69,5 +69,97 @@ Individual messages cannot have newlines, although one can embed `<br>` or other
 Tags and the values of the _ty (type) tag must only contain numbers, alphabets, the underscore, period or hyphen. The colon character ':' must  not be present in any value portion of the message. Attempting to do so will result in incorrect parsing of that specific log message, though other messages will be unaffected.
 
 ## StructuredLogger - More Complex Use
-Lorem ipsum lorem ipsum
-lorem ipsum
+
+In this example, we create multiple raw loggers - one logs each logging
+session to a separate file, and another sends
+logging messages over a UDP port. We then perform a broader set of operations
+by operating on a StructuredLogger.Log object.
+First we create a raw logger that will consume the low-level log messages
+produced by the
+structured logger. This logger will create a new file for each logging
+session.
+```Java
+String tempDir = System.getProperty("java.io.tmpdir");
+File logDir = new File(tempDir, "testLogs");
+if (!logDir.exists()) {
+    logDir.mkdir();
+}
+System.out.println("Log directory: " + logDir.getAbsolutePath());
+final int MAX_SIZE = 1000000;  Maximum size the logfile is allowed to grow.
+StructuredLogger.RawLogger rawFileLogger = StructuredLogger.createFileRawLogger(logDir, "myLog", ".log",
+    MAX_SIZE, null);
+```
+
+Let's create a second raw logger. This one logs only Priority 0 or 1 messages
+to a UDP port 31899 on the local host.
+```Java
+StructuredLogger.RawLogger rawUDPLogger = StructuredLogger.createUDPRawLogger("localhost", 41899,
+    new StructuredLogger.Filter() {
+        @Override
+        public boolean filter(String logName, int pri, String cat) {
+        return pri <= 1;
+        }
+    });
+```
+Then we create the structured logger. Passing in an array of loggers.
+```Java
+StructuredLogger.RawLogger[] rawLoggers = { rawFileLogger, rawUDPLogger };
+StructuredLogger baseLogger = new StructuredLogger(rawLoggers, "MY_SYSTEM");
+```
+When we are ready to start logging, we begin the logging session. This is when
+external resources (like files) are opened.
+```Java
+baseLogger.beginLogging();
+```
+Then we log! To get the full set of log methods, we need to access a
+`StructuredLogger.Log` object. These can be created on the fly, but
+there is one created by default.
+```Java
+StructuredLogger.Log log1 = baseLogger.defaultLog();
+```
+Add a message type (first parameter) to classify log messages for easier analysis.
+```Java
+log1.info("init", "Component Initialization");
+```
+Trigger flushing the logs to persistent storage (if applicable) at any time.
+```Java
+log1.flush();
+```
+Add the key-value pair "mode:auton" to all subsequent messages submitted to 
+`log1`.
+```Java
+log1.addTag("mode", "auton");
+```
+Let us now createt a new instance of `StructuredLogger.Log`.
+```Java
+StructuredLogger.Log log2 = log1.newLog("LOG2");
+```
+Start a 'relative timestamp' (RTS) all subsequent log messages from this log
+instance will have an '_rts' tag inserted with the time
+in milliseconds relative to this call, for example "_rts:293". This tag will be inserted
+only for `Log` instance `log2`, not `log1`.
+```Java
+log2.startRTS();
+```
+Use the trace calls for high-frequency logging.
+```Java
+log2.trace("This is a trace message");
+log2.trace("bearing", "x:3 b:2 angle:45");
+```
+Tracing can be disabled and enabled on the fly. This effects just this log
+instance.
+```Java
+log2.pauseTracing();
+log2.trace("This message will never be logged.");
+```
+Tace messages submitted to log1 will continue to be traced, however.
+```Java
+log1.trace("This message will be logged.");
+log2.resumeTracing();
+log2.trace("This message will be logged.");
+```
+When done, we end logging. This flushes all raw loggers and closes them.
+```Java
+baseLogger.endLogging();
+```
+The above code is also available as JUnit test `StruturedLoggerTest.testIntroductoryExample2`.
