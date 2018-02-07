@@ -1,8 +1,8 @@
 # Table of Contents
-1. [StructuredLogger] (#StructuredLogger)
-    [StructuredLogger - Basic Use] (#basic)
-    [Structure of Logged Messages] (#structure)
-    [StructuredLogger - More Complex Use]  (#complex)
+1. [StructuredLogger](#StructuredLogger)
+    - [StructuredLogger - Basic Use](#basic)
+    - [Structure of Logged Messages](#structure)
+    - [StructuredLogger - More Complex Use](#complex)
 
 
 
