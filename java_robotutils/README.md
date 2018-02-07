@@ -1,8 +1,16 @@
-# StructuredLogger
+# Table of Contents
+1. [StructuredLogger] (#StructuredLogger)
+    [StructuredLogger - Basic Use] (#basic)
+    [Structure of Logged Messages] (#structure)
+    [StructuredLogger - More Complex Use]  (#complex)
+
+
+
+# StructuredLogger <a name="StructuredLogger"/>
 This class provides thread-safe logging of 'structured text' - Strings of the form "key1: value1
-key2:value2". The client provides the low-level log consumers that implement
-the StructuredLogger.RawLogger interface.
-## StructuredLogger - Basic Use
+key2:value2". The primary purpose of structured logging is to generate log files that can be easily parsed by analysis programs. The client provides one or more low-level log consumers that implement
+the `StructuredLogger.RawLogger` interface.
+## StructuredLogger - Basic Use <a name = "basic"/>
 First we create a raw logger that will consume the low-level log messages
 produced by the structured logger. We create a temporary file and pass that to
 utility method `StructuredLogger.createFileRawLogger`.
@@ -39,8 +47,8 @@ When done, we end logging.
 baseLogger.endLogging();
 ```
 The above code is also available as JUnit test `StruturedLoggerTest.testIntroductoryExample1`.
-## Structure of Logged Messages
- The primary purpose of structured logging is to generate log files that can be easily parsed by analysis programs. If we open the temporary file created by the session above, we will see that it contains lines that look like:
+## Structure of Logged Messages <a name="structure"/>
+If we open the temporary file created by the session above, we will see that it contains lines that look like:
 ```
 _sid:1517976498636 _sn:1 _ts:0 _co:MY_SYSTEM _pri:0 _cat:INFO _ty:_LOG_SESSION_STARTED _msg: rootName:MY_SYSTEM maxBuffered:1000 autoFlushPeriod:1000
 _sid:1517976498636 _sn:2 _ts:0 _co:MY_SYSTEM _pri:1 _cat:INFO _ty:_OTHER _msg: Logging an informational message
@@ -68,7 +76,7 @@ Pre-defined 'reserved' tags and types start with underscores (these are all publ
 Individual messages cannot have newlines, although one can embed `<br>` or other tags that log viewers may honor, though that is out of the scope of `StructuredLogger`. An attempt to log messages with embedded newlines results in all newlines replaced by the '#' character. 
 Tags and the values of the _ty (type) tag must only contain numbers, alphabets, the underscore, period or hyphen. The colon character ':' must  not be present in any value portion of the message. Attempting to do so will result in incorrect parsing of that specific log message, though other messages will be unaffected.
 
-## StructuredLogger - More Complex Use
+## StructuredLogger - More Complex Use <a name="complex"/>
 
 In this example, we create multiple raw loggers - one logs each logging
 session to a separate file, and another sends
@@ -92,7 +100,7 @@ StructuredLogger.RawLogger rawFileLogger = StructuredLogger.createFileRawLogger(
 ```
 
 Let's create a second raw logger. This one logs only Priority 0 or 1 messages
-to a UDP port 41999 on the local host.
+to UDP port 41999 on the local host.
 ```Java
 StructuredLogger.RawLogger rawUDPLogger = StructuredLogger.createUDPRawLogger("localhost", 41999,
     new StructuredLogger.Filter() {
@@ -147,13 +155,12 @@ Use the trace calls for high-frequency logging. These are logged at priority lev
 log2.trace("This is a trace message");
 log2.trace("bearing", "x:3 b:2 angle:45");
 ```
-Tracing can be disabled and enabled on the fly. This effects just this log
-instance.
+Tracing can be disabled and enabled on the fly. This effects just `log2`.
 ```Java
 log2.pauseTracing();
 log2.trace("This message will never be logged.");
 ```
-Trace messages submitted to log1 will continue to be traced.
+Trace messages submitted to `log1` will continue to be traced.
 ```Java
 log1.trace("This message will be logged.");
 log2.resumeTracing();
