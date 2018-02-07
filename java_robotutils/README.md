@@ -73,7 +73,8 @@ Tags and the values of the _ty (type) tag must only contain numbers, alphabets, 
 In this example, we create multiple raw loggers - one logs each logging
 session to a separate file, and another sends
 logging messages over a UDP port. We then perform a broader set of operations
-by operating on a StructuredLogger.Log object.
+by operating on a `StructuredLogger.Log` object.
+
 First we create a raw logger that will consume the low-level log messages
 produced by the
 structured logger. This logger will create a new file for each logging
@@ -85,15 +86,15 @@ if (!logDir.exists()) {
     logDir.mkdir();
 }
 System.out.println("Log directory: " + logDir.getAbsolutePath());
-final int MAX_SIZE = 1000000;  Maximum size the logfile is allowed to grow.
+final int MAX_SIZE = 1000000;  // Maximum size the logfile is allowed to grow.
 StructuredLogger.RawLogger rawFileLogger = StructuredLogger.createFileRawLogger(logDir, "myLog", ".log",
     MAX_SIZE, null);
 ```
 
 Let's create a second raw logger. This one logs only Priority 0 or 1 messages
-to a UDP port 31899 on the local host.
+to a UDP port 41999 on the local host.
 ```Java
-StructuredLogger.RawLogger rawUDPLogger = StructuredLogger.createUDPRawLogger("localhost", 41899,
+StructuredLogger.RawLogger rawUDPLogger = StructuredLogger.createUDPRawLogger("localhost", 41999,
     new StructuredLogger.Filter() {
         @Override
         public boolean filter(String logName, int pri, String cat) {
@@ -101,13 +102,13 @@ StructuredLogger.RawLogger rawUDPLogger = StructuredLogger.createUDPRawLogger("l
         }
     });
 ```
-Then we create the structured logger. Passing in an array of loggers.
+Then we create the structured logger, passing in an array of loggers.
 ```Java
 StructuredLogger.RawLogger[] rawLoggers = { rawFileLogger, rawUDPLogger };
 StructuredLogger baseLogger = new StructuredLogger(rawLoggers, "MY_SYSTEM");
 ```
 When we are ready to start logging, we begin the logging session. This is when
-external resources (like files) are opened.
+external resources (like files and ports) are opened.
 ```Java
 baseLogger.beginLogging();
 ```
@@ -125,23 +126,23 @@ Trigger flushing the logs to persistent storage (if applicable) at any time.
 ```Java
 log1.flush();
 ```
-Add the key-value pair "mode:auton" to all subsequent messages submitted to 
+Add the tag-value pair "mode:auton" to all subsequent messages submitted to 
 `log1`.
 ```Java
 log1.addTag("mode", "auton");
 ```
-Let us now createt a new instance of `StructuredLogger.Log`.
+Let us now create a new instance of `StructuredLogger.Log`.
 ```Java
 StructuredLogger.Log log2 = log1.newLog("LOG2");
 ```
-Start a 'relative timestamp' (RTS) all subsequent log messages from this log
-instance will have an '_rts' tag inserted with the time
+Start relative 'timestamp' (RTS) logging. All subsequent log messages from this log
+instance will have an "_rts" tag inserted whose value is the time
 in milliseconds relative to this call, for example "_rts:293". This tag will be inserted
 only for `Log` instance `log2`, not `log1`.
 ```Java
 log2.startRTS();
 ```
-Use the trace calls for high-frequency logging.
+Use the trace calls for high-frequency logging. These are logged at priority level 2 and with the "_cat" tag set to "TRACE".
 ```Java
 log2.trace("This is a trace message");
 log2.trace("bearing", "x:3 b:2 angle:45");
