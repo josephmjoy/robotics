@@ -292,17 +292,17 @@ class StructuredLoggerTest {
         if (!logDir.exists()) {
             logDir.mkdir();
         }
-        int maxSize = 1000000; // Maximum size the logfile is allowed to grow.
+        System.out.println("Log directory: " + logDir.getAbsolutePath());
+        final int MAX_SIZE = 1000000; // Maximum size the logfile is allowed to grow.
         StructuredLogger.RawLogger rawFileLogger = StructuredLogger.createFileRawLogger(logDir, "myLog", ".log",
-                maxSize, null);
+                MAX_SIZE, null);
 
         // Let's create a second raw logger. This one logs only Priority 0 or 1 messages
         // to a UDP port 31899 on the local host.
-        StructuredLogger.RawLogger rawUDPLogger = StructuredLogger.createUDPRawLogger("localhost", 31899,
+        StructuredLogger.RawLogger rawUDPLogger = StructuredLogger.createUDPRawLogger("localhost", 41899,
                 new StructuredLogger.Filter() {
                     @Override
                     public boolean filter(String logName, int pri, String cat) {
-                        // TODO Auto-generated method stub
                         return pri <= 1;
                     }
                 });
@@ -318,32 +318,36 @@ class StructuredLoggerTest {
         // Then we log! To get the full set of log methods, we need to access a
         // StructuredLogger.Log object. These can be created on the fly, but
         // there is one created by default.
-        StructuredLogger.Log log = baseLogger.defaultLog();
+        StructuredLogger.Log log1 = baseLogger.defaultLog();
 
-        // Add a message type (first parameter) to classify log messages.
-        log.info("init", "Component Initialization");
+        // Add a message type (first parameter) to classify log messages for easier analysis.
+        log1.info("init", "Component Initialization");
 
-        // Triggere flushing the logs to persistant storage (if applicable) at any time.
-        log.flush();
+        // Triggers flushing the logs to persistent storage (if applicable) at any time.
+        log1.flush();
 
-        // add the key-value pair "mode:auton" to all subsequent log messages.
-        log.addTag("mode", "auton");
+        // add the key-value pair "mode:auton" to all subsequent messages submitted to 
+        // log1.
+        log1.addTag("mode", "auton");
 
+        StructuredLogger.Log log2 = log1.newLog("LOG2");
         // Start a 'relative timestamp' (RTS) all subsequent log messages from this log
         // instance will have an '_rts' tag inserted with the time
         // in milliseconds relative to this call, for example "_rts:293"
-        log.startRTS();
+        log2.startRTS();
 
         // Use the trace calls for high-frequency logging.
-        log.trace("This is a trace message");
-        log.trace("bearing", "x:3 b:2 angle:45");
+        log2.trace("This is a trace message");
+        log2.trace("bearing", "x:3 b:2 angle:45");
 
         // Tracing can be disabled and enabled on the fly. This effects just this log
         // instance.
-        log.pauseTracing();
-        log.trace("This message will never be logged.");
-        log.resumeTracing();
-        log.trace("This message will be logged.");
+        log2.pauseTracing();
+        log2.trace("This message will never be logged.");
+        // trace messages submitted to log1 will continue to be traced, however.
+        log1.trace("This message will be logged.");
+        log2.resumeTracing();
+        log2.trace("This message will be logged.");
 
         // When done, we end logging.
         baseLogger.endLogging();
@@ -380,7 +384,7 @@ class StructuredLoggerTest {
         // Assertion check - passing and failing
         log1.loggedAssert(true, "unexpectedly, log1 is null.");
         assertFalse(assertionHandlerCalled);
-        log1.loggedAssert(false, "unexpectedly, log1 is null.");
+        log1.loggedAssert(false, "EXPECTED, log1 is null.");
         assertTrue(assertionHandlerCalled);
         assertionHandlerCalled = false;
 
@@ -514,7 +518,7 @@ class StructuredLoggerTest {
                 f.delete();
             }
         }
-        dirPath.listFiles(); // (dir, n) => {return s.indexOf(txt)>=0;});
+        dirPath.listFiles();
 
         System.out.println("FileLogging: Per-session logs are under " + dirPath.getAbsolutePath());
         StructuredLogger.RawLogger rawLog = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000,
