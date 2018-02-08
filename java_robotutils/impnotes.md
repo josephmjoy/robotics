@@ -17,17 +17,17 @@ These are informal notes and TODO lists for the project.
 #Feb 8, 2018 Design Note - ConfigurationReader and StringmapHelper
 Design goals:
 - As with rest of robotutils, do not pull in an external dependency, use standard Java apis.
-- If possible base the file format on an existing standard that is not too combersome. 
+- If possible base the file format on an existing standard that is not too cumbersome. 
 - Two-level of structure - a set of sections, a top-level for each sub-component or any other logical entity
   (like 'logging' or 'auton'), and the next level is simply key-values, one per line.
 - Caller has control over where the config file is located - provides a Stream object to read
 - No write ability (at this point) - the idea is to have parts of the file potentially containing
-  information that is not relavant or unused, so there is no requirement to re-generate or update this file.
+  information that is not relevant or unused, so there is no requirement to re-generate or update this file.
 - There is the option to re-read. This would typically be done infrequently - say if a sub-component is
   being re-inited dynamically. This allows configurations to be updated 'dynamically' externally (e.g., 
   someone logs into the machine and updates the file..)
 - Support reading types with defaults. Do not throw exceptions. Typically the show must go on (program
-  execution continues) even if the config file is missing, unreadible or otherwise messed up. So there
+  execution continues) even if the config file is missing, unreadable or otherwise messed up. So there
 - should be basic support for doing things like reading an integer value with a default supplied if there
   was some issue reading that value.
 - The above support for reading should be encapsulated in a separate class so
