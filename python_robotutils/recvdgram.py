@@ -16,7 +16,7 @@ sock.bind(server_address)
 # on all interfaces.
 group = socket.inet_aton(multicast_group)
 mreq = struct.pack('4sL', group, socket.INADDR_ANY)
-sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+#sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
 
 # Receive/respond loop
@@ -27,5 +27,6 @@ while True:
     
     # print ('received %s bytes from %s' % (len(data), address))
     msg = data.decode('utf-8')
-    d = robotutils.toDict(msg)
-    print(d)
+    #d = robotutils.toDict(msg)
+    #print(d)
+    print(msg)

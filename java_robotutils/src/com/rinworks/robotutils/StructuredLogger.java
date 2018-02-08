@@ -1149,7 +1149,12 @@ public class StructuredLogger {
                 return; // *** EARLY RETURN ****
 
             try {
-                int len = msg.length();
+                // WARNING: the following length calculation does not
+                // account for any Unicode character expansion when converting
+                // to bytes. If client-supplied messages start containing
+                // significant amounts of non-ASCI characters this approach
+                // needs to be revisited.
+                int len = msg.length() + 1; // 1 for newline.
                 if (remainingCapacity > len) {
                     out.write(msg, 0, msg.length());
                     out.newLine();
