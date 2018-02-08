@@ -2,6 +2,10 @@
 These are informal notes and TODO lists for the project.
 
 #TODO
+1. SUGGESTION: MessageMapper: strip commas at end of tags and values,
+   to allow for optional commas to be added.
+1. ConfigReader: implement.
+2. StringMapHelper: implement
 1. StructuredLogger: Keep track of % of timer period taken up by processing of periodic and one-shot tasks
 1. StructuredLogger: Make sure that it can never throw an exception or assertion
    failure
@@ -9,6 +13,72 @@ These are informal notes and TODO lists for the project.
    chance of failed transmission] LOG_SESSION_STARTStructuredLogger: UDP rawlogger should bundle multiple log messages into
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
+
+#Feb 8, 2018 Design Note - ConfigurationReader and StringmapHelper
+Design goals:
+- As with rest of robotutils, do not pull in an external dependency, use standard Java apis.
+- If possible base the file format on an existing standard that is not too combersome. 
+- Two-level of structure - a set of sections, a top-level for each sub-component or any other logical entity
+  (like 'logging' or 'auton'), and the next level is simply key-values, one per line.
+- Caller has control over where the config file is located - provides a Stream object to read
+- No write ability (at this point) - the idea is to have parts of the file potentially containing
+  information that is not relavant or unused, so there is no requirement to re-generate or update this file.
+- There is the option to re-read. This would typically be done infrequently - say if a sub-component is
+  being re-inited dynamically. This allows configurations to be updated 'dynamically' externally (e.g., 
+  someone logs into the machine and updates the file..)
+- Support reading types with defaults. Do not throw exceptions. Typically the show must go on (program
+  execution continues) even if the config file is missing, unreadible or otherwise messed up. So there
+- should be basic support for doing things like reading an integer value with a default supplied if there
+  was some issue reading that value.
+- The above support for reading should be encapsulated in a separate class so
+ that it can be used in other situations to read/write non-string values into
+ the string map.  
+- Do not read the whole config file into memory, but ok to read a sub-section into memory.
+- Potentially allow reading a specified list of sections in one chunk - into a map of maps. This is to avoid needlessly scanning the file multiple times to
+pick up each section.
+- Subset of YAML parser should gracefully ignore any parts of YAML it does not
+ support, while being able to read the things it does understand. In particular, it should skip past hierarchies greater than two-level, and it
+should ignore (strip out) ! directives that explicitly specify a type.
+
+## Implementation Decisions
+Java has a standard type called Properties. It can fill in a Properties object from a specified file stream.
+There are then methods to read and write string properties. The documentation outlines the file format.
+I[JMJ] decided to write a simple YAML-subset parser and supporting classes/methods for the following reasons:
+- Properties does not support a two-level hierarchy.
+- Properties imposes the ability to read and write.
+- Properties does not support reading objects other than strings.
+- YAML is minimalist yet supports a two-level hierarchy.
+- Since YAML support is not built-into Java and we don't want to bring in
+  3rd party library dependencies, we write our own parser for a subset of
+  YAML, which is easy to do.
+- Add two classes: ConfigurationReader and StringmapHelper. These classes
+  are independent of each other. Their common currency is a
+  Map<String, String>, which is also what the StructuredMessageMapper deals
+  with.
+- Use Yaml 1.2 spec, which tightened up certain things, like boolean values
+  are strictly true or false (not True, False, Yes, No, etc, etc.).
+  
+## Sample Configuration File
+```
+# Robot Configuration
+---
+logging:
+    root_name: BB_RIO
+    
+auton:
+    tracingOn: true
+    pid1Params: kP:0.2 kI:0.002 kD:-0.2 tol:0.005
+    # Above, our simple parser will simply map "pid1Params" to the
+    # string "kP:0.2 kI:0.002 kD:-0.2 tol:0.005". Since this happens to be
+    # a valid structured message, you can use StructuredMessageMapper.toMap
+    # to get a Map, and then StringmapHelper to get individual double
+    # values out of these.
+    
+    position: [0.5, 0.2, 0.2]
+    # Above, once again, the simpler parser will parse the value into string 
+    # "[0.5 0.2, 0.2]". StringmapHelper may in the future support 1D arrays of 
+    # doubles and other primitives.
+```
 
 #Feb 6, 2018 Design Note A - suggestions for log file naming
 To be able to collect log files from multiple machines (e.g. multiple robots and potentially multiple processors from each robot - rio, pi) the prefix for each log
