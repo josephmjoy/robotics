@@ -2,6 +2,8 @@
 These are informal notes and TODO lists for the project.
 
 #TODO
+1. StructuredLogger AND StructuredMessageMapper: YAML REQUIRES a spacec after ':' and ','. We should
+   strongly consider adopting this same guideline for parsing!
 1. SUGGESTION: MessageMapper: strip commas at end of tags and values,
    to allow for optional commas to be added.
 1. ConfigReader: implement.
