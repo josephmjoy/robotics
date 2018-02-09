@@ -16,7 +16,7 @@ class ConfigurationHelperTest {
     @Test
     void testSimpleUsage() {
         String input = String.join("\n", "mySection:", "  sk: sv", "  ik: 10\n");
-        
+
         Reader r = new StringReader(input);
         ArrayList<String> keys = new ArrayList<>();
         Map<String, String> map = ConfigurationHelper.readSection("mySection", r, keys);

@@ -115,7 +115,7 @@ public class StringmapHelper {
      *            {min} and {max}
      * @return
      */
-    public long getAsInt(String key, long min, long max, long defaultValue) {
+    public long getAsLong(String key, long min, long max, long defaultValue) {
         long v = this.getAsLong(key, defaultValue);
         return (v >= min && v <= max) ? v : defaultValue;
     }
@@ -148,7 +148,7 @@ public class StringmapHelper {
      *            {min} and {max}
      * @return
      */
-    public double getAsInt(String key, double min, double max, double defaultValue) {
+    public double getAsDouble(String key, double min, double max, double defaultValue) {
         double v = this.getAsDouble(key, defaultValue);
         return (v >= min && v <= max) ? v : defaultValue;
     }
