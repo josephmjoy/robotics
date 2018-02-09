@@ -6,8 +6,6 @@ These are informal notes and TODO lists for the project.
    strongly consider adopting this same guideline for parsing!
 1. SUGGESTION: MessageMapper: strip commas at end of tags and values,
    to allow for optional commas to be added.
-1. ConfigReader: implement.
-2. StringMapHelper: implement
 1. StructuredLogger: Keep track of % of timer period taken up by processing of periodic and one-shot tasks
 1. StructuredLogger: Make sure that it can never throw an exception or assertion
    failure
@@ -16,15 +14,15 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
-#Feb 8, 2018 Design Note - ConfigurationReader and StringmapHelper
+#Feb 8, 2018 Design Note - ConfigurationHelper and StringmapHelper
 Design goals:
 - As with rest of robotutils, do not pull in an external dependency, use standard Java apis.
 - If possible base the file format on an existing standard that is not too cumbersome. 
 - Two-level of structure - a set of sections, a top-level for each sub-component or any other logical entity
   (like 'logging' or 'auton'), and the next level is simply key-values, one per line.
 - Caller has control over where the config file is located - provides a Stream object to read
-- No write ability (at this point) - the idea is to have parts of the file potentially containing
-  information that is not relevant or unused, so there is no requirement to re-generate or update this file.
+- Does have write support - but really just append to an existing stream. Mainly to support keeping the ORDER of appearance
+  of keys, read should return the keys in order that they appear and write should take such a key order.
 - There is the option to re-read. This would typically be done infrequently - say if a sub-component is
   being re-inited dynamically. This allows configurations to be updated 'dynamically' externally (e.g., 
   someone logs into the machine and updates the file..)
@@ -53,7 +51,7 @@ I[JMJ] decided to write a simple YAML-subset parser and supporting classes/metho
 - Since YAML support is not built-into Java and we don't want to bring in
   3rd party library dependencies, we write our own parser for a subset of
   YAML, which is easy to do.
-- Add two classes: ConfigurationReader and StringmapHelper. These classes
+- Add two classes: ConfigurationHelper and StringmapHelper. These classes
   are independent of each other. Their common currency is a
   Map<String, String>, which is also what the StructuredMessageMapper deals
   with.
