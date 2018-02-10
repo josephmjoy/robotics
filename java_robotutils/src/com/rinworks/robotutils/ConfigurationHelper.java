@@ -38,6 +38,7 @@ public class ConfigurationHelper {
             }
         } catch (IOException e) {
             // Nothing to do as br will be automatically closed.
+           System.err.println(e);
         }
         return hm;
     }
@@ -59,6 +60,13 @@ public class ConfigurationHelper {
                 if (iColon > 0) {
                     pre = line.substring(0, iColon).trim();
                     post = line.substring(iColon + 1).trim(); // +1 for space after colon
+                } else {
+                    // The other case is the line *ends* in a colon...
+                    int lastIndex = line.length()-1;
+                    if (line.charAt(lastIndex) == ':') {
+                        pre = line.substring(0, lastIndex).trim();
+                        post = "";
+                    }
                 }
 
                 if (pre.length() > 0) {
