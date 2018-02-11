@@ -2,143 +2,163 @@
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
 package com.rinworks.robotutils;
 
+import java.io.Closeable;
+import java.util.function.BiConsumer;
+import java.util.function.Supplier;
+
 /**
  * Class to implement simple 2-way message passing over UDP
  *
  */
-public class RobotComm implements AutoCloseable {
+public class RobotComm {
 
-	/**
-	 * The message and remote port information associated with a received message.
-	 *
-	 */
-	public class ReceivedMessage {
 
-		public ReceivedMessage(String _message, RemotePort _returnPort) {
-			message = _message;
-			returnPort = _returnPort;
-		}
+    interface Address {
+        String stringRepresentation();
+    };
 
-		/**
-		 * Received message
-		 */
-		public final String message;
+    interface RemoteNode extends Closeable {
 
-		/**
-		 * Port that may be used to send messages
-		 */
-		public final RemotePort returnPort;
-	}
+        void send(String msg);
 
-	/**
-	 * Low level interface to send a text message to some destination.
-	 *
-	 */
-	public interface RemotePort {
+        Address getAddress();
 
-		void send(String msg);
+        void close(); // idempotent.
+    }
 
-		/**
-		 * @return Text form of remote address
-		 */
-		String address();
-	}
+    /**
+     * Sends a dynamically generated message periodically. The period was set when
+     * the underlying object was created. Pause and resume may be called in any
+     * order and from multiple threads, though results of doing so will be
+     * unpredictable. The messages themselves will be sent as whole units.
+     *
+     */
+    interface PeriodicSender extends Closeable {
+        void pause();
 
-	/**
-	 * Low level interface to receive a text message from some destination.
-	 */
-	public interface LocalPort {
-		/**
-		 * BLOCKS until it receives a message. Calling cancel() will make it throw a
-		 * CancellationException.
-		 * 
-		 * @return - Text message received.
-		 */
-		ReceivedMessage receive();
+        void resume();
 
-		/**
-		 * Cancels a pending receive.
-		 */
-		void cancel();
+        void close(); // will cancel all further attempts to start/stop.
+    }
 
-		/**
-		 * @return Text form of local address
-		 */
-		String address();
-	}
+    interface SentCommand {
+        enum COMMAND_STATUS {
+            STATUS_PENDING, STATUS_COMPLETED, STATUS_ERROR_TIMEOUT, STATUS_ERROR_COMM, STATUS_CANCELED
+        };
 
-	/**
-	 * Creates a remote UDP port - for sending
-	 * 
-	 * @param nameOrAddress
-	 *            - either a name to be resolved or an dotted IP address
-	 * @param port
-	 *            - port number (0-65535)
-	 * @return remote port object
-	 */
-	public static RemotePort makeUDPRemotePort(String nameOrAddress, int port) {
-		return null;
-	}
+        String pollResponse();
 
-	/**
-	 * Creates a local UDP port - for listening
-	 * 
-	 * @param nameOrAddress
-	 *            - either a name to be resolved or an dotted IP address
-	 * @param port
-	 *            - port number (0-65535)
-	 * @return local port object
-	 */
-	public static LocalPort makeUDPLocalPort(String nameOrAddress, int port) {
-		return null;
-	}
+        COMMAND_STATUS status();
 
-	/**
-	 * @param remote_port
-	 *            - port used for listening
-	 * @param log
-	 *            - log to write internal logging and traces of messages.
-	 */
-	public RobotComm(RemotePort remote_port, StructuredLogger log) {
+        void cancel();
+    }
 
-	}
+    public interface ReceivedMessage {
+        String message();
 
-	/**
-	 * Begin listening
-	 */
-	public void listen() {
+        long receivedTimestamp(); // when it was received.
 
-	}
+        Channel channel();
+    }
+    
+    interface ReceivedCommand {
+        Channel channel();
 
-	/**
-	 * Close any open underlying resources such as sockets. Will automatically get
-	 * called by the
-	 */
-	@Override
-	public void close() {
+        String command();
 
-	}
+        long receivedTimestamp();
 
-	/**
-	 * Sends a message. Never blocks.
-	 * 
-	 * @param port
-	 *            - remote port
-	 * @param message
-	 *            - message to send
-	 */
-	public void sendMessage(RemotePort port, String message) {
+        void respond(String msg);
+    }
 
-	}
 
-	/**
-	 * Retrieves the next received message, if any. Returns null otherwise. Never
-	 * blocks.
-	 * 
-	 * @return Next received message or null if there are none.
-	 */
-	public ReceivedMessage nextReceivedMessage() {
-		return null;
-	}
+    public interface Channel extends Closeable {
+        
+        enum Mode {
+            MODE_SENDONLY, MODE_RECEIVEONLY, MODE_SENDRECEIVE
+        };
+        
+        String channelName();
+        Mode mode();
+
+        RemoteNode remoteNode();
+
+        ReceivedMessage pollReceivedMessage();
+
+        ReceivedCommand pollReceivedCommand();
+
+        void sendMessage(String message);
+
+        SentCommand sendCommand(String command);
+
+        PeriodicSender periodicSend(int period, Supplier<String> messageSource);
+
+        void close();
+    }
+
+    interface Listner extends Closeable {
+
+        /**
+         * Listens for messages.
+         * 
+         * @param handler
+         *            called when a message arrives. Will likely be called in some other
+         *            thread's context. The handler is expected NOT to block. If time
+         *            consuming operations need to be performed, queue the message for
+         *            further processing, or implement a state machine. The handler
+         *            *may* be reentered or called concurrently from another thread.
+         *            Call close to stop new messages from being received.
+         */
+        void listen(BiConsumer<String, RemoteNode> handler);
+
+        Address getAddress();
+
+        void close(); // idempotent. handler MAY get called after close() returns.
+    }
+
+    public interface DatagramTransport extends Closeable {
+
+        Address newAddress(String address);
+
+        Listner newListener(Address localAddress);
+
+        RemoteNode newRemoteNode(Address remoteAddress);
+
+        void close(); // Closes all open listeners and remote notes.
+    }
+
+    public RobotComm(DatagramTransport transport, StructuredLogger.Log log) {
+
+    }
+
+    public Channel createChannel(RemoteNode node, String channelName, Channel.Mode mode) {
+        return null;
+    }
+
+    /**
+     * Creates a remote UDP port - for sending
+     * 
+     * @param nameOrAddress
+     *            - either a name to be resolved or an dotted IP address
+     * @param port
+     *            - port number (0-65535)
+     * @return remote port object
+     */
+    public static Address makeUDPRemoteAddress(String nameOrAddress, int port) {
+        return null;
+    }
+
+    /**
+     * Creates a local UDP port - for listening
+     * 
+     * @param nameOrAddress
+     *            - either a name to be resolved or an dotted IP address
+     * @param port
+     *            - port number (0-65535)
+     * @return local port object
+     */
+    public static Address makeUDPListnerAddress(String nameOrAddress, int port) {
+        return null;
+    }
 
 }
