@@ -12,19 +12,9 @@ import java.util.function.Supplier;
  */
 public class RobotComm {
 
-
     interface Address {
         String stringRepresentation();
     };
-
-    interface RemoteNode extends Closeable {
-
-        void send(String msg);
-
-        Address getAddress();
-
-        void close(); // idempotent.
-    }
 
     /**
      * Sends a dynamically generated message periodically. The period was set when
@@ -60,9 +50,10 @@ public class RobotComm {
 
         Channel channel();
     }
-    
+
     interface ReceivedCommand {
-        Channel channel();
+        Server  server();
+        Address fromAddress();
 
         String command();
 
@@ -71,21 +62,19 @@ public class RobotComm {
         void respond(String msg);
     }
 
-
     public interface Channel extends Closeable {
-        
+
         enum Mode {
             MODE_SENDONLY, MODE_RECEIVEONLY, MODE_SENDRECEIVE
         };
-        
-        String channelName();
+
+        String name();
+
         Mode mode();
 
-        RemoteNode remoteNode();
+        Address remoteAddress();
 
         ReceivedMessage pollReceivedMessage();
-
-        ReceivedCommand pollReceivedCommand();
 
         void sendMessage(String message);
 
@@ -96,31 +85,47 @@ public class RobotComm {
         void close();
     }
 
-    interface Listner extends Closeable {
+    public interface Server extends Closeable {
 
-        /**
-         * Listens for messages.
-         * 
-         * @param handler
-         *            called when a message arrives. Will likely be called in some other
-         *            thread's context. The handler is expected NOT to block. If time
-         *            consuming operations need to be performed, queue the message for
-         *            further processing, or implement a state machine. The handler
-         *            *may* be reentered or called concurrently from another thread.
-         *            Call close to stop new messages from being received.
-         */
-        void listen(BiConsumer<String, RemoteNode> handler);
+        String name();
 
-        Address getAddress();
+        ReceivedCommand pollReceivedCommand();
 
-        void close(); // idempotent. handler MAY get called after close() returns.
+        void close();
     }
+
 
     public interface DatagramTransport extends Closeable {
 
-        Address newAddress(String address);
+        interface RemoteNode {
+            Address remoteAddress();
+            void send(String msg);
+        }
+        
+        interface Listener extends Closeable {
 
-        Listner newListener(Address localAddress);
+            /**
+             * Listens for messages.
+             * 
+             * @param handler
+             *            called when a message arrives. Will likely be called in some other
+             *            thread's context. The handler is expected NOT to block. If time
+             *            consuming operations need to be performed, queue the message for
+             *            further processing, or implement a state machine. The handler
+             *            *may* be reentered or called concurrently from another thread.
+             *            Call close to stop new messages from being received.
+             */
+            void listen(BiConsumer<String, RemoteNode> handler);
+
+            Address getAddress();
+
+            void close(); // idempotent. handler MAY get called after close() returns.
+        }
+ 
+        
+        Address resolveAddress(String address);
+
+        Listener newListener(Address localAddress);
 
         RemoteNode newRemoteNode(Address remoteAddress);
 
@@ -130,8 +135,12 @@ public class RobotComm {
     public RobotComm(DatagramTransport transport, StructuredLogger.Log log) {
 
     }
+    
+    public Address resolveAddress(String address) {
+        return null;
+    }
 
-    public Channel createChannel(RemoteNode node, String channelName, Channel.Mode mode) {
+    public Channel createChannel(String channelName, Address remoteAddress, Channel.Mode mode) {
         return null;
     }
 
