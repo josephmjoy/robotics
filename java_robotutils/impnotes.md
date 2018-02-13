@@ -2,6 +2,10 @@
 These are informal notes and TODO lists for the project.
 
 #TODO
+1. For roboRIO config file, under "logging": add "trace: [logname1, logname2, loname3]", and 
+  set these up during init - basically disable tracing on all logs except the list above. This is
+  a pragmatic thing to do. For example RobotComm has tracing, but it should obviously not be enabled
+  by default. But adding "trace: [robotcomm]" would enable it in the config file as required.
 1. StructuredLogger AND StructuredMessageMapper: YAML REQUIRES a spacec after ':' and ','. We should
    strongly consider adopting this same guideline for parsing!
 1. SUGGESTION: MessageMapper: strip commas at end of tags and values,
@@ -14,7 +18,81 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
-#Feb 8, 2018 Design Note - ConfigurationHelper and StringmapHelper
+# Feb 12A, 2018 Design Note - RobotComm Message Format 
+- receive msg header: 
+    - signature: a magic aphanumeric string such as 1309JHI
+    - channel: Alphanumeric string identifying channel.
+    -type: string identifying message type: One of MSG, CMD, CMDRESP
+    -user type: string identifying _client_ type for the message/command/response
+      (se Design Note Feb 12C, 2018 below]. MUST NOT contain a ',' - we check
+      for this will thow an argument exception if it contains a comma. More strict
+      version: keep it to no whitespaces and commas.
+    - commandInstance: Long integer identifying command instance. If the same command
+       is sent multiple times awaiting a response, it will have the same 
+       commandInstance. IMP: (session start time curMillis) + atomic seqNo.
+    - Command status: String, one of OK, PENDING, REJECTED
+        OK - command has completed
+        PENDING - remote node says that it is waiting for result of command.
+        REJECTED - remote node says that for whatever reason (typically there is
+        no one listening on this channel, this command is rejected).
+   Examples
+    - "1309JHI,MY_CHANNEL,MSG,MY_MSG_TYPE"
+    - "1309JHI,MY_CHANNEL,CMD,MY_COMMAND_TYPE,0x2888AB89"
+    - "1309JHI,MY_CHANNEL,CMDRESP,MY_RESPONSE_TYPE,0x2888AB89,OK"
+
+    Implementation notes:
+     1. Check message starts with <magic>+','. Reject (with trace msg) otherwise.
+     2. Reject with trace if it contains whitespace.
+     3. Split on ','. No need to trim as there are is no white space.
+     4. Use hard-coded offsets based on the spec.
+     
+
+# Feb 12B, 2018 Design Note- RobotComm Reseive/Receive Command/Send/Channel Semantics
+- Decided to consolidate all into a Channel, so got rid of "Server" as a distinct type. This was goinng
+  back to an earlier design. Main reason is the realization that a channel need not be bound to
+  a remote node - it can be optionally bound to a remote node. This gives the flexibility of putting
+  the client in charge of what it wants and also not having to have to juggle different kinds of objects
+  when communicating with a single remote destination - which is the common case (e.g. main processor
+  communicating with a secondary processor.)
+- As part of the above consolidation, got rid of the concept of Mode (READONLY/WRITEONLY/READWRITE)
+  specified when constructing a Channel. Now receiving commands and messages can be enabled on the
+  fly.
+- As part of the above consolidation, only one channel may be created with a given name. This means that
+if a sender wishes to send to multiple endpoints on the same channel, only one Channel should be 
+created and the channel should not be bound to any endpoint.
+ I (JMJ) considered multiple receivers - each will get a copy of
+  any received message, and command instances have unique sequence numbers so command responses can be   
+  delivered to the receiver that submitted the command. HOWEVER, managing this would add complexity and  
+   there is no anticipated need for multiple listeners on the same channel.
+- If a channel is bound to a remote endpoint, no communication is accepted (commands and messages
+  received) from any other node, even when addressed to this channel. Sending to another address is
+  still allowed, however (send has two overridden methods, one specifying an address).
+
+# Feb 12C, 2018 Design Note- RobotComm Adding MessgeType to messages
+-  Decided to add a string message type to client-supplied messages. This type will be available in
+   received messages, commands and responses. This is a convenience to allow the clients to
+   hand-off parsing of messages and responses without looking into the message, and without needing
+   to come up with their own way to add the type to the message.
+
+# Feb 12D, 2018 Design Note - RobotComm protocol for clearing old message state
+- Command receiver needs to keep old command responses around because it never knows when the
+  comamnd responses have been received by the original sender. So there needs to be a protocol to
+  clean these out. Simplest is time-based but that can cause unreasonable growing of these stale
+  messages in high-throughput situations, and is not the most responsive.
+- Decided that sender will keep track of all command-IDs for which it has received completion
+  notification (these will include ones for which it has no record off - because it has moved on).
+ - Periodically the sender will send a special bulk-message with these command-IDs. The server will
+   receive these and clean out it's old messages. 
+ - Periodically the server will send out responses to old pending completed commands. A client that
+   receive these will bank the commandIDs as previously mentioned. So eventually these old entries will
+   be deleted. 
+ - Dealing with a client closing a channel and/or closing a RobotComm instance.  When exiting,
+  the client can send a special exit message that lists all the clients it is exiting so that the server
+   can wipe out old state to do with these channels. Care must be taken to know when to ignore these
+    - a new session message sent out of order
+   with an older exiting-channel should cause mayhem!
+
+# Feb 8, 2018 Design Note - ConfigurationHelper and StringmapHelper
 Design goals:
 - As with rest of robotutils, do not pull in an external dependency, use standard Java apis.
 - If possible base the file format on an existing standard that is not too cumbersome. 
