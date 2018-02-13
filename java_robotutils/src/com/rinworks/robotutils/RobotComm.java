@@ -3,14 +3,27 @@
 package com.rinworks.robotutils;
 
 import java.io.Closeable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+
+import com.rinworks.robotutils.RobotComm.DatagramTransport.RemoteNode;
 
 /**
  * Class to implement simple 2-way message passing over UDP
  *
  */
 public class RobotComm {
+    private static final String PROTOCOL_SIGNATURE = "3wIC"; // About 1 of 10E7 combnations.
+    private final DatagramTransport transport;
+    private final StructuredLogger.Log log;
+    private final AtomicLong nextMsgId;
+    private final ConcurrentHashMap<String, ChannelImplementation> channels;
+    private final Object listenLock;
+
+    private volatile DatagramTransport.Listener listener;
 
     interface Address {
         String stringRepresentation();
@@ -46,37 +59,47 @@ public class RobotComm {
     public interface ReceivedMessage {
         String message();
 
+        String msgType();
+
+        Address remoteAddress();
+
         long receivedTimestamp(); // when it was received.
 
         Channel channel();
     }
 
-    interface ReceivedCommand {
-        Server  server();
-        Address fromAddress();
-
-        String command();
-
-        long receivedTimestamp();
+    interface ReceivedCommand extends ReceivedMessage {
 
         void respond(String msg);
     }
 
     public interface Channel extends Closeable {
 
-        enum Mode {
-            MODE_SENDONLY, MODE_RECEIVEONLY, MODE_SENDRECEIVE
-        };
-
         String name();
 
-        Mode mode();
+        void startReceivingMessages();
 
-        Address remoteAddress();
+        void stopReceivingMessages(); // will drop incoming messages in queue
+
+        void startReceivingCommands();
+
+        void stopReceivingCommands(); // will drop incoming commands in queue
+
+        // This channel will only communicate with the specified remote node,
+        // including received messages and commands.
+        // Can be changed on the fly. Set to null to clear.
+        void bindToRemoteNode(Address remoteAddress);
+
+        Address remoteAddress(); // Can be null
 
         ReceivedMessage pollReceivedMessage();
 
-        void sendMessage(String message);
+        ReceivedCommand pollReceivedCommand();
+
+        // Will drop message if not bound to a remote node.
+        void sendMessage(String msgType, String message);
+
+        void sendMessage(String msgType, String message, Address addr);
 
         SentCommand sendCommand(String command);
 
@@ -85,23 +108,14 @@ public class RobotComm {
         void close();
     }
 
-    public interface Server extends Closeable {
-
-        String name();
-
-        ReceivedCommand pollReceivedCommand();
-
-        void close();
-    }
-
-
     public interface DatagramTransport extends Closeable {
 
         interface RemoteNode {
             Address remoteAddress();
+
             void send(String msg);
         }
-        
+
         interface Listener extends Closeable {
 
             /**
@@ -121,8 +135,7 @@ public class RobotComm {
 
             void close(); // idempotent. handler MAY get called after close() returns.
         }
- 
-        
+
         Address resolveAddress(String address);
 
         Listener newListener(Address localAddress);
@@ -133,15 +146,398 @@ public class RobotComm {
     }
 
     public RobotComm(DatagramTransport transport, StructuredLogger.Log log) {
-
+        this.transport = transport;
+        this.log = log;
+        this.listenLock = new Object();
+        this.nextMsgId = new AtomicLong(System.currentTimeMillis());
+        this.channels = new ConcurrentHashMap<>();
     }
-    
+
     public Address resolveAddress(String address) {
-        return null;
+        return this.transport.resolveAddress(address);
     }
 
-    public Channel createChannel(String channelName, Address remoteAddress, Channel.Mode mode) {
-        return null;
+    /*
+     * Channels must be unique. An attempt to create a channel that already exists
+     * produces a DuplicateKey exception
+     */
+    public Channel createChannel(String channelName) {
+        final String BAD_CHANNEL_CHARS = ", \t\f\r\n";
+        if (containsChars(channelName, BAD_CHANNEL_CHARS)) {
+            throw new IllegalArgumentException("channel name has invalid characters: " + channelName);
+        }
+        ChannelImplementation ch = this.channels.get(channelName);
+        if (ch != null) {
+            throw new UnsupportedOperationException("Channel with name " + channelName + " exists");
+        } else {
+            ch = new ChannelImplementation(channelName);
+            ChannelImplementation prevCh = this.channels.put(channelName, ch);
+            if (prevCh != null) {
+                ch = prevCh;
+            }
+        }
+        return ch;
+    }
+
+    public void startListening() {
+        DatagramTransport.Listener listener = null;
+        synchronized (listenLock) {
+            if (this.listener == null) {
+                listener = this.transport.newListener(null);
+                this.listener = listener;
+            }
+        }
+
+        if (listener != null) {
+            log.info("STARTED LISTENING");
+
+            listener.listen((String msg, DatagramTransport.RemoteNode rn) -> {
+                Address remoteAddr = rn.remoteAddress();
+                if (!msg.startsWith(PROTOCOL_SIGNATURE)) {
+                    log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Incorrect protocol signature.");
+                    return; // EARLY RETURN
+                }
+                int headerLength = msg.indexOf("\n");
+                String headerStr = "";
+                if (headerLength < 0) {
+                    log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header.");
+                    return; // EARLY RETURN
+                }
+                headerStr = msg.substring(0, headerLength);
+
+                MessageHeader header = MessageHeader.parse(headerStr, remoteAddr, log);
+                ChannelImplementation ch = channels.get(header.channel);
+                if (ch == null) {
+                    handleMsgToUnknownChannel(header);
+                } else {
+                    String msgBody = msg.substring(headerLength + 1);
+                    if (header.dgType == MessageHeader.DgType.DG_MSG) {
+                        ch.handleReceivedMessage(header, msgBody, remoteAddr);
+                    } else {
+                        // TODO: implement other types of messages
+                        assert false; // we have already validated the message, so shouldn't get here.
+                    }
+                }
+            });
+        }
+    }
+
+    private void handleMsgToUnknownChannel(MessageHeader header) {
+        // TODO Auto-generated method stub
+
+    }
+
+    static class MessageHeader {
+        enum DgType {
+            DG_MSG,
+            // DG_CMD,
+            // DG_CMDRESP,
+            // DG_CMDRESPACK
+        };
+
+        final static String STR_DG_MSG = "MSG";
+        final static String STR_DG_CMD = "CMD";
+        final static String STR_CMDRESP = "CMDRESP";
+        final static String STR_CMDRESPACK = "CMDRESPACK";
+
+        final static int INDEX_PROTO = 0;
+        final static int INDEX_DG_TYPE = 1;
+        final static int INDEX_CHANNEL = 2;
+        final static int INDEX_MSG_TYPE = 3;
+        final static int INDEX_CMDID = 4;
+        final static int INDEX_CMDSTATUS = 5;
+
+        final DgType dgType;
+        final String channel;
+        final String msgType;
+        final long cmdId;
+
+        enum CmdStatus {
+            STATUS_OK, STATUS_PENDING, STATUS_COMPLETED, STATUS_REJECTED, STATUS_NOVALUE // Don't use
+        };
+
+        final CmdStatus status;
+
+        private MessageHeader(DgType dgType, String channel, String msgType, long cmdId, CmdStatus status) {
+            this.dgType = dgType;
+            this.channel = channel;
+            this.msgType = msgType;
+            this.cmdId = cmdId;
+            this.status = status;
+        }
+
+        static MessageHeader parse(String headerStr, Address remoteAddr, StructuredLogger.Log log) {
+            final String BAD_HEADER_CHARS = ", \t\f\n\r";
+
+            if (containsChars(headerStr, BAD_HEADER_CHARS)) {
+                log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Header contains invalid chars");
+                return null; // ************ EARLY RETURN
+            }
+            String[] header = headerStr.split(",");
+            if (header.length < 4) {
+                log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header");
+                return null; // ************ EARLY RETURN
+            }
+
+            // This fact should have been checked before calling us
+            assert header[INDEX_PROTO].equals(PROTOCOL_SIGNATURE);
+
+            String dgTypeStr = header[INDEX_DG_TYPE];
+            DgType dgType;
+            if (dgTypeStr.equals(STR_DG_MSG)) {
+                dgType = DgType.DG_MSG;
+            } else {
+                log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header");
+                return null; // ************ EARLY RETURN
+            }
+
+            String channel = header[INDEX_CHANNEL];
+            if (channel.length() == 0) {
+                log.trace("WARN_DROPPING_RECEIVED_MESSGAGE", "Missing channel name");
+                return null; // ************ EARLY RETURN
+            }
+
+            String msgType = header[INDEX_MSG_TYPE];
+            // We do not do special error checking on user msgType...
+
+            // TODO finish other types of messages.
+            return new MessageHeader(dgType, channel, msgType, 0, CmdStatus.STATUS_NOVALUE);
+        }
+
+        public String serialize() {
+            String dgTypeStr = dgTypeToString();
+            String cmdIdStr = cmdIdToString();
+            String statusStr = statusToString();
+            return String.join(",", PROTOCOL_SIGNATURE, dgTypeStr, this.channel, this.msgType, cmdIdStr, statusStr);
+        }
+
+        private String statusToString() {
+            // TODO Implement this
+            return "";
+        }
+
+        private String cmdIdToString() {
+            // TODO - implement - write a HEX value
+            return "";
+        }
+
+        private String dgTypeToString() {
+            if (this.dgType == DgType.DG_MSG) {
+                return STR_DG_MSG;
+            } else {
+                // TODO - finish other types
+                return "";
+            }
+        }
+    }
+
+    public void stopListening() {
+        DatagramTransport.Listener listener = null;
+        synchronized (listenLock) {
+            if (this.listener != null) {
+                listener = this.listener;
+                this.listener = null;
+            }
+        }
+        log.info("STOPPED LISTENING");
+        if (listener != null) {
+            listener.close();
+        }
+    }
+
+    private class ChannelImplementation implements Channel {
+        private final String name;
+        private DatagramTransport.RemoteNode remoteNode;
+
+        // Receiving messages
+        private final ConcurrentLinkedQueue<ReceivedMessage> pendingRecvMessages;
+
+        // Sending of commands
+        private final ConcurrentHashMap<Long, SentCommand> pendingSentCommands;
+
+        // Receiving of commands
+        private final ConcurrentHashMap<Long, ReceivedCommand> recvCommandsMap;
+        private final ConcurrentLinkedQueue<ReceivedCommand> pendingRecvCommands;
+        private final ConcurrentLinkedQueue<ReceivedCommand> workingRecvCommands;
+        private final ConcurrentLinkedQueue<ReceivedCommand> completedRecvCommands;
+
+        // Should be ...
+        // 0 (not receiving anything)
+        // >0 receiving one or more things = messages, commends or command-responses.
+        final Object receiverLock;
+        DatagramTransport.Listener listener;
+        private boolean receiveMessages;
+
+        private class ReceivedMessageImplementation implements ReceivedMessage {
+            private final String msg;
+            private final String msgType;
+            private final Address remoteAddress;
+            private long recvdTimeStamp;
+            private final Channel ch;
+
+            ReceivedMessageImplementation(String msg, String msgType, Address remoteAddress, Channel ch) {
+                this.msg = msg;
+                this.msgType = msgType;
+                this.remoteAddress = remoteAddress;
+                this.recvdTimeStamp = System.currentTimeMillis();
+                this.ch = ch;
+            }
+
+            @Override
+            public String message() {
+                return this.msg;
+            }
+
+            @Override
+            public String msgType() {
+                return this.msgType;
+            }
+
+            @Override
+            public Address remoteAddress() {
+                return this.remoteAddress;
+            }
+
+            @Override
+            public long receivedTimestamp() {
+                return recvdTimeStamp;
+            }
+
+            @Override
+            public Channel channel() {
+                return ch;
+            }
+
+        }
+
+        public ChannelImplementation(String channelName) {
+            this.name = channelName;
+            this.remoteNode = null;
+
+            // For receiving messages
+            this.pendingRecvMessages = new ConcurrentLinkedQueue<>();
+
+            // For sending commands
+            this.pendingSentCommands = new ConcurrentHashMap<>();
+
+            // For receiving commands
+            this.pendingRecvCommands = new ConcurrentLinkedQueue<>();
+            this.workingRecvCommands = new ConcurrentLinkedQueue<>();
+            this.completedRecvCommands = new ConcurrentLinkedQueue<>();
+            this.recvCommandsMap = new ConcurrentHashMap<>();
+
+            this.receiverLock = new Object();
+
+        }//
+
+        public void handleReceivedMessage(MessageHeader header, String msgBody, Address remoteAddr) {
+            if (this.receiveMessages) {
+                ReceivedMessage rm = new ReceivedMessageImplementation(msgBody, header.msgType, remoteAddr, this);
+                this.pendingRecvMessages.add(rm);
+            }
+
+        }
+
+        @Override
+        public String name() {
+            return this.name;
+        }
+
+        @Override
+        public Address remoteAddress() {
+            DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
+            return rn == null ? null : rn.remoteAddress();
+        }
+
+        @Override
+        public ReceivedMessage pollReceivedMessage() {
+            return pendingRecvMessages.poll();
+        }
+
+        // - "1309JHI,MY_CHANNEL,MSG,MY_MSG_TYPE"
+        // - "1309JHI,MY_CHANNEL,CMD,MY_COMMAND_TYPE,0x2888AB89"
+        // - "1309JHI,MY_CHANNEL,CMDRESP,MY_RESPONSE_TYPE,0x2888AB89,OK"
+
+        @Override
+        public void sendMessage(String msgType, String message) {
+            DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
+            final String BAD_MSGTYPE_CHARS = ", \t\f\n\r";
+
+            if (rn == null) {
+                log.trace("DISCARDING_SEND_MESSAGE", "No default send node");
+            } else if (containsChars(msgType, BAD_MSGTYPE_CHARS)) {
+                log.trace("DISCARDING_SEND_MESSAGE", "Message type has invalid chars: " + msgType);
+            } else {
+                MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_MSG, name, msgType, 0,
+                        MessageHeader.CmdStatus.STATUS_NOVALUE);
+                rn.send(hdr.serialize());
+            }
+
+        }
+
+        @Override
+        public SentCommand sendCommand(String command) {
+            // TODO Auto-generated method stub
+            return null;
+        }
+
+        @Override
+        public PeriodicSender periodicSend(int period, Supplier<String> messageSource) {
+            // TODO Auto-generated method stub
+            return null;
+        }
+
+        @Override
+        public void close() {
+            // TODO: If necessary remote nodes of channel closing.
+
+        }
+
+        @Override
+        public void startReceivingMessages() {
+            this.receiveMessages = true;
+        }
+
+        @Override
+        public void stopReceivingMessages() {
+            // TODO Auto-generated method stub
+            this.receiveMessages = false;
+
+        }
+
+        @Override
+        public void startReceivingCommands() {
+            // TODO Auto-generated method stub
+
+        }
+
+        @Override
+        public void stopReceivingCommands() {
+            // TODO Auto-generated method stub
+
+        }
+
+        @Override
+        public void bindToRemoteNode(Address remoteAddress) {
+            DatagramTransport.RemoteNode node = transport.newRemoteNode(remoteAddress());
+            this.remoteNode = node; // Could override an existing one. That's ok
+        }
+
+        @Override
+        public ReceivedCommand pollReceivedCommand() {
+            ReceivedCommand rCmd = pendingRecvCommands.poll();
+            if (rCmd != null) {
+                this.workingRecvCommands.add(rCmd);
+            }
+            return rCmd;
+        }
+
+        @Override
+        public void sendMessage(String msgType, String message, Address addr) {
+            // TODO Auto-generated method stub
+
+        }
+
     }
 
     /**
@@ -157,17 +553,15 @@ public class RobotComm {
         return null;
     }
 
-    /**
-     * Creates a local UDP port - for listening
-     * 
-     * @param nameOrAddress
-     *            - either a name to be resolved or an dotted IP address
-     * @param port
-     *            - port number (0-65535)
-     * @return local port object
-     */
-    public static Address makeUDPListnerAddress(String nameOrAddress, int port) {
-        return null;
+    private static boolean containsChars(String str, String chars) {
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            if (chars.indexOf(c) >= 0) {
+                return true;
+            }
+
+        }
+        return false;
     }
 
 }

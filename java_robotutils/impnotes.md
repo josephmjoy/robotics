@@ -48,7 +48,7 @@ These are informal notes and TODO lists for the project.
      
 
 # Feb 12B, 2018 Design Note- RobotComm Reseive/Receive Command/Send/Channel Semantics
-- Decided to consolidate all into a Channel, so got rid of "Server" as a distinct type. This was goinng
+- Decided to consolidate all into a Channel, so got rid of "Server" as a distinct type. This was going
   back to an earlier design. Main reason is the realization that a channel need not be bound to
   a remote node - it can be optionally bound to a remote node. This gives the flexibility of putting
   the client in charge of what it wants and also not having to have to juggle different kinds of objects
@@ -79,7 +79,11 @@ created and the channel should not be bound to any endpoint.
   comamnd responses have been received by the original sender. So there needs to be a protocol to
   clean these out. Simplest is time-based but that can cause unreasonable growing of these stale
   messages in high-throughput situations, and is not the most responsive.
-- Decided that sender will keep track of all command-IDs for which it has received completion
+- If sender gets a CMDRESP message it does not identify, it immediately responds with an CMDRESP_ACK
+  messagae.
+  
+## OBSOLETE - all of these considerations vanish sender immediately sends a RECV_MSG_ACK message.
+ Decided that sender will keep track of all command-IDs for which it has received completion
   notification (these will include ones for which it has no record off - because it has moved on).
  - Periodically the sender will send a special bulk-message with these command-IDs. The server will
    receive these and clean out it's old messages. 

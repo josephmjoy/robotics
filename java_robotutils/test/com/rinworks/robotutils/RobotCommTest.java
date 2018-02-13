@@ -38,36 +38,7 @@ class RobotCommTest {
             return new MyAddress(address);
         }
 
-        private class MyReceivedMessage implements RobotComm.ReceivedMessage {
-            final String msg;
-            final long ts;
-            final Channel c;
-            
-            MyReceivedMessage(String msg, Channel c) {
-                this.msg = msg;
-                this.c = c;
-                this.ts = System.currentTimeMillis();
-            }
-
-            @Override
-            public String message() {
-                // TODO Auto-generated method stub
-                return msg;
-            }
-
-            @Override
-            public long receivedTimestamp() {
-                // TODO Auto-generated method stub
-                return ts;
-            }
-
-            @Override
-            public Channel channel() {
-                // TODO Auto-generated method stub
-                return c;
-            }
-            
-        }
+        
         private class MyListener implements Listener {
 
             final private Address addr;
@@ -160,12 +131,14 @@ class RobotCommTest {
         StructuredLogger baseLogger = initStructuredLogger();
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
         RobotComm.Address addr = rc.resolveAddress("localhost");
-        RobotComm.Channel ch = rc.createChannel("testChannel", addr, RobotComm.Channel.Mode.MODE_SENDRECEIVE);
+        RobotComm.Channel ch = rc.createChannel("testChannel");
+        rc.startListening();
         String testMessage = "test message";
-        ch.sendMessage(testMessage);
+        ch.sendMessage("MYTYPE", testMessage, addr);
         RobotComm.ReceivedMessage rm = ch.pollReceivedMessage();
         assertTrue(rm != null);
         assertEquals(testMessage, rm.message());
+        rc.stopListening();
     }
     
     StructuredLogger initStructuredLogger() {
