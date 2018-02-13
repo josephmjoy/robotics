@@ -12,13 +12,14 @@ import org.junit.jupiter.api.Test;
 
 import com.rinworks.robotutils.RobotComm.Address;
 import com.rinworks.robotutils.RobotComm.Channel;
+import com.rinworks.robotutils.RobotComm.SentCommand;
 
 class RobotCommTest {
-    
+
     class TestTransport implements RobotComm.DatagramTransport {
         MyRemoteNode loopbackNode = new MyRemoteNode(new MyAddress("loopback"));
         ConcurrentLinkedQueue<String> recvQueue = new ConcurrentLinkedQueue<>();
-        
+
         class MyAddress implements Address {
             final String addr;
 
@@ -38,7 +39,6 @@ class RobotCommTest {
             return new MyAddress(address);
         }
 
-        
         private class MyListener implements Listener {
 
             final private Address addr;
@@ -68,7 +68,7 @@ class RobotCommTest {
                             } else {
                                 Thread.yield();
                             }
-                        }   
+                        }
                         System.out.println("Test listner: ...quitting.");
                     }
                 });
@@ -130,15 +130,17 @@ class RobotCommTest {
     }
 
     @Test
-    void testBasicSendReceieveTest() throws InterruptedException {
+    void testBasicSendReceieveMessageTest() throws InterruptedException {
         RobotComm.DatagramTransport transport = new TestTransport();
         StructuredLogger baseLogger = initStructuredLogger();
         baseLogger.beginLogging();
+
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
         RobotComm.Address addr = rc.resolveAddress("localhost");
         RobotComm.Channel ch = rc.createChannel("testChannel");
         ch.bindToRemoteNode(addr);
         rc.startListening();
+
         String testMessage = "test message";
         ch.startReceivingMessages();
         ch.sendMessage("MYTYPE", testMessage);
@@ -147,7 +149,9 @@ class RobotCommTest {
         while (rm == null) {
             rm = ch.pollReceivedMessage();
             Thread.sleep(0);
-        };
+        }
+        ;
+
         ch.stopReceivingMessages();
         rc.stopListening();
         baseLogger.endLogging();
@@ -155,7 +159,55 @@ class RobotCommTest {
         assertEquals(testMessage, rm.message());
 
     }
-    
+
+    @Test
+    void testBasicSendReceieveCommandTest() throws InterruptedException {
+        RobotComm.DatagramTransport transport = new TestTransport();
+        StructuredLogger baseLogger = initStructuredLogger();
+        baseLogger.beginLogging();
+
+        RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
+        RobotComm.Address addr = rc.resolveAddress("localhost");
+        RobotComm.Channel ch = rc.createChannel("testChannel");
+        ch.bindToRemoteNode(addr);
+        rc.startListening();
+
+        final String TEST_COMMAND = "CMD1";
+        final String TEST_CMDTYPE  = "CMDTYPE";
+        final String TEST_RESP = "RESP1";
+        final String TEST_RESPTYPE = "RESPTYPE";
+        ch.startReceivingMessages();
+        RobotComm.SentCommand cmd = ch.sendCommand(TEST_CMDTYPE, TEST_COMMAND);
+        baseLogger.flush();
+        assertEquals(TEST_CMDTYPE, cmd.cmdType());
+        assertEquals(TEST_COMMAND, cmd.command());
+
+        
+        RobotComm.ReceivedCommand rcom = null;
+        while (rcom == null) {
+            rcom = ch.pollReceivedCommand();           
+            Thread.sleep(0);
+        }
+        // Got a commend, let's process it and turn a response.
+        assertEquals(TEST_CMDTYPE, rcom.msgType());
+        assertEquals(TEST_COMMAND, rcom.message());
+        rcom.respond(TEST_RESPTYPE, TEST_RESP);
+        ;
+
+        // Let's wait for the commend to be completed.
+        while (cmd.status() != SentCommand.COMMAND_STATUS.STATUS_COMPLETED) {
+            Thread.sleep(0);
+        }
+        assertEquals(TEST_RESPTYPE, cmd.respType());
+        assertEquals(TEST_RESP, cmd.response());
+ 
+
+        ch.stopReceivingMessages();
+        rc.stopListening();
+        baseLogger.endLogging();
+
+    }
+
     StructuredLogger initStructuredLogger() {
         File logfile = new File("C:\\Users\\jmj\\Documents\\robotics\\temp\\log.txt");
         StructuredLogger.RawLogger rl = StructuredLogger.createFileRawLogger(logfile, 10000, null);

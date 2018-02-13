@@ -47,11 +47,22 @@ public class RobotComm {
     interface SentCommand {
         enum COMMAND_STATUS {
             STATUS_PENDING, STATUS_COMPLETED, STATUS_ERROR_TIMEOUT, STATUS_ERROR_COMM, STATUS_CANCELED
-        };
+        }
 
-        String pollResponse();
+        
+        // These are set when the command is submitted.
+        String cmdType();
+        String command();
+        long submittedTime();
 
+        // Status can be checked anytime.
         COMMAND_STATUS status();
+
+        // These three fields only return valid values if the status
+        // is STATUS_COMPLETED
+        String respType();
+        String response();
+        long respondedTime();
 
         void cancel();
     }
@@ -70,7 +81,7 @@ public class RobotComm {
 
     interface ReceivedCommand extends ReceivedMessage {
 
-        void respond(String msg);
+        void respond(String respType, String resp);
     }
 
     public interface Channel extends Closeable {
@@ -101,9 +112,9 @@ public class RobotComm {
 
         void sendMessage(String msgType, String message, Address addr);
 
-        SentCommand sendCommand(String command);
+        SentCommand sendCommand(String cmdType, String command);
 
-        PeriodicSender periodicSend(int period, Supplier<String> messageSource);
+        PeriodicSender periodicSend(int period, String msgType, Supplier<String> messageSource);
 
         void close();
     }
@@ -480,13 +491,13 @@ public class RobotComm {
         }
 
         @Override
-        public SentCommand sendCommand(String command) {
+        public SentCommand sendCommand(String cmdType, String command) {
             // TODO Auto-generated method stub
             return null;
         }
 
         @Override
-        public PeriodicSender periodicSend(int period, Supplier<String> messageSource) {
+        public PeriodicSender periodicSend(int period, String msgType, Supplier<String> messageSource) {
             // TODO Auto-generated method stub
             return null;
         }
