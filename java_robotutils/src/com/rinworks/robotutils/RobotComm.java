@@ -238,8 +238,13 @@ public class RobotComm implements Closeable {
                     String msgBody = msg.substring(headerLength + 1);
                     if (header.dgType == MessageHeader.DgType.DG_MSG) {
                         ch.handleReceivedMessage(header, msgBody, remoteAddr);
+                    } else if (header.dgType == MessageHeader.DgType.DG_CMD) {
+                        ch.handleReceivedCommand(header, msgBody, remoteAddr);
+                    } else if (header.dgType == MessageHeader.DgType.DG_CMDRESP) {
+                        ch.handleReceivedCommandResponse(header, msgBody, remoteAddr);
+                    } else if (header.dgType == MessageHeader.DgType.DG_CMDRESPACK) {
+                        ch.handleReceivedCommandResponseAck(header, msgBody, remoteAddr);
                     } else {
-                        // TODO: implement other types of messages
                         assert false; // we have already validated the message, so shouldn't get here.
                     }
                 }
@@ -248,16 +253,16 @@ public class RobotComm implements Closeable {
     }
 
     public void stopListening() {
-        DatagramTransport.Listener listener = null;
+        DatagramTransport.Listener li = null;
         synchronized (listenLock) {
             if (this.listener != null) {
-                listener = this.listener;
+                li = this.listener;
                 this.listener = null;
             }
         }
         log.info("STOPPED LISTENING");
-        if (listener != null) {
-            listener.close();
+        if (li != null) {
+            li.close();
         }
     }
 
@@ -286,16 +291,17 @@ public class RobotComm implements Closeable {
 
     static class MessageHeader {
         enum DgType {
-            DG_MSG,
-            // DG_CMD,
-            // DG_CMDRESP,
-            // DG_CMDRESPACK
+            DG_MSG, DG_CMD, DG_CMDRESP, DG_CMDRESPACK
         };
 
         final static String STR_DG_MSG = "MSG";
         final static String STR_DG_CMD = "CMD";
-        final static String STR_CMDRESP = "CMDRESP";
-        final static String STR_CMDRESPACK = "CMDRESPACK";
+        final static String STR_DG_CMDRESP = "CMDRESP";
+        final static String STR_DG_CMDRESPACK = "CMDRESPACK";
+
+        final static String STR_STATUS_PENDING = "PENDING";
+        final static String STR_STATUS_COMPLETED = "COMPLETED";
+        final static String STR_STATUS_REJECTED = "REJECTED";
 
         final static int INDEX_PROTO = 0;
         final static int INDEX_DG_TYPE = 1;
@@ -310,7 +316,7 @@ public class RobotComm implements Closeable {
         final long cmdId;
 
         enum CmdStatus {
-            STATUS_OK, STATUS_PENDING, STATUS_COMPLETED, STATUS_REJECTED, STATUS_NOVALUE // Don't use
+            STATUS_PENDING, STATUS_COMPLETED, STATUS_REJECTED, STATUS_NOVALUE // Don't use
         };
 
         final CmdStatus status;
@@ -322,6 +328,11 @@ public class RobotComm implements Closeable {
             this.cmdId = cmdId;
             this.status = status;
         }
+
+        // Examples
+        // - "1309JHI,MY_CHANNEL,MSG,MY_MSG_TYPE"
+        // - "1309JHI,MY_CHANNEL,CMD,MY_COMMAND_TYPE,2888AB89"
+        // - "1309JHI,MY_CHANNEL,CMDRESP,MY_RESPONSE_TYPE,2888AB89,OK"
 
         static MessageHeader parse(String headerStr, Address remoteAddr, StructuredLogger.Log log) {
             final String BAD_HEADER_CHARS = " \t\f\n\r";
@@ -341,10 +352,22 @@ public class RobotComm implements Closeable {
 
             String dgTypeStr = header[INDEX_DG_TYPE];
             DgType dgType;
+            boolean getCmdId = false;
+            boolean getStatus = false;
             if (dgTypeStr.equals(STR_DG_MSG)) {
                 dgType = DgType.DG_MSG;
+            } else if (dgTypeStr.equals(STR_DG_CMD)) {
+                dgType = DgType.DG_CMD;
+                getCmdId = true;
+            } else if (dgTypeStr.equals(STR_DG_CMDRESP)) {
+                dgType = DgType.DG_CMDRESP;
+                getCmdId = true;
+                getStatus = true;
+            } else if (dgTypeStr.equals(STR_DG_CMDRESPACK)) {
+                getCmdId = true;
+                dgType = DgType.DG_CMDRESPACK;
             } else {
-                log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header");
+                log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header - unknown DG type");
                 return null; // ************ EARLY RETURN
             }
 
@@ -356,9 +379,40 @@ public class RobotComm implements Closeable {
 
             String msgType = header[INDEX_MSG_TYPE];
             // We do not do special error checking on user msgType...
+            long cmdId = 0;
+            if (getCmdId) {
+                if (header.length <= INDEX_CMDID) {
+                    log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header - missing cmd ID");
+                    return null; // ************ EARLY RETURN
+                }
+                try {
+                    cmdId = Long.parseLong(header[INDEX_CMDID], 16); // Hex
+                } catch (NumberFormatException e) {
+                    log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header - invalid cmd ID");
+                    return null; // ************ EARLY RETURN
+                }
+            }
 
-            // TODO finish other types of messages.
-            return new MessageHeader(dgType, channel, msgType, 0, CmdStatus.STATUS_NOVALUE);
+            CmdStatus status = CmdStatus.STATUS_NOVALUE;
+            if (getStatus) {
+                if (header.length <= INDEX_CMDSTATUS) {
+                    log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header - missing cmd status");
+                    return null; // ************ EARLY RETURN
+                }
+                String statusStr = header[INDEX_CMDSTATUS];
+                if (statusStr.equals(STR_STATUS_PENDING)) {
+                    status = CmdStatus.STATUS_PENDING;
+                } else if (statusStr.equals(STR_STATUS_COMPLETED)) {
+                    status = CmdStatus.STATUS_COMPLETED;
+                } else if (statusStr.equals(STR_STATUS_REJECTED)) {
+                    status = CmdStatus.STATUS_REJECTED;
+                } else {
+                    log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header - unknown status");
+                    return null; // ************ EARLY RETURN
+                }
+            }
+
+            return new MessageHeader(dgType, channel, msgType, cmdId, status);
         }
 
         public String serialize(String additionalText) {
@@ -369,21 +423,36 @@ public class RobotComm implements Closeable {
         }
 
         private String statusToString() {
-            // TODO Implement this
-            return "";
+            if (this.status == CmdStatus.STATUS_PENDING) {
+                return STR_STATUS_PENDING;
+            } else if (this.status == CmdStatus.STATUS_COMPLETED) {
+                return STR_STATUS_COMPLETED;
+            } else if (this.status == CmdStatus.STATUS_REJECTED) {
+                return STR_STATUS_REJECTED;
+            } else if (this.status == CmdStatus.STATUS_NOVALUE) {
+                return "";
+            } else {
+                assert false;
+                return "UNKNOWN";
+            }
         }
 
         private String cmdIdToString() {
-            // TODO - implement - write a HEX value
-            return "";
+            return Long.toHexString(cmdId);
         }
 
         private String dgTypeToString() {
             if (this.dgType == DgType.DG_MSG) {
                 return STR_DG_MSG;
+            } else if (this.dgType == DgType.DG_CMD) {
+                return STR_DG_CMD;
+            } else if (this.dgType == DgType.DG_CMDRESP) {
+                return STR_DG_CMDRESP;
+            } else if (this.dgType == DgType.DG_CMDRESPACK) {
+                return STR_DG_CMDRESPACK;
             } else {
-                // TODO - finish other types
-                return "";
+                assert false;
+                return "UNKNOWN";
             }
         }
     }
@@ -473,6 +542,25 @@ public class RobotComm implements Closeable {
 
         }//
 
+
+        // Server gets this
+        public void handleReceivedCommand(MessageHeader header, String msgBody, Address remoteAddr) {
+            // TODO Auto-generated method stub
+            
+        }
+        
+        // Client gets this
+        public void handleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
+            // TODO Auto-generated method stub
+            
+        }
+        
+        // Server gets this
+        public void handleReceivedCommandResponseAck(MessageHeader header, String msgBody, Address remoteAddr) {
+            // TODO Auto-generated method stub
+            
+        }
+
         public void handleReceivedMessage(MessageHeader header, String msgBody, Address remoteAddr) {
             if (this.receiveMessages) {
                 ReceivedMessage rm = new ReceivedMessageImplementation(header.msgType, msgBody, remoteAddr, this);
@@ -496,10 +584,6 @@ public class RobotComm implements Closeable {
         public ReceivedMessage pollReceivedMessage() {
             return pendingRecvMessages.poll();
         }
-
-        // - "1309JHI,MY_CHANNEL,MSG,MY_MSG_TYPE"
-        // - "1309JHI,MY_CHANNEL,CMD,MY_COMMAND_TYPE,0x2888AB89"
-        // - "1309JHI,MY_CHANNEL,CMDRESP,MY_RESPONSE_TYPE,0x2888AB89,OK"
 
         @Override
         public void sendMessage(String msgType, String message) {
