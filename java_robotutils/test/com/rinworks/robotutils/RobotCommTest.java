@@ -76,13 +76,11 @@ class RobotCommTest {
 
             @Override
             public Address getAddress() {
-                // TODO Auto-generated method stub
                 return this.addr;
             }
 
             @Override
             public void close() {
-                // TODO Auto-generated method stub
                 this.closed = true;
                 this.clientRecv = null;
             }

@@ -272,6 +272,8 @@ public class RobotComm implements Closeable {
         }
         // Channels should pull themselves off the list as they  close...
         assert channels.size() == 0;
+        
+        transport.close();
     }
 
     private void handleMsgToUnknownChannel(MessageHeader header) {
