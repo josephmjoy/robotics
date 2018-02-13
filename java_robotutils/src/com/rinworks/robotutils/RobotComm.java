@@ -9,17 +9,21 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
-import com.rinworks.robotutils.RobotComm.DatagramTransport.RemoteNode;
-
 /**
  * Class to implement simple 2-way message passing over UDP
  *
  */
-public class RobotComm {
+public class RobotComm implements Closeable {
     private static final String PROTOCOL_SIGNATURE = "3wIC"; // About 1 of 10E7 combnations.
     private final DatagramTransport transport;
     private final StructuredLogger.Log log;
-    private final AtomicLong nextMsgId;
+    private boolean commClosed; // set to false when close() is called.
+    // This lives here  and NOT in a channel so id's can never repeat once
+    // an instance of RobotComm has been created. If it were kept in
+    // a channel, then if a channel is later created with the same name
+    // it's command IDs could overlap with previous incarnations.
+    private final AtomicLong nextCmdId;
+    
     private final ConcurrentHashMap<String, ChannelImplementation> channels;
     private final Object listenLock;
 
@@ -160,7 +164,7 @@ public class RobotComm {
         this.transport = transport;
         this.log = log;
         this.listenLock = new Object();
-        this.nextMsgId = new AtomicLong(System.currentTimeMillis());
+        this.nextCmdId = new AtomicLong(System.currentTimeMillis());
         this.channels = new ConcurrentHashMap<>();
     }
 
@@ -172,7 +176,10 @@ public class RobotComm {
      * Channels must be unique. An attempt to create a channel that already exists
      * produces a DuplicateKey exception
      */
-    public Channel createChannel(String channelName) {
+    public Channel newChannel(String channelName) {
+        if (commClosed) {
+            throw new IllegalStateException("Robot comm is closed!");
+        }
         final String BAD_CHANNEL_CHARS = ", \t\f\r\n";
         if (containsChars(channelName, BAD_CHANNEL_CHARS)) {
             throw new IllegalArgumentException("channel name has invalid characters: " + channelName);
@@ -237,11 +244,42 @@ public class RobotComm {
         }
     }
 
+    public void stopListening() {
+        DatagramTransport.Listener listener = null;
+        synchronized (listenLock) {
+            if (this.listener != null) {
+                listener = this.listener;
+                this.listener = null;
+            }
+        }
+        log.info("STOPPED LISTENING");
+        if (listener != null) {
+            listener.close();
+        }
+    }
+    
+    public void close() {
+        
+        // THis will cause subsequent attempts to create channels to
+        // fail with an invalid state exception.
+        this.commClosed = true;
+        
+        stopListening();
+
+        //Close all channels
+        for (ChannelImplementation ch: channels.values()) {
+            ch.close();
+        }
+        // Channels should pull themselves off the list as they  close...
+        assert channels.size() == 0;
+    }
+
     private void handleMsgToUnknownChannel(MessageHeader header) {
         // TODO Auto-generated method stub
 
     }
 
+   
     static class MessageHeader {
         enum DgType {
             DG_MSG,
@@ -343,20 +381,6 @@ public class RobotComm {
                 // TODO - finish other types
                 return "";
             }
-        }
-    }
-
-    public void stopListening() {
-        DatagramTransport.Listener listener = null;
-        synchronized (listenLock) {
-            if (this.listener != null) {
-                listener = this.listener;
-                this.listener = null;
-            }
-        }
-        log.info("STOPPED LISTENING");
-        if (listener != null) {
-            listener.close();
         }
     }
 
@@ -505,7 +529,9 @@ public class RobotComm {
         @Override
         public void close() {
             // TODO: If necessary remote nodes of channel closing.
-
+            // then remove ourselves from the channels queue.
+            log.trace("Removing channel " + name + " from list of channels.");
+            channels.remove(name, this);
         }
 
         @Override

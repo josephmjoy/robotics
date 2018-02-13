@@ -137,7 +137,7 @@ class RobotCommTest {
 
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
         RobotComm.Address addr = rc.resolveAddress("localhost");
-        RobotComm.Channel ch = rc.createChannel("testChannel");
+        RobotComm.Channel ch = rc.newChannel("testChannel");
         ch.bindToRemoteNode(addr);
         rc.startListening();
 
@@ -154,6 +154,7 @@ class RobotCommTest {
 
         ch.stopReceivingMessages();
         rc.stopListening();
+        rc.close();
         baseLogger.endLogging();
         assertTrue(rm != null);
         assertEquals(testMessage, rm.message());
@@ -168,7 +169,7 @@ class RobotCommTest {
 
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
         RobotComm.Address addr = rc.resolveAddress("localhost");
-        RobotComm.Channel ch = rc.createChannel("testChannel");
+        RobotComm.Channel ch = rc.newChannel("testChannel");
         ch.bindToRemoteNode(addr);
         rc.startListening();
 
@@ -204,6 +205,7 @@ class RobotCommTest {
 
         ch.stopReceivingMessages();
         rc.stopListening();
+        rc.close();
         baseLogger.endLogging();
 
     }
