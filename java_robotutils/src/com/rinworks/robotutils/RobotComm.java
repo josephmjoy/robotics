@@ -18,12 +18,12 @@ public class RobotComm implements Closeable {
     private final DatagramTransport transport;
     private final StructuredLogger.Log log;
     private boolean commClosed; // set to false when close() is called.
-    // This lives here  and NOT in a channel so id's can never repeat once
+    // This lives here and NOT in a channel so id's can never repeat once
     // an instance of RobotComm has been created. If it were kept in
     // a channel, then if a channel is later created with the same name
     // it's command IDs could overlap with previous incarnations.
     private final AtomicLong nextCmdId;
-    
+
     private final ConcurrentHashMap<String, ChannelImplementation> channels;
     private final Object listenLock;
 
@@ -53,10 +53,11 @@ public class RobotComm implements Closeable {
             STATUS_PENDING, STATUS_COMPLETED, STATUS_ERROR_TIMEOUT, STATUS_ERROR_COMM, STATUS_CANCELED
         }
 
-        
         // These are set when the command is submitted.
         String cmdType();
+
         String command();
+
         long submittedTime();
 
         // Status can be checked anytime.
@@ -65,7 +66,9 @@ public class RobotComm implements Closeable {
         // These three fields only return valid values if the status
         // is STATUS_COMPLETED
         String respType();
+
         String response();
+
         long respondedTime();
 
         void cancel();
@@ -225,10 +228,10 @@ public class RobotComm implements Closeable {
 
                 MessageHeader header = MessageHeader.parse(headerStr, remoteAddr, log);
                 if (header == null) {
-                    return; // EARLY RETURN 
+                    return; // EARLY RETURN
                 }
                 ChannelImplementation ch = channels.get(header.channel);
-              
+
                 if (ch == null) {
                     handleMsgToUnknownChannel(header);
                 } else {
@@ -257,22 +260,22 @@ public class RobotComm implements Closeable {
             listener.close();
         }
     }
-    
+
     public void close() {
-        
+
         // THis will cause subsequent attempts to create channels to
         // fail with an invalid state exception.
         this.commClosed = true;
-        
+
         stopListening();
 
-        //Close all channels
-        for (ChannelImplementation ch: channels.values()) {
+        // Close all channels
+        for (ChannelImplementation ch : channels.values()) {
             ch.close();
         }
-        // Channels should pull themselves off the list as they  close...
+        // Channels should pull themselves off the list as they close...
         assert channels.size() == 0;
-        
+
         transport.close();
     }
 
@@ -281,7 +284,6 @@ public class RobotComm implements Closeable {
 
     }
 
-   
     static class MessageHeader {
         enum DgType {
             DG_MSG,
