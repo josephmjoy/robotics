@@ -206,7 +206,11 @@ public class RobotComm {
                 headerStr = msg.substring(0, headerLength);
 
                 MessageHeader header = MessageHeader.parse(headerStr, remoteAddr, log);
+                if (header == null) {
+                    return; // EARLY RETURN 
+                }
                 ChannelImplementation ch = channels.get(header.channel);
+              
                 if (ch == null) {
                     handleMsgToUnknownChannel(header);
                 } else {
@@ -267,7 +271,7 @@ public class RobotComm {
         }
 
         static MessageHeader parse(String headerStr, Address remoteAddr, StructuredLogger.Log log) {
-            final String BAD_HEADER_CHARS = ", \t\f\n\r";
+            final String BAD_HEADER_CHARS = " \t\f\n\r";
 
             if (containsChars(headerStr, BAD_HEADER_CHARS)) {
                 log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Header contains invalid chars");
@@ -304,10 +308,10 @@ public class RobotComm {
             return new MessageHeader(dgType, channel, msgType, 0, CmdStatus.STATUS_NOVALUE);
         }
 
-        public String serialize() {
+        public String serialize(String additionalText) {
             String dgTypeStr = dgTypeToString();
             String cmdIdStr = cmdIdToString();
-            String statusStr = statusToString();
+            String statusStr = statusToString() + '\n' + additionalText;
             return String.join(",", PROTOCOL_SIGNATURE, dgTypeStr, this.channel, this.msgType, cmdIdStr, statusStr);
         }
 
@@ -375,7 +379,7 @@ public class RobotComm {
             private long recvdTimeStamp;
             private final Channel ch;
 
-            ReceivedMessageImplementation(String msg, String msgType, Address remoteAddress, Channel ch) {
+            ReceivedMessageImplementation(String msgType, String msg, Address remoteAddress, Channel ch) {
                 this.msg = msg;
                 this.msgType = msgType;
                 this.remoteAddress = remoteAddress;
@@ -432,7 +436,7 @@ public class RobotComm {
 
         public void handleReceivedMessage(MessageHeader header, String msgBody, Address remoteAddr) {
             if (this.receiveMessages) {
-                ReceivedMessage rm = new ReceivedMessageImplementation(msgBody, header.msgType, remoteAddr, this);
+                ReceivedMessage rm = new ReceivedMessageImplementation(header.msgType, msgBody, remoteAddr, this);
                 this.pendingRecvMessages.add(rm);
             }
 
@@ -470,7 +474,7 @@ public class RobotComm {
             } else {
                 MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_MSG, name, msgType, 0,
                         MessageHeader.CmdStatus.STATUS_NOVALUE);
-                rn.send(hdr.serialize());
+                rn.send(hdr.serialize(message));
             }
 
         }

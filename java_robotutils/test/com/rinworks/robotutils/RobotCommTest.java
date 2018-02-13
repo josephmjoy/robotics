@@ -62,8 +62,12 @@ class RobotCommTest {
                     public void run() {
                         System.out.println("Test listener: starting...");
                         String msg = null;
-                        while (!closed && (msg = recvQueue.poll()) != null) {
-                            handler.accept(msg, loopbackNode);
+                        while (!closed) {
+                            if ((msg = recvQueue.poll()) != null) {
+                                handler.accept(msg, loopbackNode);
+                            } else {
+                                Thread.yield();
+                            }
                         }   
                         System.out.println("Test listner: ...quitting.");
                     }
@@ -100,7 +104,7 @@ class RobotCommTest {
             @Override
             public Address remoteAddress() {
                 // TODO Auto-generated method stub
-                return null;
+                return addr;
             }
 
             @Override
@@ -126,19 +130,30 @@ class RobotCommTest {
     }
 
     @Test
-    void testBasicSendReceieveTest() {
+    void testBasicSendReceieveTest() throws InterruptedException {
         RobotComm.DatagramTransport transport = new TestTransport();
         StructuredLogger baseLogger = initStructuredLogger();
+        baseLogger.beginLogging();
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
         RobotComm.Address addr = rc.resolveAddress("localhost");
         RobotComm.Channel ch = rc.createChannel("testChannel");
+        ch.bindToRemoteNode(addr);
         rc.startListening();
         String testMessage = "test message";
-        ch.sendMessage("MYTYPE", testMessage, addr);
-        RobotComm.ReceivedMessage rm = ch.pollReceivedMessage();
+        ch.startReceivingMessages();
+        ch.sendMessage("MYTYPE", testMessage);
+        baseLogger.flush();
+        RobotComm.ReceivedMessage rm = null;
+        while (rm == null) {
+            rm = ch.pollReceivedMessage();
+            Thread.sleep(0);
+        };
+        ch.stopReceivingMessages();
+        rc.stopListening();
+        baseLogger.endLogging();
         assertTrue(rm != null);
         assertEquals(testMessage, rm.message());
-        rc.stopListening();
+
     }
     
     StructuredLogger initStructuredLogger() {
