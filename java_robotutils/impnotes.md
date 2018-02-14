@@ -18,6 +18,37 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+# Feb 14, 2018 RobotComm Protocol - Laying out Command-Response sequence
+*Client*:
+1. Prepares SentCommand, sends CMD, keeps SentCommand in pendingSentCommands mam. If [NEW] addToCompletionQueue is TRUE, it will
+   note this fact internally.
+2. On receiving RESP, if still in map it updates it's status, and if not still pending, it removes itself from from map, and [new] if addToCompletionQueue, 
+   it adds it to the completion queue.    Whether in map or not, and if the RESP indicates the command is not pending, it always immediately responds with CMDRESPACK. 
+   So it will never respond with CMDRESPACK in response to CMDRESP whose status is still pending.
+3. Every CLIENT_TIMEOUT seconds (randomly between 500ms and 1500ms) it resends CMD for all SendCommands in map. Note that the server will respond with a CMDRESP with pending status if it 
+   is already processing this command.
+4. Client can call pollCommandCompletionQueue (non blocking) to get the next completed SentCommand.
+4b. Client is expected to service the completion queue if it has sent commands with addToCompletionQueue set. Otherwise the completion queue will expand
+   without bound. IMPNOTE: at some point we can log an error and start dropping new sendCommand requests on the floor.
+5. If client calls SendCommand.cancel() for a command that has addToCompletionQueue set, it WILL get immediately added to the completion queue. If it is still pending, it's status
+   is changed to SATUS_CLIENT_CANCELED (so pending state - STATUS_SUBMITTED/STATUS_REMOTE_RECIVED/STATUS_REMOTE_COMPUTING - is lost).
+   
+*Server*:
+1. On receiving a CMD, it checks it's recvCommandsMap. If if already exists, it immediately responds with a CMDRESP with the updated status (which may be pending/completed.)
+   If it does not exist, it atomically creates a ReceivedCommand and adds it to the pendingRecvCommands queue.
+2. If the user (server) calls ReceiveCommand.respond(), it check the state - if already completed or cancelled(?) it does nothing. Else it  updates completion status
+   and response info (type, resp message body), and immediately sends a CMDRESP with latest status. [NEW] It DOES keep completed commands in a queue - see below.
+3. On receiving a CMDRESPACK, if the command exists in it's recvCommandsMap AND it is completed, [NEW] it is NOT removed immediately - instead  it is marked for early deletion. It is not
+     deleted immediately to guard against duplicate and delayed CMD messages arriving for the same command instance (same CmdId).
+    If ReceivedCommand is it is NOT in a completed state, this suggests a bogus CMDRESPACK, and  the CMDRESP will be ignored.
+4. Managing the completetdRecvCommands queue. After considering several strategies, the one that is most forgiving is to base it on queue lengths. Every Nth (say 1000) completed items added to
+completedRecvCommaands queue, we perform a cleanup action. This cleanup action iterates through all the items in the queue, oldest (head)to last. We first run through and count the number of 'early deletion' nodes and 'remaining' nodes. If early deletion count > MAX_EARLY_DELETION, we delete MAX_EARLY_DELETION/2 of these. Once that is done, if total length is greater than MAX_TOTAL_COMPLETED, we go and simply delete MAX_TOTAL_COMPLETED/2 of these oldest first - a simple call to poll() to delete up to MAX_TOTAL_COMPLETED/2 will suffice here. This approach uses no worker tasks and no arbitrary timeout values. Nominal values: MAX_EARLY_DELETION = 1000, MAX_TOTAL_COMPLETED = 10,000. This does require an atomic counter for completed commands so we can know when to trigger the check (determining the length of the queue is an O(N) operation, so we obviously can't do that on each queued packet!).
+
+# Feb 13, 2018 Design Note - on Testing RobotComm transport
+- Unit tests should have a version of MessageHeader that can also create messed up versions of the header.
+- Test loopback transport should be enhanced to lose a fraction of packets, to delay random packets a random time (will also cause packet reordering).
+- Potentially virtualize getCurrentMillis so we can mess with time.
+
 # Feb 12A, 2018 Design Note - RobotComm Message Format 
 - receive msg header: 
     - signature: a magic aphanumeric string such as 1309JHI

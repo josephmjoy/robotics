@@ -176,7 +176,7 @@ class RobotCommTest {
         final String TEST_RESP = "RESP1";
         final String TEST_RESPTYPE = "RESPTYPE";
         ch.startReceivingMessages();
-        RobotComm.SentCommand cmd = ch.sendCommand(TEST_CMDTYPE, TEST_COMMAND);
+        RobotComm.SentCommand cmd = ch.sendCommand(TEST_CMDTYPE, TEST_COMMAND, true); // true == queue completion
         baseLogger.flush();
         assertEquals(TEST_CMDTYPE, cmd.cmdType());
         assertEquals(TEST_COMMAND, cmd.command());
@@ -197,9 +197,11 @@ class RobotCommTest {
         while (cmd.status() != SentCommand.COMMAND_STATUS.STATUS_COMPLETED) {
             Thread.sleep(0);
         }
+        
         assertEquals(TEST_RESPTYPE, cmd.respType());
         assertEquals(TEST_RESP, cmd.response());
- 
+        RobotComm.SentCommand cmd1 = ch.pollCompletedCommand();
+        assertEquals(cmd, cmd1); // We should also pick it up from the completion queue.
 
         ch.stopReceivingMessages();
         rc.stopListening();

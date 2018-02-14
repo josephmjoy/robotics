@@ -52,10 +52,13 @@ public class RobotComm implements Closeable {
 
     interface SentCommand {
         enum COMMAND_STATUS {
-            STATUS_SUBMITTED, STATUS_REMOTE_PENDING, STATUS_COMPLETED, STATUS_REMOTE_REJECTED, STATUS_ERROR_TIMEOUT, STATUS_ERROR_COMM, STATUS_CANCELED
+            STATUS_SUBMITTED, STATUS_REMOTE_RECEIVED, STATUS_REMOTE_COMPUTING, STATUS_COMPLETED, STATUS_REMOTE_REJECTED, STATUS_ERROR_TIMEOUT, STATUS_ERROR_COMM, STATUS_CLIENT_CANCELED
         }
 
         // These are set when the command is submitted.
+
+        long cmdId();
+
         String cmdType();
 
         String command();
@@ -66,7 +69,11 @@ public class RobotComm implements Closeable {
         COMMAND_STATUS status();
 
         // True if the command is still pending.
-        boolean pending();
+        default boolean pending() {
+            COMMAND_STATUS stat = status();
+            return stat == COMMAND_STATUS.STATUS_SUBMITTED || stat == COMMAND_STATUS.STATUS_REMOTE_RECEIVED
+                    || stat == COMMAND_STATUS.STATUS_REMOTE_COMPUTING;
+        }
 
         // These three fields only return valid values if the status
         // is STATUS_COMPLETED
@@ -92,6 +99,7 @@ public class RobotComm implements Closeable {
     }
 
     interface ReceivedCommand extends ReceivedMessage {
+        long cmdId();
 
         void respond(String respType, String resp);
     }
@@ -124,7 +132,9 @@ public class RobotComm implements Closeable {
 
         void sendMessage(String msgType, String message, Address addr);
 
-        SentCommand sendCommand(String cmdType, String command);
+        SentCommand sendCommand(String cmdType, String command, boolean addToCompletionQueue);
+
+        SentCommand pollCompletedCommand();
 
         PeriodicSender periodicSend(int period, String msgType, Supplier<String> messageSource);
 
@@ -531,6 +541,7 @@ public class RobotComm implements Closeable {
         // Client side
         private class SentCommandImplementation implements SentCommand {
 
+            private final long cmdId;
             private final String cmdType;
             private final String cmd;
             private final long submittedTime;
@@ -539,11 +550,18 @@ public class RobotComm implements Closeable {
             private String respType;
             private long respTime;
 
-            SentCommandImplementation(String cmdType, String cmd) {
+            SentCommandImplementation(long cmdId, String cmdType, String cmd) {
+                this.cmdId = cmdId;
                 this.cmdType = cmdType;
                 this.cmd = cmd;
                 this.submittedTime = System.currentTimeMillis();
                 this.stat = COMMAND_STATUS.STATUS_SUBMITTED;
+            }
+
+            @Override
+            public long cmdId() {
+                // TODO Auto-generated method stub
+                return this.cmdId;
             }
 
             @Override
@@ -564,11 +582,6 @@ public class RobotComm implements Closeable {
             @Override
             public COMMAND_STATUS status() {
                 return stat;
-            }
-
-            @Override
-            public boolean pending() {
-                return stat == COMMAND_STATUS.STATUS_SUBMITTED || stat == COMMAND_STATUS.STATUS_REMOTE_PENDING;
             }
 
             @Override
@@ -597,19 +610,26 @@ public class RobotComm implements Closeable {
         // Server Side
         private class ReceivedCommandImplementation implements ReceivedCommand {
 
+            private final long cmdId;
             private final String cmdBody;
             private final String cmdType;
             private final Address remoteAddress;
             private long recvdTimeStamp;
             private final ChannelImplementation ch;
 
-            public ReceivedCommandImplementation(String msgType, String msgBody, Address remoteAddr,
+            public ReceivedCommandImplementation(long cmdId, String msgType, String msgBody, Address remoteAddr,
                     ChannelImplementation ch) {
+                this.cmdId = cmdId;
                 this.cmdBody = msgBody;
                 this.cmdType = msgType;
                 this.remoteAddress = remoteAddr;
                 this.recvdTimeStamp = System.currentTimeMillis();
                 this.ch = ch;
+            }
+
+            @Override
+            public long cmdId() {
+                return this.cmdId;
             }
 
             @Override
@@ -639,7 +659,9 @@ public class RobotComm implements Closeable {
 
             @Override
             public void respond(String respType, String resp) {
-                // TODO Auto-generated method stub
+                // Server code is responding with the result of performing a command.
+                MessageHeader header = new MessageHeader(MessageHeader.DgType.DG_CMDRESP, respType, respType, cmdId,
+                        MessageHeader.CmdStatus.STATUS_COMPLETED);
 
             }
 
@@ -660,7 +682,6 @@ public class RobotComm implements Closeable {
             this.workingRecvCommands = new ConcurrentLinkedQueue<>();
             this.completedRecvCommands = new ConcurrentLinkedQueue<>();
             this.recvCommandsMap = new ConcurrentHashMap<>();
-
             this.receiverLock = new Object();
 
         }//
@@ -720,18 +741,30 @@ public class RobotComm implements Closeable {
         }
 
         @Override
-        public SentCommand sendCommand(String cmdType, String command) {
-            // TODO Auto-generated method stub
+        public SentCommand sendCommand(String cmdType, String command, boolean addToCompletionQueue) {
+            // If we can't send throw an invalid state exception if we aren't listening.
+            // if (???) {
+            // throw new IllegalStateException("Cannot send a command as ");
+            // }
             DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
 
             if (validSendParams(cmdType, command, rn, "DISCARDING_SEND_COMMAND")) {
-                MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMD, name, cmdType, newCommandId(),
+                long cmdId = newCommandId();
+                MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMD, name, cmdType, cmdId,
                         MessageHeader.CmdStatus.STATUS_NOVALUE);
+                SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command);
+                this.pendingSentCommands.put(cmdId, sc);
                 rn.send(hdr.serialize(command));
+                return sc;
+            } else {
+                throw new IllegalArgumentException();
             }
+        }
 
-            SentCommandImplementation sc = new SentCommandImplementation(cmdType, command);
-            return sc;
+        @Override
+        public SentCommand pollCompletedCommand() {
+            // TODO Auto-generated method stub
+            return null;
         }
 
         @Override
@@ -770,8 +803,13 @@ public class RobotComm implements Closeable {
         // Server gets this
         void handleReceivedCommand(MessageHeader header, String msgBody, Address remoteAddr) {
             if (this.receiveCommands) {
-                ReceivedCommand rm = new ReceivedCommandImplementation(header.msgType, msgBody, remoteAddr, this);
-                this.pendingRecvCommands.add(rm);
+                long cmdId = header.cmdId;
+                // Check if we have seen this command below.
+                //ReceivedCommand rc = this.recvCommandsMap.computeIfAbsent(cmdId,
+                //        id -> new SentCommandImplementation(cmdId, cmdType, command));
+                //ReceivedCommand rm = new ReceivedCommandImplementation(cmdId, header.msgType, msgBody, remoteAddr,
+                //        this);
+                //this.pendingRecvCommands.add(rm);
             }
         }
 
@@ -800,7 +838,7 @@ public class RobotComm implements Closeable {
     private boolean validSendParams(String msgType, String message, RemoteNode rn, String logMsgType) {
         final String BAD_MSGTYPE_CHARS = ", \t\f\n\r";
         boolean ret = false;
-    
+
         if (rn == null) {
             log.trace(logMsgType, "No default send node");
         } else if (containsChars(msgType, BAD_MSGTYPE_CHARS)) {
@@ -808,7 +846,7 @@ public class RobotComm implements Closeable {
         } else {
             ret = true;
         }
-    
+
         return ret;
     }
 
