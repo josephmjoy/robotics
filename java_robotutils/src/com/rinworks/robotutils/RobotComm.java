@@ -364,7 +364,6 @@ public class RobotComm implements Closeable {
                 getCmdId = true;
                 getStatus = true;
             } else if (dgTypeStr.equals(STR_DG_CMDRESPACK)) {
-                getCmdId = true;
                 dgType = DgType.DG_CMDRESPACK;
             } else {
                 log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header - unknown DG type");
@@ -438,7 +437,7 @@ public class RobotComm implements Closeable {
         }
 
         private String cmdIdToString() {
-            return Long.toHexString(cmdId);
+            return cmdId == 0 ? "" : Long.toHexString(cmdId);
         }
 
         private String dgTypeToString() {

@@ -42,6 +42,19 @@ Rationale:
 
 
 # Feb 14B, 2018 RobotComm Protocol - Laying out Command-Response sequence
+Consider making CMDRESPACK an aggregate - bulk responding to acks. It does seem very wasteful to generate one CMDRESPACK for every transaction.
+In the absence of errors (the common case) 33.3% of the packets are CMDRESPACK! So...
+1. Make CMDRESPACK have a 0 value for cmdId, and in the message body it has a list of cmdIds, separated by newlines (no other whitespace).
+Sample message (new line chars as new lines):
+3wIC,CMDRESPACK,mychannel,0,IDLIST,,
+309039AB09CFA90
+2099939AB09CFA9
+234059AB09CFA90
+23234309039AB09
+
+Note IDLIST is an internal message type. Client can never generate CMDRESPACK messages.
+
+Some significant observations/guidlines on protocol implementnation.
 *Client*:
 1. Prepares SentCommand, sends CMD, keeps SentCommand in pendingSentCommands mam. If [NEW] addToCompletionQueue is TRUE, it will
    note this fact internally.
