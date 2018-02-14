@@ -18,7 +18,30 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
-# Feb 14, 2018 RobotComm Protocol - Laying out Command-Response sequence
+# Feb 14A, 2018 RobotComm - removed Channel.periodicSend
+Rationale:
+ 1. It is the only method that calls back to the client with in an arbitrary (timer) context.
+ 2. It will incur the overhead of a timer task. Well not really because we need a timer task anyways to retransmit CMD messages.
+ 3. It is something the client can easily do - just create a periodic timer task and call Channel.sendMessage() from that task.
+ The old PeriodicSender class:
+
+     /*
+     * Sends a dynamically generated message periodically. The period was set when
+     * the underlying object was created. Pause and resume may be called in any
+     * order and from multiple threads, though results of doing so will be
+     * unpredictable. The messages themselves will be sent as whole units.
+     *
+     */
+    interface PeriodicSender extends Closeable {
+        void pause();
+        void resume();
+        void close(); // will cancel all further attempts to start/stop.
+    }
+    
+    PeriodicSender periodicSend(int period, String msgType, Supplier<String> messageSource);
+
+
+# Feb 14B, 2018 RobotComm Protocol - Laying out Command-Response sequence
 *Client*:
 1. Prepares SentCommand, sends CMD, keeps SentCommand in pendingSentCommands mam. If [NEW] addToCompletionQueue is TRUE, it will
    note this fact internally.

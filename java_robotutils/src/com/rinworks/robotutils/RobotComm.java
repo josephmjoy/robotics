@@ -35,20 +35,7 @@ public class RobotComm implements Closeable {
         String stringRepresentation();
     };
 
-    /**
-     * Sends a dynamically generated message periodically. The period was set when
-     * the underlying object was created. Pause and resume may be called in any
-     * order and from multiple threads, though results of doing so will be
-     * unpredictable. The messages themselves will be sent as whole units.
-     *
-     */
-    interface PeriodicSender extends Closeable {
-        void pause();
 
-        void resume();
-
-        void close(); // will cancel all further attempts to start/stop.
-    }
 
     interface SentCommand {
         enum COMMAND_STATUS {
@@ -135,8 +122,6 @@ public class RobotComm implements Closeable {
         SentCommand sendCommand(String cmdType, String command, boolean addToCompletionQueue);
 
         SentCommand pollCompletedCommand();
-
-        PeriodicSender periodicSend(int period, String msgType, Supplier<String> messageSource);
 
         void close();
     }
@@ -721,11 +706,6 @@ public class RobotComm implements Closeable {
 
         }
 
-        @Override
-        public PeriodicSender periodicSend(int period, String msgType, Supplier<String> messageSource) {
-            // TODO Auto-generated method stub
-            return null;
-        }
 
         @Override
         public void close() {
