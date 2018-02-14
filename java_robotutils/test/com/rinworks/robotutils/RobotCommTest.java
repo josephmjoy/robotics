@@ -159,7 +159,7 @@ class RobotCommTest {
 
     }
 
-    @Test
+    //@Test
     void testBasicSendReceieveCommandTest() throws InterruptedException {
         RobotComm.DatagramTransport transport = new TestTransport();
         StructuredLogger baseLogger = initStructuredLogger();

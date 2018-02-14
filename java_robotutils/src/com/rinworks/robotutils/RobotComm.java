@@ -9,6 +9,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
+import com.rinworks.robotutils.RobotComm.DatagramTransport.RemoteNode;
+
 /**
  * Class to implement simple 2-way message passing over UDP
  *
@@ -50,7 +52,7 @@ public class RobotComm implements Closeable {
 
     interface SentCommand {
         enum COMMAND_STATUS {
-            STATUS_PENDING, STATUS_COMPLETED, STATUS_ERROR_TIMEOUT, STATUS_ERROR_COMM, STATUS_CANCELED
+            STATUS_SUBMITTED, STATUS_REMOTE_PENDING, STATUS_COMPLETED, STATUS_REMOTE_REJECTED, STATUS_ERROR_TIMEOUT, STATUS_ERROR_COMM, STATUS_CANCELED
         }
 
         // These are set when the command is submitted.
@@ -62,6 +64,9 @@ public class RobotComm implements Closeable {
 
         // Status can be checked anytime.
         COMMAND_STATUS status();
+
+        // True if the command is still pending.
+        boolean pending();
 
         // These three fields only return valid values if the status
         // is STATUS_COMPLETED
@@ -479,6 +484,7 @@ public class RobotComm implements Closeable {
         final Object receiverLock;
         DatagramTransport.Listener listener;
         private boolean receiveMessages;
+        private boolean receiveCommands;
 
         private class ReceivedMessageImplementation implements ReceivedMessage {
             private final String msg;
@@ -522,6 +528,123 @@ public class RobotComm implements Closeable {
 
         }
 
+        // Client side
+        private class SentCommandImplementation implements SentCommand {
+
+            private final String cmdType;
+            private final String cmd;
+            private final long submittedTime;
+            private COMMAND_STATUS stat;
+            private String resp;
+            private String respType;
+            private long respTime;
+
+            SentCommandImplementation(String cmdType, String cmd) {
+                this.cmdType = cmdType;
+                this.cmd = cmd;
+                this.submittedTime = System.currentTimeMillis();
+                this.stat = COMMAND_STATUS.STATUS_SUBMITTED;
+            }
+
+            @Override
+            public String cmdType() {
+                return cmdType;
+            }
+
+            @Override
+            public String command() {
+                return cmd;
+            }
+
+            @Override
+            public long submittedTime() {
+                return submittedTime;
+            }
+
+            @Override
+            public COMMAND_STATUS status() {
+                return stat;
+            }
+
+            @Override
+            public boolean pending() {
+                return stat == COMMAND_STATUS.STATUS_SUBMITTED || stat == COMMAND_STATUS.STATUS_REMOTE_PENDING;
+            }
+
+            @Override
+            public String respType() {
+                return respType;
+            }
+
+            @Override
+            public String response() {
+                return resp;
+            }
+
+            @Override
+            public long respondedTime() {
+                return respTime;
+            }
+
+            @Override
+            public void cancel() {
+                // TODO Auto-generated method stub
+
+            }
+
+        }
+
+        // Server Side
+        private class ReceivedCommandImplementation implements ReceivedCommand {
+
+            private final String cmdBody;
+            private final String cmdType;
+            private final Address remoteAddress;
+            private long recvdTimeStamp;
+            private final ChannelImplementation ch;
+
+            public ReceivedCommandImplementation(String msgType, String msgBody, Address remoteAddr,
+                    ChannelImplementation ch) {
+                this.cmdBody = msgBody;
+                this.cmdType = msgType;
+                this.remoteAddress = remoteAddr;
+                this.recvdTimeStamp = System.currentTimeMillis();
+                this.ch = ch;
+            }
+
+            @Override
+            public String message() {
+                return this.cmdBody;
+            }
+
+            @Override
+            public String msgType() {
+                return this.cmdType;
+            }
+
+            @Override
+            public Address remoteAddress() {
+                return this.remoteAddress;
+            }
+
+            @Override
+            public long receivedTimestamp() {
+                return this.recvdTimeStamp;
+            }
+
+            @Override
+            public Channel channel() {
+                return this.ch;
+            }
+
+            @Override
+            public void respond(String respType, String resp) {
+                // TODO Auto-generated method stub
+
+            }
+
+        }
+
         public ChannelImplementation(String channelName) {
             this.name = channelName;
             this.remoteNode = null;
@@ -542,36 +665,15 @@ public class RobotComm implements Closeable {
 
         }//
 
-
-        // Server gets this
-        public void handleReceivedCommand(MessageHeader header, String msgBody, Address remoteAddr) {
-            // TODO Auto-generated method stub
-            
-        }
-        
-        // Client gets this
-        public void handleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
-            // TODO Auto-generated method stub
-            
-        }
-        
-        // Server gets this
-        public void handleReceivedCommandResponseAck(MessageHeader header, String msgBody, Address remoteAddr) {
-            // TODO Auto-generated method stub
-            
-        }
-
-        public void handleReceivedMessage(MessageHeader header, String msgBody, Address remoteAddr) {
-            if (this.receiveMessages) {
-                ReceivedMessage rm = new ReceivedMessageImplementation(header.msgType, msgBody, remoteAddr, this);
-                this.pendingRecvMessages.add(rm);
-            }
-
-        }
-
         @Override
         public String name() {
             return this.name;
+        }
+
+        @Override
+        public void bindToRemoteNode(Address remoteAddress) {
+            DatagramTransport.RemoteNode node = transport.newRemoteNode(remoteAddress());
+            this.remoteNode = node; // Could override an existing one. That's ok
         }
 
         @Override
@@ -581,20 +683,10 @@ public class RobotComm implements Closeable {
         }
 
         @Override
-        public ReceivedMessage pollReceivedMessage() {
-            return pendingRecvMessages.poll();
-        }
-
-        @Override
         public void sendMessage(String msgType, String message) {
             DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
-            final String BAD_MSGTYPE_CHARS = ", \t\f\n\r";
 
-            if (rn == null) {
-                log.trace("DISCARDING_SEND_MESSAGE", "No default send node");
-            } else if (containsChars(msgType, BAD_MSGTYPE_CHARS)) {
-                log.trace("DISCARDING_SEND_MESSAGE", "Message type has invalid chars: " + msgType);
-            } else {
+            if (validSendParams(msgType, message, rn, "DISCARDING_SEND_MESSAGE")) {
                 MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_MSG, name, msgType, 0,
                         MessageHeader.CmdStatus.STATUS_NOVALUE);
                 rn.send(hdr.serialize(message));
@@ -603,9 +695,9 @@ public class RobotComm implements Closeable {
         }
 
         @Override
-        public SentCommand sendCommand(String cmdType, String command) {
+        public void sendMessage(String msgType, String message, Address addr) {
             // TODO Auto-generated method stub
-            return null;
+
         }
 
         @Override
@@ -623,33 +715,47 @@ public class RobotComm implements Closeable {
         }
 
         @Override
+        public ReceivedMessage pollReceivedMessage() {
+            return pendingRecvMessages.poll();
+        }
+
+        @Override
+        public SentCommand sendCommand(String cmdType, String command) {
+            // TODO Auto-generated method stub
+            DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
+
+            if (validSendParams(cmdType, command, rn, "DISCARDING_SEND_COMMAND")) {
+                MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMD, name, cmdType, newCommandId(),
+                        MessageHeader.CmdStatus.STATUS_NOVALUE);
+                rn.send(hdr.serialize(command));
+            }
+
+            SentCommandImplementation sc = new SentCommandImplementation(cmdType, command);
+            return sc;
+        }
+
+        @Override
         public void startReceivingMessages() {
             this.receiveMessages = true;
         }
 
         @Override
         public void stopReceivingMessages() {
-            // TODO Auto-generated method stub
+            // TODO Close resources related to receiving
             this.receiveMessages = false;
 
         }
 
         @Override
         public void startReceivingCommands() {
-            // TODO Auto-generated method stub
+            this.receiveCommands = true;
 
         }
 
         @Override
         public void stopReceivingCommands() {
-            // TODO Auto-generated method stub
-
-        }
-
-        @Override
-        public void bindToRemoteNode(Address remoteAddress) {
-            DatagramTransport.RemoteNode node = transport.newRemoteNode(remoteAddress());
-            this.remoteNode = node; // Could override an existing one. That's ok
+            // TODO Close resources related to receiving
+            this.receiveCommands = false;
         }
 
         @Override
@@ -661,12 +767,53 @@ public class RobotComm implements Closeable {
             return rCmd;
         }
 
-        @Override
-        public void sendMessage(String msgType, String message, Address addr) {
+        // Server gets this
+        void handleReceivedCommand(MessageHeader header, String msgBody, Address remoteAddr) {
+            if (this.receiveCommands) {
+                ReceivedCommand rm = new ReceivedCommandImplementation(header.msgType, msgBody, remoteAddr, this);
+                this.pendingRecvCommands.add(rm);
+            }
+        }
+
+        // Client gets this
+        void handleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
             // TODO Auto-generated method stub
 
         }
 
+        // Server gets this
+        void handleReceivedCommandResponseAck(MessageHeader header, String msgBody, Address remoteAddr) {
+            // TODO Auto-generated method stub
+
+        }
+
+        void handleReceivedMessage(MessageHeader header, String msgBody, Address remoteAddr) {
+            if (this.receiveMessages) {
+                ReceivedMessage rm = new ReceivedMessageImplementation(header.msgType, msgBody, remoteAddr, this);
+                this.pendingRecvMessages.add(rm);
+            }
+
+        }
+
+    }
+
+    private boolean validSendParams(String msgType, String message, RemoteNode rn, String logMsgType) {
+        final String BAD_MSGTYPE_CHARS = ", \t\f\n\r";
+        boolean ret = false;
+    
+        if (rn == null) {
+            log.trace(logMsgType, "No default send node");
+        } else if (containsChars(msgType, BAD_MSGTYPE_CHARS)) {
+            log.trace(logMsgType, "Message type has invalid chars: " + msgType);
+        } else {
+            ret = true;
+        }
+    
+        return ret;
+    }
+
+    private long newCommandId() {
+        return nextCmdId.getAndIncrement();
     }
 
     /**
