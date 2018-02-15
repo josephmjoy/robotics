@@ -68,7 +68,7 @@ class RobotCommTest {
                                 handler.accept(msg, loopbackNode);
                             } else {
                                 try {
-                                    Thread.sleep(100);
+                                    Thread.sleep(0);
                                 } catch (InterruptedException e) {
                                     // TODO Auto-generated catch block
                                     e.printStackTrace();
@@ -178,10 +178,10 @@ class RobotCommTest {
         ch.bindToRemoteNode(addr);
         rc.startListening();
 
-        final String TEST_COMMAND = "CMD1";
-        final String TEST_CMDTYPE  = "CMDTYPE";
-        final String TEST_RESP = "RESP1";
-        final String TEST_RESPTYPE = "RESPTYPE";
+        final String TEST_COMMAND = "TESTCMD1";
+        final String TEST_CMDTYPE  = "TESTCMDTYPE1";
+        final String TEST_RESP = "TESTRESP1";
+        final String TEST_RESPTYPE = "TESTRESPTYPE";
         ch.startReceivingCommands();
         RobotComm.SentCommand cmd = ch.sendCommand(TEST_CMDTYPE, TEST_COMMAND, true); // true == queue completion
         baseLogger.flush();
@@ -194,8 +194,7 @@ class RobotCommTest {
             rcom = ch.pollReceivedCommand();           
             Thread.sleep(1000);
         }
-        
-        System.out.println("SERVER GOT COMMAND");
+
         // Got a commend, let's process it and turn a response.
         assertEquals(TEST_CMDTYPE, rcom.msgType());
         assertEquals(TEST_COMMAND, rcom.message());
@@ -206,7 +205,6 @@ class RobotCommTest {
         while (cmd.status() != SentCommand.COMMAND_STATUS.STATUS_COMPLETED) {
             Thread.sleep(1);
         }
-        System.out.println("CLIENT GOT RESPONSE!");
         assertEquals(TEST_RESPTYPE, cmd.respType());
         assertEquals(TEST_RESP, cmd.response());
         RobotComm.SentCommand cmd1 = ch.pollCompletedCommand();

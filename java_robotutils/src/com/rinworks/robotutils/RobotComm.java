@@ -616,9 +616,13 @@ public class RobotComm implements Closeable {
             }
 
             // LK ==> caller should ensure locking
-            public void updateRemoteStatusLK(MessageHeader header) {
+            public void updateLK(MessageHeader header, String respBody) {
                 if (localStatusOrder() < remoteStatusOrder(header)) {
                     this.stat = mapRemoteStatus(header.status);
+                    if (this.stat == COMMAND_STATUS.STATUS_COMPLETED) {
+                        this.respType = header.msgType;
+                        this.resp = respBody;
+                    }
                 }
             }
 
@@ -833,8 +837,11 @@ public class RobotComm implements Closeable {
             if (this.closed) {
                 return null; // ********* EARLY RETURN
             }
-            // TODO Auto-generated method stub
-            return null;
+            SentCommand sc = this.cliCompletedSentCommands.poll();
+            if (sc != null) {
+                log.trace("CLI_COMPLETED_COMMAND", "cmd: " + sc.cmdType());
+            }
+            return sc;
         }
 
         @Override
@@ -911,7 +918,7 @@ public class RobotComm implements Closeable {
                 SentCommandImplementation sc = this.cliPendingSentCommands.get(header.cmdId);
                 if (sc != null) {
                     synchronized (sc) {
-                        sc.updateRemoteStatusLK(header);
+                        sc.updateLK(header, "");
                     }
                 }
                 // We don't respond to CMDRESP messages with pending status.
@@ -929,7 +936,7 @@ public class RobotComm implements Closeable {
             synchronized (sc) {
                 // If it *was* in the pending sent queue, it *must* be pending.
                 assert sc.pending();
-                sc.updateRemoteStatusLK(header);
+                sc.updateLK(header, msgBody);               
                 assert !sc.pending();
             }
             if (sc.addToCompletionQueue) {
