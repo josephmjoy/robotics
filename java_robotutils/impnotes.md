@@ -18,6 +18,21 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#Feb 15C, 2018 RobotComm Design Note - Execution Context for Timers
+RobotComm needs timers just for the send-commend side - to periodically re-send CMD messages for which
+RESP with completed status have not been received. It seems heavy handed to create a Timer object (which has
+the overhead of one thread) to do this. Some ideas:
+- Add methods to DatagramTransport for timers (and also millis and nanos). Isn't clean to add this 
+  to a datagram transport interface.
+- Add a new System interface passed in to RobotComm constructor that contains timers, millis and nanos.
+  Seems cumbersome. But potentially eventually the way to go - RobotUtils.SystemHelper interface, and a
+  RobotUtils.Utils class that collects together a bunch of helper methods including some currently
+  in StructuredLogger and RobotComm - raw loggers, udp-transport - it would be more clean to have these
+  live outside the core RobotComm and StructuredLogger class.
+- So while all this thinking is breweing, RobotComm will simply expose a periodicWork method that the
+  client is expected to call periodically - no strong requirements as to how often. Retransmits will happen
+  in this context.
+
 # Feb 15B, 2018 RobotComm - Command ID (CmdId) uniqueness considerations.
 - I (JMJ) realized that on the server side, the reach check for uniqueness should combine client CmdID with client address. I am not doing this currently - the 
   key is just client CmdID. 

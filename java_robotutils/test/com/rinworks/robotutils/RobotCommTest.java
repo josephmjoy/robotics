@@ -19,7 +19,9 @@ class RobotCommTest {
     class TestTransport implements RobotComm.DatagramTransport {
         MyRemoteNode loopbackNode = new MyRemoteNode(new MyAddress("loopback"));
         ConcurrentLinkedQueue<String> recvQueue = new ConcurrentLinkedQueue<>();
-
+        int msgsSent = 0;
+        int msgsReceived = 0;
+        
         class MyAddress implements Address {
             final String addr;
 
@@ -65,6 +67,11 @@ class RobotCommTest {
                         while (!closed) {
                             if ((msg = recvQueue.poll()) != null) {
                                 System.out.println("TRANSPORT:\n[" + msg + "]\n");
+                                if (msgsReceived++ % 3 == 0) {
+                                    // drop!
+                                    System.out.println("Dropping received pkt");
+                                    continue;
+                                }
                                 handler.accept(msg, loopbackNode);
                             } else {
                                 try {
@@ -115,6 +122,10 @@ class RobotCommTest {
             @Override
             public void send(String msg) {
                 // TODO Auto-generated method stub
+                if (msgsSent++ % 3 == 0) {
+                    // drop!
+                    return;
+                }
                 recvQueue.add(msg);
             }
 
@@ -191,6 +202,7 @@ class RobotCommTest {
         
         RobotComm.ReceivedCommand rcom = null;
         while (rcom == null) {
+            rc.periodicWork();
             rcom = ch.pollReceivedCommand();           
             Thread.sleep(1000);
         }
@@ -203,7 +215,8 @@ class RobotCommTest {
 
         // Let's wait for the commend to be completed.
         while (cmd.status() != SentCommand.COMMAND_STATUS.STATUS_COMPLETED) {
-            Thread.sleep(1);
+            Thread.sleep(1000);
+            rc.periodicWork();
         }
         assertEquals(TEST_RESPTYPE, cmd.respType());
         assertEquals(TEST_RESP, cmd.response());

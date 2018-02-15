@@ -203,6 +203,7 @@ public class RobotComm implements Closeable {
         synchronized (listenLock) {
             if (this.listener == null) {
                 li = this.transport.newListener(null);
+                this.listener = li;
             }
         }
 
@@ -285,6 +286,18 @@ public class RobotComm implements Closeable {
         assert channels.size() == 0;
 
         transport.close();
+    }
+
+    /**
+     * MUST be called periodically so that periodic maintenance tasks can be done,
+     * chiefly handling of re-transmits.
+     */
+    public void periodicWork() {
+        if (!this.commClosed && this.isListening()) {
+            for (ChannelImplementation ch : this.channels.values()) {
+                ch.periodicWork();
+            }
+        }
     }
 
     private void handleMsgToUnknownChannel(MessageHeader header) {
@@ -818,12 +831,10 @@ public class RobotComm implements Closeable {
 
             if (validSendParams(cmdType, command, rn, "DISCARDING_SEND_COMMAND")) {
                 long cmdId = cliNewCommandId();
-                MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMD, name, cmdType, cmdId,
-                        MessageHeader.CmdStatus.STATUS_NOVALUE);
                 SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command,
                         addToCompletionQueue);
                 this.cliPendingSentCommands.put(cmdId, sc);
-                rn.send(hdr.serialize(command));
+                cliSendCmd(sc);
                 return sc;
             } else {
                 throw new IllegalArgumentException();
@@ -903,6 +914,12 @@ public class RobotComm implements Closeable {
 
         private long cliNewCommandId() {
             return nextCmdId.getAndIncrement();
+        }
+
+        private void cliSendCmd(SentCommandImplementation sc) {
+            MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMD, name, sc.cmdType, sc.cmdId,
+                    MessageHeader.CmdStatus.STATUS_NOVALUE);
+            this.remoteNode.send(hdr.serialize(sc.cmd));           
         }
 
         // Client gets this
@@ -1034,6 +1051,19 @@ public class RobotComm implements Closeable {
 
         }
 
+        void periodicWork() {
+            if (!this.closed) {
+                cliHandleRetransmits();
+            }
+        }
+
+        private void cliHandleRetransmits() {
+            this.cliPendingSentCommands.forEachValue(0, sc -> {
+                if (sc.pending()) {
+                    cliSendCmd(sc);
+                }
+            });
+        }
     }
 
     private boolean validSendParams(String msgType, String message, RemoteNode rn, String logMsgType) {
