@@ -596,6 +596,18 @@ public class StructuredLogger {
     public static RawLogger createUDPRawLogger(String address, int port, Filter filter) {
         return new UDPRawLogger(address, port, filter);
     }
+    
+    /**
+     * Creates a raw logger that writes log messages to the console (System.out or System.err).
+     * 
+     * @param filter
+     *            - Optional filter - if non-null, will be called to decide what to log.
+     * @return A StructuredLogger.Logger object that may be passed into a
+     *         StructuredLogger constructor
+     */
+    public static RawLogger createConsoleRawLogger(Filter filter) {
+        return new ConsoleRawLogger(filter);
+    }
 
     // **********************************************************************************
     // End of public methods
@@ -1317,6 +1329,45 @@ public class StructuredLogger {
                 clientSocket.close();
                 clientSocket = null;
             }
+        }
+    }
+
+    private static class ConsoleRawLogger implements RawLogger {
+        final Filter filter;
+
+        // Logger that logs by sending UDP traffic to the specified address and port.
+        public ConsoleRawLogger(Filter filter) {
+            this.filter = filter;
+        }
+
+        @Override
+        public void beginSession(String sessionId) {
+            // Nothing to do here
+        }
+
+        @Override
+        public boolean filter(String logName, int pri, String cat) {
+            return filter == null || this.filter.filter(logName, pri, cat);
+        }
+
+        @Override
+        public void write(String msg) {
+            // Total hack to decide whether to log to System.err or System.out!
+            if (msg.indexOf("ERR") >= 0 || msg.indexOf("WARN") >= 0) {
+                System.err.println(msg);
+            } else {
+                System.out.println(msg);
+            }
+        }
+
+        @Override
+        public void flush() {
+            System.out.flush();
+            System.err.flush();
+        }
+
+        @Override
+        public void close() {
         }
     }
 }

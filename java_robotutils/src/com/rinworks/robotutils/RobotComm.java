@@ -400,9 +400,10 @@ public class RobotComm implements Closeable {
                     return null; // ************ EARLY RETURN
                 }
                 try {
-                    cmdId = Long.parseLong(header[INDEX_CMDID], 16); // Hex
+                    cmdId = Long.parseUnsignedLong(header[INDEX_CMDID], 16); // Hex
                 } catch (NumberFormatException e) {
                     log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header - invalid cmd ID");
+                    log.trace(e.toString());
                     return null; // ************ EARLY RETURN
                 }
             }
@@ -674,7 +675,7 @@ public class RobotComm implements Closeable {
             private final DatagramTransport.RemoteNode rn;
             private long recvdTimeStamp;
             private final ChannelImplementation ch;
-            
+
             private MessageHeader.CmdStatus status;
             private String respType;
             private String respBody;
@@ -840,8 +841,8 @@ public class RobotComm implements Closeable {
         public void startReceivingMessages() {
             if (this.closed) {
                 throw new IllegalStateException("Attempt to start receiving on a closed channel.");
-            }; 
-            
+            }
+
             this.receiveMessages = true;
         }
 
@@ -874,20 +875,25 @@ public class RobotComm implements Closeable {
                 return null; // EARLY RETURN
             }
 
-            ReceivedCommandImplementation rc = srvPendingRecvCommands.poll();
-            boolean compute = false;
-            // We skip past commands that don't have status PENDING_QUEUED. This really should not happen
-            // normally, but could happen if we support remote cancelling of requests. Or perhaps we are
-            // closing the channel concurrently with this and in that process cancelling all queued commands?
-            while (!compute && (rc = srvPendingRecvCommands.poll()) != null) {
+            ReceivedCommandImplementation rc = null;
+             // We skip past commands that don't have status PENDING_QUEUED. This really
+            // should not happen
+            // normally, but could happen if we support remote cancelling of requests. Or
+            // perhaps we are
+            // closing the channel concurrently with this and in that process cancelling all
+            // queued commands?
+            while ((rc = srvPendingRecvCommands.poll()) != null) {
                 synchronized (rc) {
                     if (rc.status == MessageHeader.CmdStatus.STATUS_PENDING_QUEUED) {
                         rc.status = MessageHeader.CmdStatus.STATUS_PENDING_COMPUTING;
-                        compute = true;
+                        break;
                     }
                 }
             }
-            return compute ? null : rc;
+            if (rc!=null) {
+                log.trace("SRV_CMD_POLLED", "cmdType: " + rc.cmdType);
+            }
+            return rc;
         }
 
         private long cliNewCommandId() {
@@ -961,10 +967,10 @@ public class RobotComm implements Closeable {
 
             // We haven't seen this request below, let's make a new one.
 
-            ReceivedCommandImplementation rmNew = new ReceivedCommandImplementation(cmdId, header.msgType, msgBody,
+            ReceivedCommandImplementation rcNew = new ReceivedCommandImplementation(cmdId, header.msgType, msgBody,
                     remoteAddr, this);
-            ReceivedCommandImplementation rmPrev = this.srvRecvCommandsMap.putIfAbsent(cmdId, rmNew);
-            if (rmPrev != null) {
+            ReceivedCommandImplementation rcPrev = this.srvRecvCommandsMap.putIfAbsent(cmdId, rcNew);
+            if (rcPrev != null) {
                 // In the tiny amount of time before the previous check, another CMD for this
                 // same cmdID was
                 // processed and inserted into the map! We will simply drop this current one. No
@@ -973,20 +979,20 @@ public class RobotComm implements Closeable {
                 return; // ********** EARLY RETURN
             }
 
-            this.srvPendingRecvCommands.add(rmNew);
-
+            log.trace("SRV_CMD_QUEUED", "cmdType: " + rcNew.cmdType + " cmdId: " + rcNew.cmdId);
+            this.srvPendingRecvCommands.add(rcNew);
         }
-
 
         // The server command has been completed locally (i.e., on the server)
         public void srvHandleComputedResponse(ReceivedCommandImplementation rc, String respType, String resp) {
 
+            log.trace("SRV_COMPUTING_DONE", "cmdType: " + rc.cmdType);
             if (this.closed) {
                 return; // EARLY return;
             }
 
             boolean fNotify = false;
-            
+
             synchronized (rc) {
                 if (rc.status == MessageHeader.CmdStatus.STATUS_PENDING_COMPUTING) {
                     rc.status = MessageHeader.CmdStatus.STATUS_COMPLETED;
@@ -999,12 +1005,12 @@ public class RobotComm implements Closeable {
             if (fNotify) {
                 srvSendCmdResp(rc);
             }
-            
+
         }
 
         private void srvSendCmdResp(ReceivedCommandImplementation rc) {
             MessageHeader header = new MessageHeader(MessageHeader.DgType.DG_CMDRESP, this.name, rc.respType, rc.cmdId,
-                    rc.status);  
+                    rc.status);
             rc.rn.send(header.serialize(rc.respBody));
         }
 
