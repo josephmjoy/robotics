@@ -31,7 +31,7 @@ public class RobotComm implements Closeable {
 
     interface Address {
         String stringRepresentation();
-    };
+    }
 
     interface SentCommand {
         enum COMMAND_STATUS {
@@ -199,24 +199,23 @@ public class RobotComm implements Closeable {
 
     // Idempotent, thread safe
     public void startListening() {
-        DatagramTransport.Listener listener = null;
+        DatagramTransport.Listener li = null;
         synchronized (listenLock) {
             if (this.listener == null) {
-                listener = this.transport.newListener(null);
-                this.listener = listener;
+                li = this.transport.newListener(null);
             }
         }
 
-        if (listener != null) {
+        if (li != null) {
             log.info("STARTED LISTENING");
 
-            listener.listen((String msg, DatagramTransport.RemoteNode rn) -> {
+            li.listen((String msg, DatagramTransport.RemoteNode rn) -> {
                 Address remoteAddr = rn.remoteAddress();
                 if (!msg.startsWith(PROTOCOL_SIGNATURE)) {
                     log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Incorrect protocol signature.");
                     return; // EARLY RETURN
                 }
-                int headerLength = msg.indexOf("\n");
+                int headerLength = msg.indexOf('\n');
                 String headerStr = "";
                 if (headerLength < 0) {
                     log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header.");
@@ -298,22 +297,22 @@ public class RobotComm implements Closeable {
             DG_MSG, DG_CMD, DG_CMDRESP, DG_CMDRESPACK
         };
 
-        final static String STR_DG_MSG = "MSG";
-        final static String STR_DG_CMD = "CMD";
-        final static String STR_DG_CMDRESP = "CMDRESP";
-        final static String STR_DG_CMDRESPACK = "CMDRESPACK";
+        static final String STR_DG_MSG = "MSG";
+        static final String STR_DG_CMD = "CMD";
+        static final String STR_DG_CMDRESP = "CMDRESP";
+        static final String STR_DG_CMDRESPACK = "CMDRESPACK";
 
-        final static String STR_STATUS_PENDING_QUEUED = "QUEUED";
-        final static String STR_STATUS_PENDING_COMPUTING = "COMPUTING";
-        final static String STR_STATUS_COMPLETED = "COMPLETED";
-        final static String STR_STATUS_REJECTED = "REJECTED";
+        static final String STR_STATUS_PENDING_QUEUED = "QUEUED";
+        static final String STR_STATUS_PENDING_COMPUTING = "COMPUTING";
+        static final String STR_STATUS_COMPLETED = "COMPLETED";
+        static final String STR_STATUS_REJECTED = "REJECTED";
 
-        final static int INDEX_PROTO = 0;
-        final static int INDEX_DG_TYPE = 1;
-        final static int INDEX_CHANNEL = 2;
-        final static int INDEX_MSG_TYPE = 3;
-        final static int INDEX_CMDID = 4;
-        final static int INDEX_CMDSTATUS = 5;
+        static final int INDEX_PROTO = 0;
+        static final int INDEX_DG_TYPE = 1;
+        static final int INDEX_CHANNEL = 2;
+        static final int INDEX_MSG_TYPE = 3;
+        static final int INDEX_CMDID = 4;
+        static final int INDEX_CMDSTATUS = 5;
 
         final DgType dgType;
         final String channel;
@@ -570,7 +569,6 @@ public class RobotComm implements Closeable {
 
             @Override
             public long cmdId() {
-                // TODO Auto-generated method stub
                 return this.cmdId;
             }
 
@@ -883,7 +881,7 @@ public class RobotComm implements Closeable {
             }
 
             ReceivedCommandImplementation rc = null;
-             // We skip past commands that don't have status PENDING_QUEUED. This really
+            // We skip past commands that don't have status PENDING_QUEUED. This really
             // should not happen
             // normally, but could happen if we support remote cancelling of requests. Or
             // perhaps we are
@@ -897,7 +895,7 @@ public class RobotComm implements Closeable {
                     }
                 }
             }
-            if (rc!=null) {
+            if (rc != null) {
                 log.trace("SRV_CMD_POLLED", "cmdType: " + rc.cmdType);
             }
             return rc;
@@ -936,7 +934,7 @@ public class RobotComm implements Closeable {
             synchronized (sc) {
                 // If it *was* in the pending sent queue, it *must* be pending.
                 assert sc.pending();
-                sc.updateLK(header, msgBody);               
+                sc.updateLK(header, msgBody);
                 assert !sc.pending();
             }
             if (sc.addToCompletionQueue) {
@@ -995,7 +993,7 @@ public class RobotComm implements Closeable {
 
             log.trace("SRV_COMPUTING_DONE", "cmdType: " + rc.cmdType);
             if (this.closed) {
-                return; // EARLY return;
+                return; // EARLY return
             }
 
             boolean fNotify = false;
