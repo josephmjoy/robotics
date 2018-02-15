@@ -237,11 +237,11 @@ public class RobotComm implements Closeable {
                     if (header.dgType == MessageHeader.DgType.DG_MSG) {
                         ch.handleReceivedMessage(header, msgBody, remoteAddr);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMD) {
-                        ch.handleReceivedCommand(header, msgBody, remoteAddr);
+                        ch.srvHandleReceivedCommand(header, msgBody, remoteAddr);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMDRESP) {
-                        ch.handleReceivedCommandResponse(header, msgBody, remoteAddr);
+                        ch.cliHandleReceivedCommandResponse(header, msgBody, remoteAddr);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMDRESPACK) {
-                        ch.handleReceivedCommandResponseAck(header, msgBody, remoteAddr);
+                        ch.srvHandleReceivedCommandResponseAck(header, msgBody, remoteAddr);
                     } else {
                         assert false; // we have already validated the message, so shouldn't get here.
                     }
@@ -488,13 +488,13 @@ public class RobotComm implements Closeable {
         private final ConcurrentLinkedQueue<ReceivedMessageImplementation> pendingRecvMessages;
 
         // Sending of commands
-        private final ConcurrentHashMap<Long, SentCommandImplementation> pendingSentCommands;
-        private final ConcurrentLinkedQueue<SentCommandImplementation> completedSentCommands;
+        private final ConcurrentHashMap<Long, SentCommandImplementation> cliPendingSentCommands;
+        private final ConcurrentLinkedQueue<SentCommandImplementation> cliCompletedSentCommands;
 
         // Receiving of commands
-        private final ConcurrentHashMap<Long, ReceivedCommandImplementation> recvCommandsMap;
-        private final ConcurrentLinkedQueue<ReceivedCommandImplementation> pendingRecvCommands;
-        private final ConcurrentLinkedQueue<ReceivedCommandImplementation> completedRecvCommands;
+        private final ConcurrentHashMap<Long, ReceivedCommandImplementation> srvRecvCommandsMap;
+        private final ConcurrentLinkedQueue<ReceivedCommandImplementation> srvPendingRecvCommands;
+        private final ConcurrentLinkedQueue<ReceivedCommandImplementation> srvCompletedRecvCommands;
 
         final Object receiverLock;
         DatagramTransport.Listener listener;
@@ -717,7 +717,7 @@ public class RobotComm implements Closeable {
             @Override
             public void respond(String respType, String resp) {
                 // Server code is responding with the result of performing a command.
-                handleComputedResponse(this, respType, resp);
+                srvHandleComputedResponse(this, respType, resp);
 
             }
 
@@ -732,13 +732,13 @@ public class RobotComm implements Closeable {
             this.pendingRecvMessages = new ConcurrentLinkedQueue<>();
 
             // For sending commands
-            this.pendingSentCommands = new ConcurrentHashMap<>();
-            this.completedSentCommands = new ConcurrentLinkedQueue<>();
+            this.cliPendingSentCommands = new ConcurrentHashMap<>();
+            this.cliCompletedSentCommands = new ConcurrentLinkedQueue<>();
 
             // For receiving commands
-            this.pendingRecvCommands = new ConcurrentLinkedQueue<>();
-            this.completedRecvCommands = new ConcurrentLinkedQueue<>();
-            this.recvCommandsMap = new ConcurrentHashMap<>();
+            this.srvPendingRecvCommands = new ConcurrentLinkedQueue<>();
+            this.srvCompletedRecvCommands = new ConcurrentLinkedQueue<>();
+            this.srvRecvCommandsMap = new ConcurrentHashMap<>();
             this.receiverLock = new Object();
 
         }//
@@ -801,12 +801,12 @@ public class RobotComm implements Closeable {
             DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
 
             if (validSendParams(cmdType, command, rn, "DISCARDING_SEND_COMMAND")) {
-                long cmdId = newCommandId();
+                long cmdId = cliNewCommandId();
                 MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMD, name, cmdType, cmdId,
                         MessageHeader.CmdStatus.STATUS_NOVALUE);
                 SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command,
                         addToCompletionQueue);
-                this.pendingSentCommands.put(cmdId, sc);
+                this.cliPendingSentCommands.put(cmdId, sc);
                 rn.send(hdr.serialize(command));
                 return sc;
             } else {
@@ -847,15 +847,52 @@ public class RobotComm implements Closeable {
 
         @Override
         public ReceivedCommand pollReceivedCommand() {
-            return pendingRecvCommands.poll();
+            return srvPendingRecvCommands.poll();
         }
 
-        private long newCommandId() {
+        private long cliNewCommandId() {
             return nextCmdId.getAndIncrement();
         }
 
+        // Client gets this
+        void cliHandleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
+            if (header.isPending()) {
+                SentCommandImplementation sc = this.cliPendingSentCommands.get(header.cmdId);
+                if (sc != null) {
+                    synchronized (sc) {
+                        sc.updateRemoteStatusLK(header);
+                    }
+                }
+                // We don't respond to CMDRESP messages with pending status.
+                return; // ************ EARLY RETURN *************
+            }
+        
+            assert !header.isPending();
+        
+            SentCommandImplementation sc = this.cliPendingSentCommands.remove(header.cmdId);
+            if (sc == null) {
+                cliQueueCmdRespAck(header, remoteAddr);
+                return; // ************ EARLY RETURN *************
+            }
+        
+            synchronized (sc) {
+                // If it *was* in the pending sent queue, it *must* be pending.
+                assert sc.pending();
+                sc.updateRemoteStatusLK(header);
+                assert !sc.pending();
+            }
+            if (sc.addToCompletionQueue) {
+                this.cliCompletedSentCommands.add(sc);
+            }
+        }
+
+        private void cliQueueCmdRespAck(MessageHeader header, Address remoteAddr) {
+            // TODO: Validate remoteAddr and add eventually send a CMDRESPACK.
+            // For now we do nothing.
+        }
+
         // Server gets this
-        void handleReceivedCommand(MessageHeader header, String msgBody, Address remoteAddr) {
+        void srvHandleReceivedCommand(MessageHeader header, String msgBody, Address remoteAddr) {
             if (!this.receiveCommands) {
                 return; // ************* EARLY RETURN
             }
@@ -870,10 +907,10 @@ public class RobotComm implements Closeable {
             // simple cmdIds which could
             // easily collide.
             long cmdId = header.cmdId;
-            ReceivedCommandImplementation rc = this.recvCommandsMap.get(cmdId);
+            ReceivedCommandImplementation rc = this.srvRecvCommandsMap.get(cmdId);
 
             if (rc != null) {
-                respondToExistingReceivedCommand(rc, header, remoteAddr);
+                srvRespondToExistingReceivedCommand(rc, header, remoteAddr);
                 return; // ********* EARLY RETURN
             }
 
@@ -881,7 +918,7 @@ public class RobotComm implements Closeable {
 
             ReceivedCommandImplementation rmNew = new ReceivedCommandImplementation(cmdId, header.msgType, msgBody,
                     remoteAddr, this);
-            ReceivedCommandImplementation rmPrev = this.recvCommandsMap.putIfAbsent(cmdId, rmNew);
+            ReceivedCommandImplementation rmPrev = this.srvRecvCommandsMap.putIfAbsent(cmdId, rmNew);
             if (rmPrev != null) {
                 // In the tiny amount of time before the previous check, another CMD for this
                 // same cmdID was
@@ -891,62 +928,25 @@ public class RobotComm implements Closeable {
                 return; // ********** EARLY RETURN
             }
 
-            this.pendingRecvCommands.add(rmNew);
+            this.srvPendingRecvCommands.add(rmNew);
 
         }
 
-        private void respondToExistingReceivedCommand(ReceivedCommandImplementation rc, MessageHeader header,
+        private void srvRespondToExistingReceivedCommand(ReceivedCommandImplementation rc, MessageHeader header,
                 Address remoteAddr) {
             // TODO Auto-generated method stub
 
         }
 
-        public void handleComputedResponse(ReceivedCommandImplementation rc, String respType, String resp) {
+        public void srvHandleComputedResponse(ReceivedCommandImplementation rc, String respType, String resp) {
             // TODO Auto-generated method stub
             MessageHeader header = new MessageHeader(MessageHeader.DgType.DG_CMDRESP, respType, respType, rc.cmdId,
                     MessageHeader.CmdStatus.STATUS_COMPLETED);
         
         }
 
-        // Client gets this
-        void handleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
-            if (header.isPending()) {
-                SentCommandImplementation sc = this.pendingSentCommands.get(header.cmdId);
-                if (sc != null) {
-                    synchronized (sc) {
-                        sc.updateRemoteStatusLK(header);
-                    }
-                }
-                // We don't respond to CMDRESP messages with pending status.
-                return; // ************ EARLY RETURN *************
-            }
-
-            assert !header.isPending();
-
-            SentCommandImplementation sc = this.pendingSentCommands.remove(header.cmdId);
-            if (sc == null) {
-                queueCmdRespAck(header, remoteAddr);
-                return; // ************ EARLY RETURN *************
-            }
-
-            synchronized (sc) {
-                // If it *was* in the pending sent queue, it *must* be pending.
-                assert sc.pending();
-                sc.updateRemoteStatusLK(header);
-                assert !sc.pending();
-            }
-            if (sc.addToCompletionQueue) {
-                this.completedSentCommands.add(sc);
-            }
-        }
-
-        private void queueCmdRespAck(MessageHeader header, Address remoteAddr) {
-            // TODO: Validate remoteAddr and add eventually send a CMDRESPACK.
-            // For now we do nothing.
-        }
-
         // Server gets this
-        void handleReceivedCommandResponseAck(MessageHeader header, String msgBody, Address remoteAddr) {
+        void srvHandleReceivedCommandResponseAck(MessageHeader header, String msgBody, Address remoteAddr) {
             // TODO Auto-generated method stub
 
         }
