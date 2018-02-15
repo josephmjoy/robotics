@@ -330,7 +330,7 @@ public class RobotComm implements Closeable {
         private MessageHeader(DgType dgType, String channel, String msgType, long cmdId, CmdStatus status) {
             this.dgType = dgType;
             this.channel = channel;
-            this.msgType = msgType;
+            this.msgType = msgType == null ? "" : msgType;
             this.cmdId = cmdId;
             this.status = status;
         }
@@ -432,6 +432,7 @@ public class RobotComm implements Closeable {
         }
 
         public String serialize(String additionalText) {
+            additionalText = additionalText == null ? "" : additionalText;
             String dgTypeStr = dgTypeToString();
             String cmdIdStr = cmdIdToString();
             String statusStr = statusToString() + '\n' + additionalText;
@@ -500,6 +501,7 @@ public class RobotComm implements Closeable {
         DatagramTransport.Listener listener;
         private boolean receiveMessages;
         private boolean receiveCommands;
+        private boolean closed;
 
         private class ReceivedMessageImplementation implements ReceivedMessage {
             private final String msg;
@@ -672,6 +674,10 @@ public class RobotComm implements Closeable {
             private final DatagramTransport.RemoteNode rn;
             private long recvdTimeStamp;
             private final ChannelImplementation ch;
+            
+            private MessageHeader.CmdStatus status;
+            private String respType;
+            private String respBody;
 
             public ReceivedCommandImplementation(long cmdId, String msgType, String msgBody, Address remoteAddr,
                     ChannelImplementation ch) {
@@ -682,6 +688,7 @@ public class RobotComm implements Closeable {
                 this.rn = transport.newRemoteNode(remoteAddr);
                 this.recvdTimeStamp = System.currentTimeMillis();
                 this.ch = ch;
+                this.status = MessageHeader.CmdStatus.STATUS_PENDING_QUEUED;
             }
 
             @Override
@@ -764,7 +771,7 @@ public class RobotComm implements Closeable {
         public void sendMessage(String msgType, String message) {
             DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
 
-            if (validSendParams(msgType, message, rn, "DISCARDING_SEND_MESSAGE")) {
+            if (!this.closed && validSendParams(msgType, message, rn, "DISCARDING_SEND_MESSAGE")) {
                 MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_MSG, name, msgType, 0,
                         MessageHeader.CmdStatus.STATUS_NOVALUE);
                 rn.send(hdr.serialize(message));
@@ -784,15 +791,21 @@ public class RobotComm implements Closeable {
             // then remove ourselves from the channels queue.
             log.trace("Removing channel " + name + " from list of channels.");
             channels.remove(name, this);
+            this.closed = true;
         }
 
         @Override
         public ReceivedMessage pollReceivedMessage() {
-            return pendingRecvMessages.poll();
+            return this.closed ? null : pendingRecvMessages.poll();
         }
 
         @Override
         public SentCommand sendCommand(String cmdType, String command, boolean addToCompletionQueue) {
+
+            if (this.closed) {
+                throw new IllegalStateException("Channel is closed");
+            }
+
             if (!isListening()) {
                 throw new IllegalStateException(
                         "Attempt to call sendCommand on a RobotComm instance that is not listening.");
@@ -816,12 +829,19 @@ public class RobotComm implements Closeable {
 
         @Override
         public SentCommand pollCompletedCommand() {
+            if (this.closed) {
+                return null; // ********* EARLY RETURN
+            }
             // TODO Auto-generated method stub
             return null;
         }
 
         @Override
         public void startReceivingMessages() {
+            if (this.closed) {
+                throw new IllegalStateException("Attempt to start receiving on a closed channel.");
+            }; 
+            
             this.receiveMessages = true;
         }
 
@@ -834,6 +854,9 @@ public class RobotComm implements Closeable {
 
         @Override
         public void startReceivingCommands() {
+            if (this.closed) {
+                throw new IllegalStateException("Attempt to start receiving on a closed channel.");
+            }
             this.receiveCommands = true;
 
         }
@@ -847,7 +870,24 @@ public class RobotComm implements Closeable {
 
         @Override
         public ReceivedCommand pollReceivedCommand() {
-            return srvPendingRecvCommands.poll();
+            if (this.closed) {
+                return null; // EARLY RETURN
+            }
+
+            ReceivedCommandImplementation rc = srvPendingRecvCommands.poll();
+            boolean compute = false;
+            // We skip past commands that don't have status PENDING_QUEUED. This really should not happen
+            // normally, but could happen if we support remote cancelling of requests. Or perhaps we are
+            // closing the channel concurrently with this and in that process cancelling all queued commands?
+            while (!compute && (rc = srvPendingRecvCommands.poll()) != null) {
+                synchronized (rc) {
+                    if (rc.status == MessageHeader.CmdStatus.STATUS_PENDING_QUEUED) {
+                        rc.status = MessageHeader.CmdStatus.STATUS_PENDING_COMPUTING;
+                        compute = true;
+                    }
+                }
+            }
+            return compute ? null : rc;
         }
 
         private long cliNewCommandId() {
@@ -856,6 +896,11 @@ public class RobotComm implements Closeable {
 
         // Client gets this
         void cliHandleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
+
+            if (this.closed) {
+                return;
+            }
+
             if (header.isPending()) {
                 SentCommandImplementation sc = this.cliPendingSentCommands.get(header.cmdId);
                 if (sc != null) {
@@ -866,15 +911,15 @@ public class RobotComm implements Closeable {
                 // We don't respond to CMDRESP messages with pending status.
                 return; // ************ EARLY RETURN *************
             }
-        
+
             assert !header.isPending();
-        
+
             SentCommandImplementation sc = this.cliPendingSentCommands.remove(header.cmdId);
             if (sc == null) {
                 cliQueueCmdRespAck(header, remoteAddr);
                 return; // ************ EARLY RETURN *************
             }
-        
+
             synchronized (sc) {
                 // If it *was* in the pending sent queue, it *must* be pending.
                 assert sc.pending();
@@ -910,7 +955,7 @@ public class RobotComm implements Closeable {
             ReceivedCommandImplementation rc = this.srvRecvCommandsMap.get(cmdId);
 
             if (rc != null) {
-                srvRespondToExistingReceivedCommand(rc, header, remoteAddr);
+                srvSendCmdResp(rc);
                 return; // ********* EARLY RETURN
             }
 
@@ -932,17 +977,35 @@ public class RobotComm implements Closeable {
 
         }
 
-        private void srvRespondToExistingReceivedCommand(ReceivedCommandImplementation rc, MessageHeader header,
-                Address remoteAddr) {
-            // TODO Auto-generated method stub
 
+        // The server command has been completed locally (i.e., on the server)
+        public void srvHandleComputedResponse(ReceivedCommandImplementation rc, String respType, String resp) {
+
+            if (this.closed) {
+                return; // EARLY return;
+            }
+
+            boolean fNotify = false;
+            
+            synchronized (rc) {
+                if (rc.status == MessageHeader.CmdStatus.STATUS_PENDING_COMPUTING) {
+                    rc.status = MessageHeader.CmdStatus.STATUS_COMPLETED;
+                    rc.respType = respType;
+                    rc.respBody = resp;
+                    fNotify = true;
+                }
+            }
+
+            if (fNotify) {
+                srvSendCmdResp(rc);
+            }
+            
         }
 
-        public void srvHandleComputedResponse(ReceivedCommandImplementation rc, String respType, String resp) {
-            // TODO Auto-generated method stub
-            MessageHeader header = new MessageHeader(MessageHeader.DgType.DG_CMDRESP, respType, respType, rc.cmdId,
-                    MessageHeader.CmdStatus.STATUS_COMPLETED);
-        
+        private void srvSendCmdResp(ReceivedCommandImplementation rc) {
+            MessageHeader header = new MessageHeader(MessageHeader.DgType.DG_CMDRESP, this.name, rc.respType, rc.cmdId,
+                    rc.status);  
+            rc.rn.send(header.serialize(rc.respBody));
         }
 
         // Server gets this
