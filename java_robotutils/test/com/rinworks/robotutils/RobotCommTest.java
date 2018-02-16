@@ -21,7 +21,7 @@ class RobotCommTest {
         ConcurrentLinkedQueue<String> recvQueue = new ConcurrentLinkedQueue<>();
         int msgsSent = 0;
         int msgsReceived = 0;
-        
+
         class MyAddress implements Address {
             final String addr;
 
@@ -67,7 +67,7 @@ class RobotCommTest {
                         while (!closed) {
                             if ((msg = recvQueue.poll()) != null) {
                                 System.out.println("TRANSPORT:\n[" + msg + "]\n");
-                                if (msgsReceived++ % 3 == 0) {
+                                if (msgsReceived++ % 1 != 0) {
                                     // drop!
                                     System.out.println("Dropping received pkt");
                                     continue;
@@ -122,7 +122,7 @@ class RobotCommTest {
             @Override
             public void send(String msg) {
                 // TODO Auto-generated method stub
-                if (msgsSent++ % 3 == 0) {
+                if (msgsSent++ % 1 != 0) {
                     // drop!
                     return;
                 }
@@ -168,6 +168,10 @@ class RobotCommTest {
         }
         ;
 
+        for (RobotComm.ChannelStatistics stats : rc.getChannelStatistics()) {
+            System.out.println(stats);
+        }
+
         ch.stopReceivingMessages();
         rc.stopListening();
         rc.close();
@@ -182,7 +186,6 @@ class RobotCommTest {
         RobotComm.DatagramTransport transport = new TestTransport();
         StructuredLogger baseLogger = initStructuredLogger();
 
-
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
         RobotComm.Address addr = rc.resolveAddress("localhost");
         RobotComm.Channel ch = rc.newChannel("testChannel");
@@ -190,7 +193,7 @@ class RobotCommTest {
         rc.startListening();
 
         final String TEST_COMMAND = "TESTCMD1";
-        final String TEST_CMDTYPE  = "TESTCMDTYPE1";
+        final String TEST_CMDTYPE = "TESTCMDTYPE1";
         final String TEST_RESP = "TESTRESP1";
         final String TEST_RESPTYPE = "TESTRESPTYPE";
         ch.startReceivingCommands();
@@ -199,11 +202,10 @@ class RobotCommTest {
         assertEquals(TEST_CMDTYPE, cmd.cmdType());
         assertEquals(TEST_COMMAND, cmd.command());
 
-        
         RobotComm.ReceivedCommand rcom = null;
         while (rcom == null) {
             rc.periodicWork();
-            rcom = ch.pollReceivedCommand();           
+            rcom = ch.pollReceivedCommand();
             Thread.sleep(1000);
         }
 
@@ -223,6 +225,10 @@ class RobotCommTest {
         RobotComm.SentCommand cmd1 = ch.pollCompletedCommand();
         assertEquals(cmd, cmd1); // We should also pick it up from the completion queue.
 
+        for (RobotComm.ChannelStatistics stats : rc.getChannelStatistics()) {
+            System.out.println(stats);
+        }
+
         ch.stopReceivingMessages();
         rc.stopListening();
         rc.close();
@@ -234,7 +240,7 @@ class RobotCommTest {
         File logfile = new File("C:\\Users\\jmj\\Documents\\robotics\\temp\\log.txt");
         StructuredLogger.RawLogger rl = StructuredLogger.createFileRawLogger(logfile, 10000, null);
         StructuredLogger.RawLogger rl2 = StructuredLogger.createConsoleRawLogger(null);
-        StructuredLogger.RawLogger[] rls = {rl, rl2};
+        StructuredLogger.RawLogger[] rls = { rl, rl2 };
         StructuredLogger sl = new StructuredLogger(rls, "test");
         sl.beginLogging();
         return sl;

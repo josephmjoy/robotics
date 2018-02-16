@@ -18,6 +18,35 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#Feb 15D, 2018 RoboComm Design Note - Statistics Reporting
+ RobotComm can support reporting of performance statistics. For each channel:
+  - size of queues and maps - current values for now, not averages.
+  - number of sends, receives, command send sequests, sent CMDs,  command receives, RESP
+  - The above are rough estimates as we don't keep atomic counters for the above - they are just volatile variables.
+ Not appropriate to be a method in SentCommand etc as they are implementation dependent.
+ The status are reported in RobotComm.ChannelStatistics:
+```
+     public static class ChannelStatistics {
+        public final String channelName;
+        public final long sentMessages;
+        public final long rcvdMessages;
+        public final long sentCommands;
+        public final long rcvdCommands;
+        public final long sentCMDs;
+        public final long rcvdCMDs;
+        public final long sentCMDRESPs;
+        public final long rcvdCMDRESPs;
+        public final long sentCMDRESPACKs;
+        public final long rcvdCMDRESPACKs;
+        public final int curCliSentCmdMapSize;
+        public final int curCliSentCmdCompletionQueueSize;
+        public final int curSvrRecvdCmdMapSize;
+        public final int curSvrRcvdCmdIncomingQueueSize;
+        public final int curSvrRcvdCmdCompletedQueueSize;
+        ...
+}
+```
+
 #Feb 15C, 2018 RobotComm Design Note - Execution Context for Timers
 RobotComm needs timers just for the send-commend side - to periodically re-send CMD messages for which
 RESP with completed status have not been received. It seems heavy handed to create a Timer object (which has

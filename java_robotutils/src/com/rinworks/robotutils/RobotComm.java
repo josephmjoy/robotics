@@ -3,6 +3,9 @@
 package com.rinworks.robotutils;
 
 import java.io.Closeable;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -300,6 +303,114 @@ public class RobotComm implements Closeable {
         }
     }
 
+    public static class ChannelStatistics {
+        public final String channelName;
+        public final long sentMessages;
+        public final long rcvdMessages;
+        public final long sentCommands;
+        public final long rcvdCommands;
+        public final long sentCMDs;
+        public final long rcvdCMDs;
+        public final long sentCMDRESPs;
+        public final long rcvdCMDRESPs;
+        public final long sentCMDRESPACKs;
+        public final long rcvdCMDRESPACKs;
+        public final int curCliSentCmdMapSize;
+        public final int curCliSentCmdCompletionQueueSize;
+        public final int curSvrRecvdCmdMapSize;
+        public final int curSvrRcvdCmdIncomingQueueSize;
+        public final int curSvrRcvdCmdCompletedQueueSize;
+
+        ChannelStatistics(String channelName, long sentMessages, long rcvdMessages, long sentCommands,
+                long rcvdCommands, long sentCMDs, long rcvdCMDs, long sentCMDRESPs, long rcvdCMDRESPs,
+                long sentCMDRESPACKs, long rcvdCMDRESPACKs, int curCliSentCmdMapSize,
+                int curCliSentCmdCompletionQueueSize, int curSvrRecvdCmdMapSize, int curSvrRcvdCmdIncomingQueueSize,
+                int curSvrRcvdCmdCompletedQueueSize) {
+            this.channelName = channelName;
+            this.sentMessages = sentMessages;
+            this.rcvdMessages = rcvdMessages;
+            this.sentCommands = sentCommands;
+            this.rcvdCommands = rcvdCommands;
+            this.sentCMDs = sentCMDs;
+            this.rcvdCMDs = rcvdCMDs;
+            this.sentCMDRESPs = sentCMDRESPs;
+            this.rcvdCMDRESPs = rcvdCMDRESPs;
+            this.sentCMDRESPACKs = sentCMDRESPACKs;
+            this.rcvdCMDRESPACKs = rcvdCMDRESPACKs;
+            this.curCliSentCmdMapSize = curCliSentCmdMapSize;
+            this.curCliSentCmdCompletionQueueSize = curCliSentCmdCompletionQueueSize;
+            this.curSvrRecvdCmdMapSize = curSvrRecvdCmdMapSize;
+            this.curSvrRcvdCmdIncomingQueueSize = curSvrRcvdCmdIncomingQueueSize;
+            this.curSvrRcvdCmdCompletedQueueSize = curSvrRcvdCmdCompletedQueueSize;
+        }
+
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("ch: " + channelName);
+            if (sentMessages > 0) {
+                sb.append(" sm: " + sentMessages);
+            }
+            if (rcvdMessages > 0) {
+                sb.append(" rm: " + rcvdMessages);
+            }
+
+            if (sentCommands > 0) {
+                sb.append(" sc: " + sentCommands);
+            }
+            if (rcvdCommands > 0) {
+                sb.append(" rc: " + rcvdCommands);
+            }
+
+            if (sentCMDs > 0) {
+                sb.append(" sC: " + sentCMDs);
+            }
+            if (rcvdCMDs > 0) {
+                sb.append(" rC: " + rcvdCMDs);
+            }
+
+            if (sentCMDRESPs > 0) {
+                sb.append(" sCR: " + sentCMDRESPs);
+            }
+            if (rcvdCMDRESPs > 0) {
+                sb.append(" rCR: " + rcvdCMDRESPs);
+            }
+
+            if (sentCMDRESPACKs > 0) {
+                sb.append(" sCRA: " + sentCMDRESPACKs);
+            }
+            if (rcvdCMDRESPACKs > 0) {
+                sb.append(" rCRA: " + rcvdCMDRESPACKs);
+            }
+
+            if (curCliSentCmdMapSize > 0) {
+                sb.append(" cliCMap: " + curCliSentCmdMapSize);
+            }
+            if (curCliSentCmdCompletionQueueSize > 0) {
+                sb.append(" cliCCQ: " + curCliSentCmdCompletionQueueSize);
+            }
+
+            if (curSvrRecvdCmdMapSize > 0) {
+                sb.append(" srvCMap: " + curSvrRecvdCmdMapSize);
+            }
+            if (curSvrRcvdCmdIncomingQueueSize > 0) {
+                sb.append(" srvIQ: " + curSvrRcvdCmdIncomingQueueSize);
+            }
+            if (curSvrRcvdCmdCompletedQueueSize > 0) {
+                sb.append(" srvCCQ: " + curSvrRcvdCmdCompletedQueueSize);
+            }
+
+            return sb.toString();
+        }
+    }
+    
+List<ChannelStatistics> getChannelStatistics() {
+        ArrayList<ChannelStatistics> stats = new ArrayList<ChannelStatistics>();
+        for (ChannelImplementation ch: channels.values()) {
+            stats.add(ch.getStats());
+        }
+        return stats;
+    }
+
     private void handleMsgToUnknownChannel(MessageHeader header) {
         // TODO Auto-generated method stub
 
@@ -512,9 +623,24 @@ public class RobotComm implements Closeable {
 
         final Object receiverLock;
         DatagramTransport.Listener listener;
+        
+
         private boolean receiveMessages;
         private boolean receiveCommands;
         private boolean closed;
+        
+        // These are purely for statistics reporting
+        // They are not incremented atomically, so are approximate  
+        private volatile long approxSentMessages;
+        private volatile long approxSentCommands;
+        private volatile long approxRcvdMessages;
+        private volatile long approxRcvdCommands;
+        private volatile long approxSendCMDs;
+        private volatile long approxRcvdCMDs;
+        private volatile long approxSentCMDRESPs;
+        private volatile long approxRcvdCMDRESPs;
+        private volatile long approxSentCMDRESPACKs; // TODO
+        private volatile long approxRcvdCMDRESPACKs;
 
         private class ReceivedMessageImplementation implements ReceivedMessage {
             private final String msg;
@@ -766,6 +892,35 @@ public class RobotComm implements Closeable {
 
         }//
 
+        ChannelStatistics getStats() {
+            /*
+             * (String channelName, long sentMessages, long rcvdMessages, long sentCommands,
+                long rcvdCommands, long sentCMDs, long rcvdCMDs, long sentCMDRESPs, long rcvdCMDRESPs,
+                long sentCMDRESPACKs, long rcvdCMDRESPACKs, int curCliSentCmdMapSize,
+                int curCliSentCmdCompletionQueueSize, int curSvrRecvdCmdMapSize, int curSvrRcvdCmdIncomingQueueSize,
+                int curSvrRcvdCmdCompletedQueueSize) 
+             */
+            
+            return new ChannelStatistics(
+                    this.name,
+                    this.approxSentMessages,
+                    this.approxRcvdMessages,
+                    this.approxSentCommands,
+                    this.approxRcvdCommands,
+                    this.approxSendCMDs,
+                    this.approxRcvdCMDs,
+                    this.approxSentCMDRESPs,
+                    this.approxRcvdCMDRESPs,
+                    this.approxSentCMDRESPACKs,
+                    this.approxRcvdCMDRESPACKs,
+                    this.cliPendingSentCommands.size(),
+                    this.cliCompletedSentCommands.size(),
+                    this.srvRecvCommandsMap.size(),
+                    this.srvPendingRecvCommands.size(),
+                    this.srvCompletedRecvCommands.size()
+                    );
+        }
+
         @Override
         public String name() {
             return this.name;
@@ -790,6 +945,7 @@ public class RobotComm implements Closeable {
             if (!this.closed && validSendParams(msgType, message, rn, "DISCARDING_SEND_MESSAGE")) {
                 MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_MSG, name, msgType, 0,
                         MessageHeader.CmdStatus.STATUS_NOVALUE);
+                this.approxSentMessages++;
                 rn.send(hdr.serialize(message));
             }
 
@@ -834,6 +990,7 @@ public class RobotComm implements Closeable {
                 SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command,
                         addToCompletionQueue);
                 this.cliPendingSentCommands.put(cmdId, sc);
+                this.approxSentCommands++;
                 cliSendCmd(sc);
                 return sc;
             } else {
@@ -919,7 +1076,8 @@ public class RobotComm implements Closeable {
         private void cliSendCmd(SentCommandImplementation sc) {
             MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMD, name, sc.cmdType, sc.cmdId,
                     MessageHeader.CmdStatus.STATUS_NOVALUE);
-            this.remoteNode.send(hdr.serialize(sc.cmd));           
+            this.approxSendCMDs++;
+            this.remoteNode.send(hdr.serialize(sc.cmd));
         }
 
         // Client gets this
@@ -929,6 +1087,7 @@ public class RobotComm implements Closeable {
                 return;
             }
 
+            this.approxRcvdCMDRESPs++;
             if (header.isPending()) {
                 SentCommandImplementation sc = this.cliPendingSentCommands.get(header.cmdId);
                 if (sc != null) {
@@ -979,6 +1138,7 @@ public class RobotComm implements Closeable {
             // miniscule. But it is completely valid for remote clients to generate very
             // simple cmdIds which could
             // easily collide.
+            this.approxRcvdCMDs++;
             long cmdId = header.cmdId;
             ReceivedCommandImplementation rc = this.srvRecvCommandsMap.get(cmdId);
 
@@ -1002,6 +1162,7 @@ public class RobotComm implements Closeable {
             }
 
             log.trace("SRV_CMD_QUEUED", "cmdType: " + rcNew.cmdType + " cmdId: " + rcNew.cmdId);
+            this.approxRcvdCommands++;
             this.srvPendingRecvCommands.add(rcNew);
         }
 
@@ -1033,11 +1194,13 @@ public class RobotComm implements Closeable {
         private void srvSendCmdResp(ReceivedCommandImplementation rc) {
             MessageHeader header = new MessageHeader(MessageHeader.DgType.DG_CMDRESP, this.name, rc.respType, rc.cmdId,
                     rc.status);
+            this.approxSentCMDRESPs++;
             rc.rn.send(header.serialize(rc.respBody));
         }
 
         // Server gets this
         void srvHandleReceivedCommandResponseAck(MessageHeader header, String msgBody, Address remoteAddr) {
+            this.approxRcvdCMDRESPACKs++;
             // TODO Auto-generated method stub
 
         }
@@ -1046,6 +1209,7 @@ public class RobotComm implements Closeable {
             if (this.receiveMessages) {
                 ReceivedMessageImplementation rm = new ReceivedMessageImplementation(header.msgType, msgBody,
                         remoteAddr, this);
+                this.approxRcvdMessages++;
                 this.pendingRecvMessages.add(rm);
             }
 
