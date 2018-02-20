@@ -3,9 +3,13 @@ package com.rinworks.robotutils;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 import org.junit.jupiter.api.Test;
@@ -17,6 +21,7 @@ import com.rinworks.robotutils.RobotComm.SentCommand;
 class RobotCommTest {
 
     class TestTransport implements RobotComm.DatagramTransport {
+        public final String ALWAYSDROP_TEXT = "TRANSPORT-MUST-DROP";
         MyRemoteNode loopbackNode = new MyRemoteNode(new MyAddress("loopback"));
         ConcurrentLinkedQueue<String> recvQueue = new ConcurrentLinkedQueue<>();
         int msgsSent = 0;
@@ -143,6 +148,91 @@ class RobotCommTest {
 
         }
 
+    }
+
+    class StressTester {
+
+        AtomicLong nextId = new AtomicLong(1);
+
+        private class MessageRecord {
+            final long id;
+            final boolean alwaysDrop;
+            final String msgType;
+            final String msgBody;
+
+            MessageRecord(long id, boolean alwaysDrop) {
+                this.id = id;
+                this.alwaysDrop = alwaysDrop;
+                this.msgType = randomMsgType(id);
+                this.msgBody = alwaysDrop ? transport.ALWAYSDROP_TEXT : randomMessageBody(id);
+            }
+
+            // First line of message body is the internal 'id'. Remainder is random junk.
+            private String randomMessageBody(long id) {
+                String strId = Long.toHexString(id);
+                String body = strId;
+
+                int nExtra = rand.nextInt(10);
+                for (int i = 0; i < nExtra; i++) {
+                    body += "\n" + Long.toHexString(rand.nextLong());
+                }
+                return body;
+            }
+
+            // Type is a little bit of random hex digits, possibly an empty string.
+            private String randomMsgType(long id) {
+                String msgt = Long.toHexString(rand.nextLong());
+                assert msgt.length() > 0;
+                msgt = msgt.substring(rand.nextInt(msgType.length()));
+                return msgt;
+            }
+        }
+
+        private class CommandRecord {
+            final MessageRecord cmdRecord;
+            final MessageRecord respRecord;
+
+            CommandRecord(MessageRecord cmdRecord, MessageRecord respRecord) {
+                this.cmdRecord = cmdRecord;
+                this.respRecord = respRecord;
+            }
+        }
+
+        private final int nThreads;
+        private final ExecutorService exPool;
+        TestTransport transport;
+        private final Random rand;
+
+        public StressTester(int nThreads) {
+            this.nThreads = nThreads;
+            this.transport = new TestTransport();
+            ConcurrentHashMap<Long, MessageRecord> mrMap = new ConcurrentHashMap<>();
+            ConcurrentLinkedQueue<MessageRecord> mrSubmitQueue = new ConcurrentLinkedQueue<>();
+
+            ConcurrentHashMap<Long, CommandRecord> crMap = new ConcurrentHashMap<>();
+            ConcurrentLinkedQueue<CommandRecord> crCliSubmitQueue = new ConcurrentLinkedQueue<>();
+            ConcurrentLinkedQueue<CommandRecord> crSvrComputeQueue = new ConcurrentLinkedQueue<>();
+
+            // Init executor.
+            this.exPool = Executors.newFixedThreadPool(nThreads);
+            this.rand = new Random();
+        }
+
+        public void submitMessages(int nMessages, double alwaysDropRate, double transportDropRate, double avgDelay) {
+            assert alwaysDropRate >= 0 && alwaysDropRate <= 1;
+            assert transportDropRate >= 0 && transportDropRate <= 1;
+            for (int i = 0; i < nMessages; i++) {
+                // MessageRecord(boolean alwaysDrop, String msgType, String payload, double
+                // failureRate, double averageDelay) {
+                boolean alwaysDrop = rand.nextDouble() < alwaysDropRate;
+                long id = nextId.getAndIncrement();
+                MessageRecord mr = new MessageRecord(id, alwaysDrop);
+            }
+        }
+
+        public void close() {
+            this.exPool.shutdownNow();
+        }
     }
 
     @Test
