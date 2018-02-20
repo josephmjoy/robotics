@@ -402,10 +402,10 @@ public class RobotComm implements Closeable {
             return sb.toString();
         }
     }
-    
-List<ChannelStatistics> getChannelStatistics() {
+
+    List<ChannelStatistics> getChannelStatistics() {
         ArrayList<ChannelStatistics> stats = new ArrayList<ChannelStatistics>();
-        for (ChannelImplementation ch: channels.values()) {
+        for (ChannelImplementation ch : channels.values()) {
             stats.add(ch.getStats());
         }
         return stats;
@@ -623,14 +623,13 @@ List<ChannelStatistics> getChannelStatistics() {
 
         final Object receiverLock;
         DatagramTransport.Listener listener;
-        
 
         private boolean receiveMessages;
         private boolean receiveCommands;
         private boolean closed;
-        
+
         // These are purely for statistics reporting
-        // They are not incremented atomically, so are approximate  
+        // They are not incremented atomically, so are approximate
         private volatile long approxSentMessages;
         private volatile long approxSentCommands;
         private volatile long approxRcvdMessages;
@@ -895,30 +894,19 @@ List<ChannelStatistics> getChannelStatistics() {
         ChannelStatistics getStats() {
             /*
              * (String channelName, long sentMessages, long rcvdMessages, long sentCommands,
-                long rcvdCommands, long sentCMDs, long rcvdCMDs, long sentCMDRESPs, long rcvdCMDRESPs,
-                long sentCMDRESPACKs, long rcvdCMDRESPACKs, int curCliSentCmdMapSize,
-                int curCliSentCmdCompletionQueueSize, int curSvrRecvdCmdMapSize, int curSvrRcvdCmdIncomingQueueSize,
-                int curSvrRcvdCmdCompletedQueueSize) 
+             * long rcvdCommands, long sentCMDs, long rcvdCMDs, long sentCMDRESPs, long
+             * rcvdCMDRESPs, long sentCMDRESPACKs, long rcvdCMDRESPACKs, int
+             * curCliSentCmdMapSize, int curCliSentCmdCompletionQueueSize, int
+             * curSvrRecvdCmdMapSize, int curSvrRcvdCmdIncomingQueueSize, int
+             * curSvrRcvdCmdCompletedQueueSize)
              */
-            
-            return new ChannelStatistics(
-                    this.name,
-                    this.approxSentMessages,
-                    this.approxRcvdMessages,
-                    this.approxSentCommands,
-                    this.approxRcvdCommands,
-                    this.approxSendCMDs,
-                    this.approxRcvdCMDs,
-                    this.approxSentCMDRESPs,
-                    this.approxRcvdCMDRESPs,
-                    this.approxSentCMDRESPACKs,
-                    this.approxRcvdCMDRESPACKs,
-                    this.cliPendingSentCommands.size(),
-                    this.cliCompletedSentCommands.size(),
-                    this.srvRecvCommandsMap.size(),
-                    this.srvPendingRecvCommands.size(),
-                    this.srvCompletedRecvCommands.size()
-                    );
+
+            return new ChannelStatistics(this.name, this.approxSentMessages, this.approxRcvdMessages,
+                    this.approxSentCommands, this.approxRcvdCommands, this.approxSendCMDs, this.approxRcvdCMDs,
+                    this.approxSentCMDRESPs, this.approxRcvdCMDRESPs, this.approxSentCMDRESPACKs,
+                    this.approxRcvdCMDRESPACKs, this.cliPendingSentCommands.size(),
+                    this.cliCompletedSentCommands.size(), this.srvRecvCommandsMap.size(),
+                    this.srvPendingRecvCommands.size(), this.srvCompletedRecvCommands.size());
         }
 
         @Override
