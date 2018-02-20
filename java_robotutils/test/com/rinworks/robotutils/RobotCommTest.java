@@ -16,6 +16,7 @@ import java.util.function.BiConsumer;
 import org.junit.jupiter.api.Test;
 
 import com.rinworks.robotutils.RobotComm.Address;
+import com.rinworks.robotutils.RobotComm.ReceivedMessage;
 import com.rinworks.robotutils.RobotComm.SentCommand;
 
 class RobotCommTest {
@@ -201,11 +202,11 @@ class RobotCommTest {
         public long getNumSends() {
             return this.numSends.get();
         }
-        
+
         public long getNumRecvs() {
             return this.numRecvs.get();
         }
-        
+
         public long getNumDrops() {
             return this.numDrops.get();
         }
@@ -213,8 +214,21 @@ class RobotCommTest {
 
     class StressTester {
 
-        AtomicLong nextId = new AtomicLong(1);
-        Timer testTimer = new Timer();
+        private final int nThreads;
+        private final ExecutorService exPool;
+        private final TestTransport transport;
+        private final Random rand = new Random();
+        private final AtomicLong nextId = new AtomicLong(1);
+        private final Timer testTimer = new Timer();
+        private final StructuredLogger.Log log;
+
+        RobotComm rc;
+        RobotComm.Channel ch;
+
+        ConcurrentHashMap<Long, MessageRecord> msgMap = new ConcurrentHashMap<>();
+        ConcurrentHashMap<Long, CommandRecord> cmdMap = new ConcurrentHashMap<>();
+        ConcurrentLinkedQueue<CommandRecord> cmdCliSubmitQueue = new ConcurrentLinkedQueue<>();
+        ConcurrentLinkedQueue<CommandRecord> cmdSvrComputeQueue = new ConcurrentLinkedQueue<>();
 
         private class MessageRecord {
             final long id;
@@ -260,36 +274,125 @@ class RobotCommTest {
             }
         }
 
-        private final int nThreads;
-        private final ExecutorService exPool;
-        TestTransport transport;
-        private final Random rand;
-
-        public StressTester(int nThreads) {
+        public StressTester(int nThreads, TestTransport transport, StructuredLogger.Log log) {
             this.nThreads = nThreads;
-            this.transport = new TestTransport();
-            ConcurrentHashMap<Long, MessageRecord> mrMap = new ConcurrentHashMap<>();
-            ConcurrentLinkedQueue<MessageRecord> mrSubmitQueue = new ConcurrentLinkedQueue<>();
-
-            ConcurrentHashMap<Long, CommandRecord> crMap = new ConcurrentHashMap<>();
-            ConcurrentLinkedQueue<CommandRecord> crCliSubmitQueue = new ConcurrentLinkedQueue<>();
-            ConcurrentLinkedQueue<CommandRecord> crSvrComputeQueue = new ConcurrentLinkedQueue<>();
+            this.transport = transport;
+            this.log = log;
 
             // Init executor.
             this.exPool = Executors.newFixedThreadPool(nThreads);
-            this.rand = new Random();
+
         }
 
-        public void submitMessages(int nMessages, double alwaysDropRate, double transportDropRate, double avgDelay) {
+        public void init() {
+            StructuredLogger.Log rcLog = log.newLog("RCOMM");
+            this.rc = new RobotComm(transport, rcLog);
+            RobotComm.Address addr = rc.resolveAddress("localhost");
+            this.ch = rc.newChannel("testChannel");
+            this.ch.bindToRemoteNode(addr);
+            this.rc.startListening();
+        }
+
+        public void submitMessages(int nMessages, int submissionTimespan, double alwaysDropRate) {
+            assert this.rc != null;
+            assert this.ch != null;
             assert alwaysDropRate >= 0 && alwaysDropRate <= 1;
-            assert transportDropRate >= 0 && transportDropRate <= 1;
+            assert submissionTimespan >= 0;
+            // assert transportDropRate >= 0 && transportDropRate <= 1;
+            // assert maxDelay >= 0;
+            // this.transport.setTransportCharacteristics(transportDropRate,
+            // transportMaxDelay);
+
             for (int i = 0; i < nMessages; i++) {
-                // MessageRecord(boolean alwaysDrop, String msgType, String payload, double
-                // failureRate, double averageDelay) {
                 boolean alwaysDrop = rand.nextDouble() < alwaysDropRate;
                 long id = nextId.getAndIncrement();
                 MessageRecord mr = new MessageRecord(id, alwaysDrop);
+                int delay = (int) (rand.nextDouble() * submissionTimespan);
+                this.msgMap.put(id, mr);
+
+                this.testTimer.schedule(new TimerTask() {
+
+                    @Override
+                    public void run() {
+                        StressTester.this.exPool.submit(() -> {
+                            StressTester.this.ch.sendMessage(mr.msgType, mr.msgBody);
+                        });
+                    }
+                }, delay);
             }
+
+            int recvAttempts = Math.max(nMessages / 100, 10);
+            for (int i = 0; i < recvAttempts; i++) {
+                int delay = (int) (rand.nextDouble() * submissionTimespan);
+
+                // Special case of i == 0 - we schedule our final receive attempt to be AFTER
+                // the last send task...
+                if (i == 0) {
+                    delay = submissionTimespan + 1;
+                }
+
+                this.testTimer.schedule(new TimerTask() {
+
+                    @Override
+                    public void run() {
+                        StressTester.this.exPool.submit(() -> {
+                            // Let's pick up all messages received so far and verify them...
+                            RobotComm.ReceivedMessage rm = null;
+                            while (rm == null) {
+                                rm = ch.pollReceivedMessage();
+                                StressTester.this.processReceivedMessage(rm);
+                            }
+                        });
+                    }
+                }, delay);
+            }
+
+            // Having initiated the process of sending all the messages, we now have to
+            // wait for ??? and verify that exactly those messages that are expected to be
+            // received are received correctly.
+            try {
+                while ((this.transport.getNumDrops() + this.transport.getNumRecvs()) < nMessages) {
+                    Thread.sleep(1);
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                Thread.currentThread().interrupt();
+            }
+
+            // Now we do final validation.
+            this.finalSendMessageValidation();
+
+        }
+
+        private void processReceivedMessage(ReceivedMessage rm) {
+            // Extract id from message.
+            // Look it up - we had better find it in our map.
+            // Verify that we expect to get it - (not alwaysDrop)
+            // Verify we have not already received it.
+            // Verify message type and message body is what we expect.
+            // If all ok, remove this from the hash map.
+            String msgType = rm.msgType();
+            String msgBody = rm.message();
+            int nli = msgBody.indexOf('\n');
+            String strId = nli < 0 ? msgBody : msgBody.substring(0, nli);
+            try {
+                long id = Long.parseUnsignedLong(strId, 16);
+                MessageRecord mr = this.msgMap.get(id);
+                assertNotEquals(mr, null);
+                assertEquals(mr.msgType, msgType);
+                assertEquals(mr.msgBody, msgBody);
+                assertFalse(mr.alwaysDrop);
+                this.msgMap.remove(id, mr);
+            } catch (NumberFormatException e) {
+                fail("Exception attempting to parse ID from received message [" + rm.message() + "]");
+            }
+        }
+
+        private void finalSendMessageValidation() {
+            // Verify that the count of messages that still remain in our map
+            // is exactly equal to the number of messages dropped by the transport - i.e.,
+            // they were never received.
+            assertEquals(this.transport.getNumDrops(), this.msgMap.size());
         }
 
         public void close() {
@@ -396,6 +499,18 @@ class RobotCommTest {
         StructuredLogger sl = new StructuredLogger(rls, "test");
         sl.beginLogging();
         return sl;
+    }
+    
+    
+    @Test
+    void stressTest1() {
+        TestTransport transport = new TestTransport();
+        StructuredLogger baseLogger = initStructuredLogger();
+
+        StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
+        stresser.init();
+        transport.setTransportCharacteristics(0, 0);
+        stresser.submitMessages(0, 0, 0);        
     }
 
 }
