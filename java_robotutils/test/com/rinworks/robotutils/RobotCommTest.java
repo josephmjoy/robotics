@@ -21,13 +21,21 @@ import com.rinworks.robotutils.RobotComm.SentCommand;
 class RobotCommTest {
 
     class TestTransport implements RobotComm.DatagramTransport {
-        public final String ALWAYSDROP_TEXT = "TRANSPORT-MUST-DROP";
-        MyRemoteNode loopbackNode = new MyRemoteNode(new MyAddress("loopback"));
-        ConcurrentLinkedQueue<String> recvQueue = new ConcurrentLinkedQueue<>();
-        int msgsSent = 0;
-        int msgsReceived = 0;
+        final String ALWAYSDROP_TEXT = "TRANSPORT-MUST-DROP";
+        private final MyRemoteNode loopbackNode = new MyRemoteNode(new MyAddress("loopback"));
+        private final ConcurrentLinkedQueue<String> recvQueue = new ConcurrentLinkedQueue<>();
+        private final Timer transportTimer = new Timer();
+        private final Random rand = new Random();
+        private final AtomicLong numSends = new AtomicLong(0);
+        private final AtomicLong numRecvs = new AtomicLong(0);
+        private final AtomicLong numDrops = new AtomicLong(0);
 
-        class MyAddress implements Address {
+        private boolean closed = false;
+        private double failureRate = 0;
+        private int maxDelay = 0;
+        private MyListener curListener = null; // we support only one listener at a time.
+
+        private class MyAddress implements Address {
             final String addr;
 
             public MyAddress(String a) {
@@ -39,6 +47,25 @@ class RobotCommTest {
                 return this.addr;
             }
 
+        }
+
+        // Changes transport characteristics: sends datagrams with {failureRate} failure
+        // rate,
+        // and {maxDelay} max delay per packet.
+        void setTransportCharacteristics(double failureRate, int maxDelay) {
+            assert failureRate >= 0 && failureRate <= 1;
+            assert maxDelay >= 0;
+            this.failureRate = failureRate;
+            this.maxDelay = maxDelay;
+        }
+
+        // {failureRate} "close enough" to 0 is considered to be zero-failures.
+        boolean zeroFailures() {
+            return Math.abs(this.failureRate) < 1e-3;
+        }
+
+        boolean noDelays() {
+            return this.maxDelay == 0;
         }
 
         @Override
@@ -57,40 +84,17 @@ class RobotCommTest {
                 this.addr = a;
                 this.loopbackNode = new MyRemoteNode(addr);
                 this.closed = false;
+
+                // Test transport supports only one listener at a time.
+                assert (TestTransport.this.curListener == null);
+                TestTransport.this.curListener = this;
             }
 
             @Override
             public void listen(BiConsumer<String, RemoteNode> handler) {
+                // Listen should only be called once.
+                assert this.clientRecv == null;
                 this.clientRecv = handler;
-                ExecutorService pool = Executors.newFixedThreadPool(1);
-                pool.execute(new Runnable() {
-
-                    @Override
-                    public void run() {
-                        System.out.println("Test listener: starting...");
-                        String msg = null;
-                        while (!closed) {
-                            if ((msg = recvQueue.poll()) != null) {
-                                System.out.println("TRANSPORT:\n[" + msg + "]\n");
-                                if (msgsReceived++ % 1 != 0) {
-                                    // drop!
-                                    System.out.println("Dropping received pkt");
-                                    continue;
-                                }
-                                handler.accept(msg, loopbackNode);
-                            } else {
-                                try {
-                                    Thread.sleep(0);
-                                } catch (InterruptedException e) {
-                                    // TODO Auto-generated catch block
-                                    e.printStackTrace();
-                                    Thread.currentThread().interrupt();
-                                }
-                            }
-                        }
-                        System.out.println("Test listner: ...quitting.");
-                    }
-                });
             }
 
             @Override
@@ -102,6 +106,15 @@ class RobotCommTest {
             public void close() {
                 this.closed = true;
                 this.clientRecv = null;
+            }
+
+            void receiveData(String s) {
+                if (this.clientRecv != null) {
+                    TestTransport.this.numRecvs.incrementAndGet();
+                    this.clientRecv.accept(s, loopbackNode);
+                } else {
+                    TestTransport.this.numDrops.incrementAndGet();
+                }
             }
 
         }
@@ -120,39 +133,88 @@ class RobotCommTest {
 
             @Override
             public Address remoteAddress() {
-                // TODO Auto-generated method stub
                 return addr;
             }
 
             @Override
             public void send(String msg) {
-                // TODO Auto-generated method stub
-                if (msgsSent++ % 1 != 0) {
-                    // drop!
-                    return;
+                TestTransport.this.numSends.incrementAndGet();
+                if (shouldDrop(msg)) {
+                    TestTransport.this.numDrops.incrementAndGet();
+                    return; // **************** EARLY RETURN *****
                 }
-                recvQueue.add(msg);
+                handleSend(msg);
             }
 
         }
 
         @Override
         public RemoteNode newRemoteNode(Address remoteAddress) {
-            // TODO Auto-generated method stub
             return new MyRemoteNode(remoteAddress);
+        }
+
+        public void handleSend(String msg) {
+            if (this.closed) {
+                TestTransport.this.numDrops.incrementAndGet();
+                return; // ************ EARLY RETURN
+            }
+            if (noDelays()) {
+                if (this.curListener != null) {
+                    // Send right now!
+                    this.curListener.receiveData(msg);
+                } else {
+                    TestTransport.this.numDrops.incrementAndGet();
+                }
+            } else {
+                int delay = (int) (rand.nextDouble() * this.maxDelay);
+                transportTimer.schedule(new TimerTask() {
+
+                    @Override
+                    public void run() {
+                        if (!TestTransport.this.closed && TestTransport.this.curListener != null) {
+                            // Delayed send
+                            TestTransport.this.curListener.receiveData(msg);
+                        } else {
+                            TestTransport.this.numDrops.incrementAndGet();
+                        }
+                    }
+
+                }, delay);
+            }
+        }
+
+        public boolean shouldDrop(String msg) {
+            if (this.closed || msg.indexOf(ALWAYSDROP_TEXT) >= 0) {
+                return true;
+            } else if (zeroFailures()) {
+                return false;
+            } else {
+                return this.rand.nextDouble() < this.failureRate;
+            }
         }
 
         @Override
         public void close() {
-            // TODO Auto-generated method stub
-
+            this.closed = true;
         }
 
+        public long getNumSends() {
+            return this.numSends.get();
+        }
+        
+        public long getNumRecvs() {
+            return this.numRecvs.get();
+        }
+        
+        public long getNumDrops() {
+            return this.numDrops.get();
+        }
     }
 
     class StressTester {
 
         AtomicLong nextId = new AtomicLong(1);
+        Timer testTimer = new Timer();
 
         private class MessageRecord {
             final long id;

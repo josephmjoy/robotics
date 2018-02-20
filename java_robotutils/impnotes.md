@@ -18,6 +18,54 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#Feb 17, 2018 RobotComm Design Note - Stress Testing Specification
+*Test Transport*:
+- supports loopback only for now.
+- constructor arguments int maxDelay(ms) and double failureRate (0.0 to 1.0). A value close
+ to 0.0 is taken as zero-failures - so specifying 0 or 0.0 guarantees absolutely no failures.
+- if failureRate > 0 it uniformly-randomly drop that fraction of packets.
+- if is not dropping a packet and maxDelay is > 0, it will *always* use a timer to send 
+   the packet, specifying a delay of between [0, maxDelay]. So the average delay will be
+   maxDelay/2.
+- It will also ALWAYS drop a packet that contains the special pattern "TRANSPORT-MUST-DROP".
+ For simplicity, packets dropped this way are not part of the failure rate calculation.
+- Transport maintains an accurate count of packets dropped (due to both drop-packet
+indication in the packet or because of random failures.
+
+*Stress Tester*
+- Submits bulk sendMessage and bulk sendCommand. For each, it takes n messages/commands and
+a time interval, and generates timer tasks randomly across [0, time interval]. The timer task
+simply runs an execution task in a fixed-sized threadpool (ExecutorService). The latter task
+sends the message/command. This two-step process is so that the timing is more or less accurate
+while at the same time multiple threads are used.
+- It also sprays some number of poll-recvd-message and poll-recvd-command timer tasks, which
+  also do their work in the same executor threadpool. These tasks keep processing incoming 
+  messages/commands until the queue becomes empty, then they exit. Note that each task
+  will empty the corresponding queue, so the number of these tasks do not have to match
+  the number of received messages/commands.
+- There needs to be a final set of received after 2x or more the sum of the delay before
+submission and the transport delay. Commands neeed to take into account re-transmits of the 
+protocol extending the time further.
+
+*Verfication of Send/Recv messages"
+- Total messages sent == totalMessagesReceived + transport drop count.
+- No drop commands should be received.
+- Message body and type should be intact.
+
+*Verification of Send/Recv command"
+- Total commands processed and responses received == total commands sent plus force-dropped
+messages. Transport failures should have no effect.
+- No dropped commands should be received/processed -- well there is drop CMD and drop CMDRESP,
+which have different effects. These chould be accounted for exactly.
+- Correct cmd type and cmd body should be received by server. Correct response type and
+response should be received by client.
+- Just keep waiting until the expected number of commands are completed or received- should 
+just wait indefinately for this to happen as an accurate count of dropped packets and dropped
+responses are known.
+
+IMP: First send/receive of messages stress test working. Then revise above spec and 
+get cmd/response stress test to work.
+
 #Feb 15D, 2018 RoboComm Design Note - Statistics Reporting
  RobotComm can support reporting of performance statistics. For each channel:
   - size of queues and maps - current values for now, not averages.
