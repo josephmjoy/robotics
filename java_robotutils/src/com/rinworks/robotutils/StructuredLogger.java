@@ -896,9 +896,9 @@ public class StructuredLogger {
             long millis = System.currentTimeMillis();
             long timestamp = millis - sessionStart;
             String rtsKeyValue = (rtsEnabled) ? TAG_RELATIVE_TIMESTAMP + ": " + (millis - rtsStartTime) + "  " : "";
-            return String.format("%s: %s  %s: %s  %s: %s  %s: %s  %s: %s  %s: %s  %s: %s  %s%s%s: %s", TAG_SESSION_ID,
-                    sessionId, TAG_SEQ_NO, curSeq, TAG_TIMESTAMP, timestamp, TAG_COMPONENT, logName, TAG_PRI, pri,
-                    TAG_CAT, cat, TAG_TYPE, msgType, rtsKeyValue, tagsString, TAG_DEF_MSG, msg);
+            return String.format("%s: %s  %s: %-2s  %s: %-3s  %s: %s  %s: %-5s  %s: %s  %s: %s  %s%s%s: %s", TAG_SESSION_ID,
+                    sessionId, TAG_SEQ_NO, curSeq, TAG_TIMESTAMP, timestamp, TAG_PRI, pri,
+                    TAG_CAT, cat, TAG_COMPONENT, logName, TAG_TYPE, msgType, rtsKeyValue, tagsString, TAG_DEF_MSG, msg);
         }
 
         // RTS implementation:

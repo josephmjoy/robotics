@@ -50,12 +50,11 @@ The above code is also available as JUnit test `StruturedLoggerTest.testIntroduc
 ## Structure of Logged Messages <a name="structure"/>
 If we open the temporary file created by the session above, we will see that it contains lines that look like:
 ```
-_sid: 1519240121292  _sn: 1  _ts: 21  _co: MY_SYSTEM  _pri: 0  _cat: INFO  _ty: _LOG_SESSION_STARTED  _msg: dateTime: 2018-02-21T11:08:41.305  rootName: MY_SYSTEM  maxBuffered: 1000  autoFlushPeriod: 1000
-_sid: 1519240121292  _sn: 2  _ts: 21  _co: MY_SYSTEM  _pri: 1  _cat: INFO  _ty: _OTHER  _msg: Logging an informational message
-_sid: 1519240121292  _sn: 3  _ts: 22  _co: MY_SYSTEM  _pri: 1  _cat: WARN  _ty: _OTHER  _msg: Logging a warning
-_sid: 1519240121292  _sn: 4  _ts: 22  _co: MY_SYSTEM  _pri: 0  _cat: ERR  _ty: _OTHER  _msg: Logging an error
-_sid: 1519240121292  _sn: 5  _ts: 22  _co: MY_SYSTEM  _pri: 0  _cat: INFO  _ty: _LOG_SESSION_ENDED  _msg: rootName: MY_SYSTEM
-
+_sid: 1519269851009  _sn: 1   _ts: 0    _pri: 0  _cat: INFO   _co: MY_SYSTEM  _ty: _LOG_SESSION_STARTED  _msg:  dateTime: 2018-02-21T19:24:11.009  rootName: MY_SYSTEM  maxBuffered: 1000  autoFlushPeriod: 1000
+_sid: 1519269851009  _sn: 2   _ts: 0    _pri: 1  _cat: INFO   _co: MY_SYSTEM  _ty: _OTHER  _msg: Logging an informational message
+_sid: 1519269851009  _sn: 3   _ts: 0    _pri: 1  _cat: WARN   _co: MY_SYSTEM  _ty: _OTHER  _msg: Logging a warning
+_sid: 1519269851009  _sn: 4   _ts: 0    _pri: 0  _cat: ERR    _co: MY_SYSTEM  _ty: _OTHER  _msg: Logging an error
+_sid: 1519269851009  _sn: 5   _ts: 0    _pri: 0  _cat: INFO   _co: MY_SYSTEM  _ty: _LOG_SESSION_ENDED  _msg:  rootName: MY_SYSTEM
 ```
 Each line corresponds to one logged message. The message has broadly speaking the form "_tag1: val1  tag2: val2  tag3: val3..._", i.e., a sequence of tag-value pairs separated by a two-character sequence composed by colon followed by a space (': '). Predefined tags are listed in the table below.
 
