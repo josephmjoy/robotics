@@ -956,6 +956,10 @@ public class RobotComm implements Closeable {
 
         @Override
         public ReceivedMessage pollReceivedMessage() {
+            if (!this.receiveMessages) {
+                throw new IllegalStateException("Attempt to poll for received messages when listening is not enabled.");
+                // ********** EARLY EXCEPTION
+            }
             return this.closed ? null : pendingRecvMessages.poll();
         }
 
@@ -1034,6 +1038,11 @@ public class RobotComm implements Closeable {
         public ReceivedCommand pollReceivedCommand() {
             if (this.closed) {
                 return null; // EARLY RETURN
+            }
+            
+            if (!this.receiveCommands) {
+                throw new IllegalStateException("Attempt to poll for commands when listening is not enabled.");
+                // ********** EARLY EXCEPTION
             }
 
             ReceivedCommandImplementation rc = null;

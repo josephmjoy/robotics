@@ -18,7 +18,10 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
-#Feb 21, 2018 StructureLogger Design Note - Tags: adding space after colon; adding dateTime to _LOG_SESSION_STARTED
+#Feb 21A, 2018 General Design Note
+One issue with tasks submitted using the ExecutorService is that those tasks are responsible for catching and handling all exceptions, else they are silently discarded. Therefore, one SHOULD always a catch-all for Exception in all submitted tasks that may possibly throw a runtime exception. I (JMJ) ran into this when debugging a problem with the RobotComm stress tests where exceptions were silently swallowed while I was assuming that they were not being thrown.
+
+#Feb 21B, 2018 StructureLogger Design Note - Tags: adding space after colon; adding dateTime to _LOG_SESSION_STARTED
 - Decided to add a single space character after the colon character for tags in the log. The result is not as "tight", but it
 has the big advantage that parsing can now ignore ':' that occur within message text without space, such as in URLs and time stamps
 for example "2018-02-21T10:50:02.401". Also this is what YAML specifies (and where the original inspiration for adding a space came from).
