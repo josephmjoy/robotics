@@ -160,36 +160,6 @@ class RobotCommTest {
             return new MyRemoteNode(remoteAddress);
         }
 
-        public void handleSend(String msg) {
-            if (this.closed) {
-                TestTransport.this.numDrops.incrementAndGet();
-                return; // ************ EARLY RETURN
-            }
-            if (noDelays()) {
-                if (this.curListener != null) {
-                    // Send right now!
-                    this.curListener.receiveData(msg);
-                } else {
-                    TestTransport.this.numDrops.incrementAndGet();
-                }
-            } else {
-                int delay = (int) (rand.nextDouble() * this.maxDelay);
-                transportTimer.schedule(new TimerTask() {
-
-                    @Override
-                    public void run() {
-                        if (!TestTransport.this.closed && TestTransport.this.curListener != null) {
-                            // Delayed send
-                            TestTransport.this.curListener.receiveData(msg);
-                        } else {
-                            TestTransport.this.numDrops.incrementAndGet();
-                        }
-                    }
-
-                }, delay);
-            }
-        }
-
         public boolean shouldDrop(String msg) {
             if (this.closed || msg.indexOf(ALWAYSDROP_TEXT) >= 0) {
                 return true;
@@ -217,6 +187,40 @@ class RobotCommTest {
         public long getNumDrops() {
             return this.numDrops.get();
         }
+        
+        public int getMaxDelay() {
+            return this.maxDelay;
+        }
+
+        private void handleSend(String msg) {
+            if (this.closed) {
+                TestTransport.this.numDrops.incrementAndGet();
+                return; // ************ EARLY RETURN
+            }
+            if (noDelays()) {
+                if (this.curListener != null) {
+                    // Send right now!
+                    this.curListener.receiveData(msg);
+                } else {
+                    TestTransport.this.numDrops.incrementAndGet();
+                }
+            } else {
+                int delay = (int) (rand.nextDouble() * this.maxDelay);
+                transportTimer.schedule(new TimerTask() {
+        
+                    @Override
+                    public void run() {
+                        if (!TestTransport.this.closed && TestTransport.this.curListener != null) {
+                            // Delayed send
+                            TestTransport.this.curListener.receiveData(msg);
+                        } else {
+                            TestTransport.this.numDrops.incrementAndGet();
+                        }
+                    }
+        
+                }, delay);
+            }
+        }
     }
 
     class StressTester {
@@ -228,7 +232,7 @@ class RobotCommTest {
         private final AtomicLong nextId = new AtomicLong(1);
         private final Timer testTimer = new Timer();
         private final StructuredLogger.Log log;
-
+        private final StructuredLogger.Log hfLog; // high frequency (verbose) log
         RobotComm rc;
         RobotComm.Channel ch;
 
@@ -285,6 +289,7 @@ class RobotCommTest {
             this.nThreads = nThreads;
             this.transport = transport;
             this.log = log;
+            this.hfLog = log.newLog("HFLOG");
 
             // Init executor.
             this.exPool = Executors.newFixedThreadPool(nThreads);
@@ -306,10 +311,7 @@ class RobotCommTest {
             assert this.ch != null;
             assert alwaysDropRate >= 0 && alwaysDropRate <= 1;
             assert submissionTimespan >= 0;
-            // assert transportDropRate >= 0 && transportDropRate <= 1;
-            // assert maxDelay >= 0;
-            // this.transport.setTransportCharacteristics(transportDropRate,
-            // transportMaxDelay);
+            
             log.trace("Beginning to submit " + nMessages + " messages.");
             for (int i = 0; i < nMessages; i++) {
                 boolean alwaysDrop = rand.nextDouble() < alwaysDropRate;
@@ -324,6 +326,7 @@ class RobotCommTest {
                     public void run() {
                         StressTester.this.exPool.submit(() -> {
                             try {
+                                hfLog.trace("Sending message with id " + id);                              
                                 StressTester.this.ch.sendMessage(mr.msgType, mr.msgBody);
                             } catch (Exception e) {
                                 log.err("EXCEPTION", e.toString());
@@ -334,13 +337,15 @@ class RobotCommTest {
             }
 
             int recvAttempts = Math.max(nMessages / 100, 10);
+            int maxReceiveDelay  = submissionTimespan + transport.getMaxDelay();
+            log.info("maxReceiveDelay: " + maxReceiveDelay);
             for (int i = 0; i < recvAttempts; i++) {
                 int delay = (int) (rand.nextDouble() * submissionTimespan);
 
                 // Special case of i == 0 - we schedule our final receive attempt to be AFTER
-                // the last send task...
+                // the last packet is actually sent by the transport (after a potential delay)
                 if (i == 0) {
-                    delay = submissionTimespan + 100;
+                    delay = maxReceiveDelay + 1;
                 }
 
                 this.testTimer.schedule(new TimerTask() {
@@ -369,13 +374,13 @@ class RobotCommTest {
             // wait for ??? and verify that exactly those messages that are expected to be
             // received are received correctly.
             try {
-                long actualReceivesExpected = nMessages - this.transport.getNumDrops();
-                log.trace("Waiting to receive " + actualReceivesExpected + "");
+                log.trace("Waiting to receive up to " + nMessages + " messages");
+                Thread.sleep(maxReceiveDelay);
                 int retryCount = 10;
-                while (retryCount-- > 0 && this.transport.getNumRecvs() < actualReceivesExpected) {
+                while (retryCount-- > 0 && this.msgMap.size() > transport.getNumDrops()) {
                     Thread.sleep(500);
                 }
-            } catch (InterruptedException e) {
+             } catch (InterruptedException e) {
                 e.printStackTrace();
                 Thread.currentThread().interrupt();
             }
@@ -398,7 +403,7 @@ class RobotCommTest {
             String strId = nli < 0 ? msgBody : msgBody.substring(0, nli);
             try {
                 long id = Long.parseUnsignedLong(strId, 16);
-                log.trace("Received message with id " + id);
+                hfLog.trace("Received message with id " + id);
                 MessageRecord mr = this.msgMap.get(id);
                 assertNotEquals(mr, null);
                 assertEquals(mr.msgType, msgType);
@@ -414,7 +419,11 @@ class RobotCommTest {
             // Verify that the count of messages that still remain in our map
             // is exactly equal to the number of messages dropped by the transport - i.e.,
             // they were never received.
-            // assertEquals(this.transport.getNumDrops(), this.msgMap.size());
+            long drops = this.transport.getNumDrops();
+            int mapSize = this.msgMap.size();
+            log.info("Final verification. Dropped: " + drops  + "  Missing: " + (mapSize - drops));
+            log.flush();
+            assertEquals(drops, mapSize);
         }
 
         public void close() {
@@ -515,8 +524,16 @@ class RobotCommTest {
 
     StructuredLogger initStructuredLogger() {
         File logfile = new File("C:\\Users\\jmj\\Documents\\robotics\\temp\\log.txt");
-        StructuredLogger.RawLogger rl = StructuredLogger.createFileRawLogger(logfile, 1000000, null);
-        StructuredLogger.RawLogger rl2 = StructuredLogger.createConsoleRawLogger(null);
+        StructuredLogger.Filter f1 = (ln, p, cat) -> {
+            return ln.equals("test.TRANS") || ln.equals("test.HFLOG") ? false : true;
+        };
+        StructuredLogger.Filter f2 = (ln, p, cat) -> {
+            return ln.equals("test.TRANS")  ? false : true;
+        };
+        StructuredLogger.Filter f = f1;
+        
+        StructuredLogger.RawLogger rl = StructuredLogger.createFileRawLogger(logfile, 1000000, f);
+        StructuredLogger.RawLogger rl2 = StructuredLogger.createConsoleRawLogger(f);
         StructuredLogger.RawLogger[] rls = { rl, rl2 };
         StructuredLogger sl = new StructuredLogger(rls, "test");
         sl.beginLogging();
@@ -528,10 +545,10 @@ class RobotCommTest {
     void stressTest1() {
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
-        StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
+        StressTester stresser = new StressTester(10, transport, baseLogger.defaultLog());
         stresser.init();
-        transport.setTransportCharacteristics(0, 0);
-        stresser.submitMessages(1, 0, 0);
+        transport.setTransportCharacteristics(0.25, 500);
+        stresser.submitMessages(1000, 500, 0.25);
         baseLogger.flush();
         baseLogger.endLogging();
         stresser.close();

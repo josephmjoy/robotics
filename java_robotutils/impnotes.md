@@ -18,17 +18,41 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
-#Feb 21A, 2018 General Design Note
+# Feb 21C, 2018 RobotComm Implementation Milestone
+Sent and received a million messages using the test transport, with delays and dropped packets and with sends and receives over 10 threads. Most of the work was flushing out bugs in the test code :-), such as
+not waiting long enough for the scheduled processing of received to actually process the receives before declaring failure.
+Logging was essential to debugging these issues - so this is the first real use of StructuredLogger!
+The following code that initializes the logger is handy as it allows for easily changing the filters based on which components to log.
+
+```
+File logfile = new File("C:\\Users\\jmj\\Documents\\robotics\\temp\\log.txt");
+        StructuredLogger.Filter f1 = (ln, p, cat) -> {
+            return ln.equals("test.TRANS") || ln.equals("test.HFLOG") ? false : true;
+        };
+        StructuredLogger.Filter f2 = (ln, p, cat) -> {
+            return ln.equals("test.TRANS")  ? false : true;
+        };
+        StructuredLogger.Filter f = f1;
+        
+        StructuredLogger.RawLogger rl = StructuredLogger.createFileRawLogger(logfile, 1000000, f);
+        StructuredLogger.RawLogger rl2 = StructuredLogger.createConsoleRawLogger(f);
+        StructuredLogger.RawLogger[] rls = { rl, rl2 };
+        StructuredLogger sl = new StructuredLogger(rls, "test");
+```
+
+# Feb 21B, 2018 General Design Note
 One issue with tasks submitted using the ExecutorService is that those tasks are responsible for catching and handling all exceptions, else they are silently discarded. Therefore, one SHOULD always a catch-all for Exception in all submitted tasks that may possibly throw a runtime exception. I (JMJ) ran into this when debugging a problem with the RobotComm stress tests where exceptions were silently swallowed while I was assuming that they were not being thrown.
 
-#Feb 21B, 2018 StructureLogger Design Note - Tags: adding space after colon; adding dateTime to _LOG_SESSION_STARTED
+# Feb 21A, 2018 StructureLogger Design Note - Tags: adding space after colon; adding dateTime to _LOG_SESSION_STARTED
 - Decided to add a single space character after the colon character for tags in the log. The result is not as "tight", but it
 has the big advantage that parsing can now ignore ':' that occur within message text without space, such as in URLs and time stamps
 for example "2018-02-21T10:50:02.401". Also this is what YAML specifies (and where the original inspiration for adding a space came from).
 - Also added dateTime tag to the start session message. [IMP] This is printed by LocalDateTime.now().toString()
 New log format:
-_sid: 1519239002401  _sn: 1  _ts: 0  _co: ROOT#LOG  _pri: 0  _cat: INFO  _ty: _LOG_SESSION_STARTED  _msg: dateTime: 2018-02-21T10:50:02.401  rootName: ROOT LOG  maxBuffered: 10000  autoFlushPeriod: 100
 
+```
+_sid: 1519239002401  _sn: 1  _ts: 0  _co: ROOT#LOG  _pri: 0  _cat: INFO  _ty: _LOG_SESSION_STARTED  _msg: dateTime: 2018-02-21T10:50:02.401  rootName: ROOT LOG  maxBuffered: 10000  autoFlushPeriod: 100
+```
 
 
 #Feb 17, 2018 RobotComm Design Note - Stress Testing Specification
@@ -86,6 +110,7 @@ get cmd/response stress test to work.
   - The above are rough estimates as we don't keep atomic counters for the above - they are just volatile variables.
  Not appropriate to be a method in SentCommand etc as they are implementation dependent.
  The status are reported in RobotComm.ChannelStatistics:
+
 ```
      public static class ChannelStatistics {
         public final String channelName;
@@ -151,6 +176,7 @@ Rationale:
  3. It is something the client can easily do - just create a periodic timer task and call Channel.sendMessage() from that task.
  The old PeriodicSender class:
 
+```
      /*
      * Sends a dynamically generated message periodically. The period was set when
      * the underlying object was created. Pause and resume may be called in any
@@ -165,18 +191,21 @@ Rationale:
     }
     
     PeriodicSender periodicSend(int period, String msgType, Supplier<String> messageSource);
-
+```
 
 # Feb 14B, 2018 RobotComm Protocol - Laying out Command-Response sequence
 Consider making CMDRESPACK an aggregate - bulk responding to acks. It does seem very wasteful to generate one CMDRESPACK for every transaction.
 In the absence of errors (the common case) 33.3% of the packets are CMDRESPACK! So...
 1. Make CMDRESPACK have a 0 value for cmdId, and in the message body it has a list of cmdIds, separated by newlines (no other whitespace).
 Sample message (new line chars as new lines):
+
+```
 3wIC,CMDRESPACK,mychannel,0,IDLIST,,
 309039AB09CFA90
 2099939AB09CFA9
 234059AB09CFA90
 23234309039AB09
+```
 
 Note IDLIST is an internal message type. Client can never generate CMDRESPACK messages.
 
@@ -212,6 +241,7 @@ completedRecvCommaands queue, we perform a cleanup action. This cleanup action i
 - Potentially virtualize getCurrentMillis so we can mess with time.
 
 # Feb 12A, 2018 Design Note - RobotComm Message Format 
+
 - receive msg header: 
     - signature: a magic aphanumeric string such as 1309JHI
     - channel: Alphanumeric string identifying channel.
@@ -228,6 +258,7 @@ completedRecvCommaands queue, we perform a cleanup action. This cleanup action i
         PENDING - remote node says that it is waiting for result of command.
         REJECTED - remote node says that for whatever reason (typically there is
         no one listening on this channel, this command is rejected).
+
    Examples
     - "1309JHI,MY_CHANNEL,MSG,MY_MSG_TYPE"
     - "1309JHI,MY_CHANNEL,CMD,MY_COMMAND_TYPE,0x2888AB89"
@@ -334,6 +365,7 @@ I[JMJ] decided to write a simple YAML-subset parser and supporting classes/metho
   are strictly true or false (not True, False, Yes, No, etc, etc.).
   
 ## Sample Configuration File
+
 ```
 # Robot Configuration
 ---
@@ -367,20 +399,21 @@ Aside: Logname provides the ultimate way to discriminate as one can create a Str
 looks for just that name. One quirk: the logName will have the root prefix appended to it.
 
 #Feb 4, 2018 Design Note - revision of StructuredLogger.CreateFileRawLogger methods
-    It used to be that we support an 'append' flag. That has gone. The behavior is now that if a specific file is specified and it exists, new
+
+- It used to be that we support an 'append' flag. That has gone. The behavior is now that if a specific file is specified and it exists, new
     logs are APPENDED to this. Also, this path MUST contain the string "log" somewhere (a case-insensitive comparison is made). If a session-specific
     file is automatically generated, then it is expected that this file does not exist. If it DOES exist, it is treated as an error condition,
     the error is written to stderr, and no logging is done.
     
-    A new parameter has been added: maxSize, which is the max size in bytes
+-    A new parameter has been added: maxSize, which is the max size in bytes
     of the log file. Logging will stop if the size of this file approaches this max size (approximately). It is felt that this is the most
     straightforward way to prevent logging from taking up too many resources.
     
-    The built-in File (and UDP) file Loggers now take an optional filter parameter - if non-null, this parameter is an object that implements
+-    The built-in File (and UDP) file Loggers now take an optional filter parameter - if non-null, this parameter is an object that implements
     the StructuredLogger.Filter interface - basically it has a method called filter that has the same semantics as Log.filter. This makes the
     built-in raw loggers much more flexible.
     
-    As before, the client can always make completely custom RawLoggers.
+-    As before, the client can always make completely custom RawLoggers.
     
 #Jan 30, 2018 Design Note on Threadsafe and background Logging
 [Last updated Feb2,2018]
