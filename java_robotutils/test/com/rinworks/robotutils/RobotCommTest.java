@@ -112,6 +112,7 @@ class RobotCommTest {
             void receiveData(String s) {
                 if (this.clientRecv != null) {
                     TestTransport.this.numRecvs.incrementAndGet();
+                    System.out.println("TRANSPORT:\n[" + s + "]\n");                    
                     this.clientRecv.accept(s, loopbackNode);
                 } else {
                     TestTransport.this.numDrops.incrementAndGet();
@@ -197,6 +198,7 @@ class RobotCommTest {
         @Override
         public void close() {
             this.closed = true;
+            this.transportTimer.cancel();
         }
 
         public long getNumSends() {
@@ -239,7 +241,7 @@ class RobotCommTest {
             MessageRecord(long id, boolean alwaysDrop) {
                 this.id = id;
                 this.alwaysDrop = alwaysDrop;
-                this.msgType = randomMsgType(id);
+                this.msgType = randomMsgType();
                 this.msgBody = alwaysDrop ? transport.ALWAYSDROP_TEXT : randomMessageBody(id);
             }
 
@@ -256,10 +258,10 @@ class RobotCommTest {
             }
 
             // Type is a little bit of random hex digits, possibly an empty string.
-            private String randomMsgType(long id) {
+            private String randomMsgType() {
                 String msgt = Long.toHexString(rand.nextLong());
                 assert msgt.length() > 0;
-                msgt = msgt.substring(rand.nextInt(msgType.length()));
+                msgt = msgt.substring(rand.nextInt(msgt.length()));
                 return msgt;
             }
         }
@@ -302,7 +304,7 @@ class RobotCommTest {
             // assert maxDelay >= 0;
             // this.transport.setTransportCharacteristics(transportDropRate,
             // transportMaxDelay);
-
+            log.trace("Beginning to submit " + nMessages + " messages.");
             for (int i = 0; i < nMessages; i++) {
                 boolean alwaysDrop = rand.nextDouble() < alwaysDropRate;
                 long id = nextId.getAndIncrement();
@@ -315,7 +317,7 @@ class RobotCommTest {
                     @Override
                     public void run() {
                         StressTester.this.exPool.submit(() -> {
-                            StressTester.this.ch.sendMessage(mr.msgType, mr.msgBody);
+                            //StressTester.this.ch.sendMessage(mr.msgType, mr.msgBody);
                         });
                     }
                 }, delay);
@@ -337,10 +339,10 @@ class RobotCommTest {
                     public void run() {
                         StressTester.this.exPool.submit(() -> {
                             // Let's pick up all messages received so far and verify them...
-                            RobotComm.ReceivedMessage rm = null;
-                            while (rm == null) {
-                                rm = ch.pollReceivedMessage();
+                            RobotComm.ReceivedMessage rm = ch.pollReceivedMessage();;
+                            while (rm != null) {
                                 StressTester.this.processReceivedMessage(rm);
+                                rm = ch.pollReceivedMessage();
                             }
                         });
                     }
@@ -351,8 +353,11 @@ class RobotCommTest {
             // wait for ??? and verify that exactly those messages that are expected to be
             // received are received correctly.
             try {
-                while ((this.transport.getNumDrops() + this.transport.getNumRecvs()) < nMessages) {
-                    Thread.sleep(1);
+                long actualReceivesExpected = nMessages - this.transport.getNumDrops();
+                log.trace("Waiting to receive " + actualReceivesExpected + "");
+                int retryCount = 10;
+                while (retryCount-- > 0 && this.transport.getNumRecvs() < actualReceivesExpected) {
+                    Thread.sleep(500);
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -377,6 +382,7 @@ class RobotCommTest {
             String strId = nli < 0 ? msgBody : msgBody.substring(0, nli);
             try {
                 long id = Long.parseUnsignedLong(strId, 16);
+                log.trace("Received message with id" + id);
                 MessageRecord mr = this.msgMap.get(id);
                 assertNotEquals(mr, null);
                 assertEquals(mr.msgType, msgType);
@@ -396,6 +402,7 @@ class RobotCommTest {
         }
 
         public void close() {
+            this.testTimer.cancel();
             this.exPool.shutdownNow();
         }
     }
@@ -404,8 +411,7 @@ class RobotCommTest {
     void testBasicSendReceieveMessageTest() throws InterruptedException {
         RobotComm.DatagramTransport transport = new TestTransport();
         StructuredLogger baseLogger = initStructuredLogger();
-        baseLogger.beginLogging();
-
+        
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
         RobotComm.Address addr = rc.resolveAddress("localhost");
         RobotComm.Channel ch = rc.newChannel("testChannel");
@@ -498,6 +504,7 @@ class RobotCommTest {
         StructuredLogger.RawLogger[] rls = { rl, rl2 };
         StructuredLogger sl = new StructuredLogger(rls, "test");
         sl.beginLogging();
+        sl.info("INIT LOGGER");
         return sl;
     }
     
@@ -506,11 +513,13 @@ class RobotCommTest {
     void stressTest1() {
         TestTransport transport = new TestTransport();
         StructuredLogger baseLogger = initStructuredLogger();
-
         StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
         stresser.init();
         transport.setTransportCharacteristics(0, 0);
-        stresser.submitMessages(0, 0, 0);        
+        stresser.submitMessages(1, 0, 0);  
+        baseLogger.flush();
+        baseLogger.endLogging();
+        stresser.close();
     }
 
 }
