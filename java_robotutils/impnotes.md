@@ -18,6 +18,16 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#Feb 21, 2018 StructureLogger Design Note - Tags: adding space after colon; adding dateTime to _LOG_SESSION_STARTED
+- Decided to add a single space character after the colon character for tags in the log. The result is not as "tight", but it
+has the big advantage that parsing can now ignore ':' that occur within message text without space, such as in URLs and time stamps
+for example "2018-02-21T10:50:02.401". Also this is what YAML specifies (and where the original inspiration for adding a space came from).
+- Also added dateTime tag to the start session message. [IMP] This is printed by LocalDateTime.now().toString()
+New log format:
+_sid: 1519239002401  _sn: 1  _ts: 0  _co: ROOT#LOG  _pri: 0  _cat: INFO  _ty: _LOG_SESSION_STARTED  _msg: dateTime: 2018-02-21T10:50:02.401  rootName: ROOT LOG  maxBuffered: 10000  autoFlushPeriod: 100
+
+
+
 #Feb 17, 2018 RobotComm Design Note - Stress Testing Specification
 *Test Transport*:
 - supports loopback only for now.

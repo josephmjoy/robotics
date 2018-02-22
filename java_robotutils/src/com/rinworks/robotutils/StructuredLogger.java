@@ -14,6 +14,9 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.time.LocalDateTime;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.Map.Entry;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -413,7 +416,8 @@ public class StructuredLogger {
             String sessionID = "" + startTime;
             this.timer = new Timer("Structured Logger (" + rootName + ")", true);// true == daemon task.
             TimerTask periodicFlushTask = newBackgroundProcessor(false, null); // false, null== don't flush immediately,
-                                                                               // no
+
+            // no
             // latch
             this.oneshotProcessBuffersTask = null; // These are created on demand when we have to clear a backlog of
             // buffered messages.
@@ -428,8 +432,8 @@ public class StructuredLogger {
             this.timer.schedule(periodicFlushTask, this.periodicFlushMillis, this.periodicFlushMillis);
 
             // Log very first message...
-            String msg = String.format("rootName:%s maxBuffered:%s autoFlushPeriod:%s", this.rootName,
-                    this.maxBufferedMessageCount, this.periodicFlushMillis);
+            String msg = String.format(" dateTime: %s  rootName: %s  maxBuffered: %s  autoFlushPeriod: %s",
+                    LocalDateTime.now(), this.rootName, this.maxBufferedMessageCount, this.periodicFlushMillis);
             defaultLog.pri0(TYPE_LOG_SESSION_START, msg);
         }
 
@@ -446,7 +450,7 @@ public class StructuredLogger {
         boolean deinit = true;
 
         logDiscardedMessageCount();
-        defaultLog.pri0(TYPE_LOG_SESSION_END, "rootName:" + rootName);
+        defaultLog.pri0(TYPE_LOG_SESSION_END, " rootName: " + rootName);
 
         synchronized (this) {
             if (!this.sessionStarted) {
@@ -596,12 +600,14 @@ public class StructuredLogger {
     public static RawLogger createUDPRawLogger(String address, int port, Filter filter) {
         return new UDPRawLogger(address, port, filter);
     }
-    
+
     /**
-     * Creates a raw logger that writes log messages to the console (System.out or System.err).
+     * Creates a raw logger that writes log messages to the console (System.out or
+     * System.err).
      * 
      * @param filter
-     *            - Optional filter - if non-null, will be called to decide what to log.
+     *            - Optional filter - if non-null, will be called to decide what to
+     *            log.
      * @return A StructuredLogger.Logger object that may be passed into a
      *         StructuredLogger constructor
      */
@@ -889,10 +895,10 @@ public class StructuredLogger {
             long curSeq = seqNo.incrementAndGet();
             long millis = System.currentTimeMillis();
             long timestamp = millis - sessionStart;
-            String rtsKeyValue = (rtsEnabled) ? TAG_RELATIVE_TIMESTAMP + ":" + (millis - rtsStartTime) + " " : "";
-            return String.format("%s:%s %s:%s %s:%s %s:%s %s:%s %s:%s %s:%s %s%s%s: %s", TAG_SESSION_ID, sessionId,
-                    TAG_SEQ_NO, curSeq, TAG_TIMESTAMP, timestamp, TAG_COMPONENT, logName, TAG_PRI, pri, TAG_CAT, cat,
-                    TAG_TYPE, msgType, rtsKeyValue, tagsString, TAG_DEF_MSG, msg);
+            String rtsKeyValue = (rtsEnabled) ? TAG_RELATIVE_TIMESTAMP + ": " + (millis - rtsStartTime) + "  " : "";
+            return String.format("%s: %s  %s: %s  %s: %s  %s: %s  %s: %s  %s: %s  %s: %s  %s%s%s: %s", TAG_SESSION_ID,
+                    sessionId, TAG_SEQ_NO, curSeq, TAG_TIMESTAMP, timestamp, TAG_COMPONENT, logName, TAG_PRI, pri,
+                    TAG_CAT, cat, TAG_TYPE, msgType, rtsKeyValue, tagsString, TAG_DEF_MSG, msg);
         }
 
         // RTS implementation:
@@ -961,10 +967,10 @@ public class StructuredLogger {
                 for (Entry<String, String> e : tagMap.entrySet()) {
                     String k = e.getKey();
                     String v = e.getValue();
-                    sb.append(" " + k + ":" + v);
+                    sb.append("  " + k + ": " + v);
                 }
                 if (tagMap.size() > 0) {
-                    sb.append(" ");
+                    sb.append("  ");
                 }
                 tagsString = sb.toString();
             }

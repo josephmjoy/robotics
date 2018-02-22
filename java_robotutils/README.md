@@ -29,7 +29,7 @@ external resources (like files) are opened.
 ```Java
 baseLogger.beginLogging();
 ```
-Then we log! Info messages are logged with priority 1 (a tag "_PRI:1" is inserted to the
+Then we log! Info messages are logged with priority 1 (a tag "_PRI: 1" is inserted to the
 logged message).
 ```Java
 baseLogger.info("Logging an informational message");
@@ -50,13 +50,14 @@ The above code is also available as JUnit test `StruturedLoggerTest.testIntroduc
 ## Structure of Logged Messages <a name="structure"/>
 If we open the temporary file created by the session above, we will see that it contains lines that look like:
 ```
-_sid:1517976498636 _sn:1 _ts:0 _co:MY_SYSTEM _pri:0 _cat:INFO _ty:_LOG_SESSION_STARTED _msg: rootName:MY_SYSTEM maxBuffered:1000 autoFlushPeriod:1000
-_sid:1517976498636 _sn:2 _ts:0 _co:MY_SYSTEM _pri:1 _cat:INFO _ty:_OTHER _msg: Logging an informational message
-_sid:1517976498636 _sn:3 _ts:0 _co:MY_SYSTEM _pri:1 _cat:WARN _ty:_OTHER _msg: Logging a warning
-_sid:1517976498636 _sn:4 _ts:0 _co:MY_SYSTEM _pri:0 _cat:ERR _ty:_OTHER _msg: Logging an error
-_sid:1517976498636 _sn:5 _ts:0 _co:MY_SYSTEM _pri:0 _cat:INFO _ty:_LOG_SESSION_ENDED _msg: rootName:MY_SYSTEM
+_sid: 1519240121292  _sn: 1  _ts: 21  _co: MY_SYSTEM  _pri: 0  _cat: INFO  _ty: _LOG_SESSION_STARTED  _msg: dateTime: 2018-02-21T11:08:41.305  rootName: MY_SYSTEM  maxBuffered: 1000  autoFlushPeriod: 1000
+_sid: 1519240121292  _sn: 2  _ts: 21  _co: MY_SYSTEM  _pri: 1  _cat: INFO  _ty: _OTHER  _msg: Logging an informational message
+_sid: 1519240121292  _sn: 3  _ts: 22  _co: MY_SYSTEM  _pri: 1  _cat: WARN  _ty: _OTHER  _msg: Logging a warning
+_sid: 1519240121292  _sn: 4  _ts: 22  _co: MY_SYSTEM  _pri: 0  _cat: ERR  _ty: _OTHER  _msg: Logging an error
+_sid: 1519240121292  _sn: 5  _ts: 22  _co: MY_SYSTEM  _pri: 0  _cat: INFO  _ty: _LOG_SESSION_ENDED  _msg: rootName: MY_SYSTEM
+
 ```
-Each line corresponds to one logged message. The message has broadly speaking the form "_tag1: val1 tag2:val2 tag3:val3..._", i.e., a sequence of tag-value pairs separated by the colon character. Predefined tags are listed in the table below.
+Each line corresponds to one logged message. The message has broadly speaking the form "_tag1: val1  tag2: val2  tag3: val3..._", i.e., a sequence of tag-value pairs separated by a two-character sequence composed by colon followed by a space (': '). Predefined tags are listed in the table below.
 
 Tag | Example Value | Description
 --- | --- | ---
@@ -66,7 +67,7 @@ _ts | 0 | Milliseconds since the start of the logging session (since `beginLoggi
 _co | MY_SYSTEM | Logging component name. The default Log has the component name set to the `rootName` passed to the `StructuredLogger` constructor. If a `StructuredLogger.Logger` instance is created by calling `StructuredLogger.newLog` or the equivalent `StructuredLogger.Logger.newLog` specifying name `name`, messages submitted to it will have have _co set to `rootName + '.' + name`.
 _pri | 1 | Message priority, a number that is either 0, 1 or 2.
 _cat | INFO | Message category, which is either ERR, WARN or INFO.
-_ty | _OTHER | Message type. This can help in machine-parsing of log messages. For example, one may use the type "bearing" for log messages that contain additional tags "pos" and "heading", as in "pos:(100.5, 25.0) heading:30".
+_ty | _OTHER | Message type. This can help in machine-parsing of log messages. For example, one may use the type "bearing" for log messages that contain additional tags "pos" and "heading", as in "pos: (100.5, 25.0) heading: 30".
 _msg | Logging a warning | Message content. This could be empty if the only things logged are a sequence of tag:value pairs.
 _rts | 25 | Relative timestamp. These are inserted if `StructuredLogger.Log.startRTS` is called. The value is time in milliseconds since `startRTS` was called.
 
@@ -134,7 +135,7 @@ Trigger flushing the logs to persistent storage (if applicable) at any time.
 ```Java
 log1.flush();
 ```
-Add the tag-value pair "mode:auton" to all subsequent messages submitted to 
+Add the tag-value pair "mode: auton" to all subsequent messages submitted to 
 `log1`.
 ```Java
 log1.addTag("mode", "auton");
@@ -145,7 +146,7 @@ StructuredLogger.Log log2 = log1.newLog("LOG2");
 ```
 Start relative 'timestamp' (RTS) logging. All subsequent log messages from this log
 instance will have an "_rts" tag inserted whose value is the time
-in milliseconds relative to this call, for example "_rts:293". This tag will be inserted
+in milliseconds relative to this call, for example "_rts: 293". This tag will be inserted
 only for `Log` instance `log2`, not `log1`.
 ```Java
 log2.startRTS();
@@ -153,7 +154,7 @@ log2.startRTS();
 Use the trace calls for high-frequency logging. These are logged at priority level 2 and with the "_cat" tag set to "TRACE".
 ```Java
 log2.trace("This is a trace message");
-log2.trace("bearing", "x:3 b:2 angle:45");
+log2.trace("bearing", "x: 3  b: 2  angle: 45");
 ```
 Tracing can be disabled and enabled on the fly. This effects just `log2`.
 ```Java
