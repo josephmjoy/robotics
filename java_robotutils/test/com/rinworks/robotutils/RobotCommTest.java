@@ -29,7 +29,8 @@ class RobotCommTest {
         private final Random rand = new Random();
         private final AtomicLong numSends = new AtomicLong(0);
         private final AtomicLong numRecvs = new AtomicLong(0);
-        private final AtomicLong numDrops = new AtomicLong(0);
+        private final AtomicLong numForceDrops = new AtomicLong(0);
+        private final AtomicLong numRandomDrops = new AtomicLong(0);
         private final StructuredLogger.Log log;
 
         private boolean closed = false;
@@ -120,7 +121,7 @@ class RobotCommTest {
                     log.trace("TRANSPORT:\n[" + s + "]\n");
                     this.clientRecv.accept(s, loopbackNode);
                 } else {
-                    TestTransport.this.numDrops.incrementAndGet();
+                    TestTransport.this.numForceDrops.incrementAndGet();
                 }
             }
 
@@ -146,8 +147,12 @@ class RobotCommTest {
             @Override
             public void send(String msg) {
                 TestTransport.this.numSends.incrementAndGet();
-                if (shouldDrop(msg)) {
-                    TestTransport.this.numDrops.incrementAndGet();
+                if (forceDrop(msg)) {
+                    TestTransport.this.numForceDrops.incrementAndGet();
+                    return; // **************** EARLY RETURN *****
+                }
+                if (nonForceDrop(msg)) {
+                    TestTransport.this.numRandomDrops.incrementAndGet();
                     return; // **************** EARLY RETURN *****
                 }
                 handleSend(msg);
@@ -160,10 +165,12 @@ class RobotCommTest {
             return new MyRemoteNode(remoteAddress);
         }
 
-        public boolean shouldDrop(String msg) {
-            if (this.closed || msg.indexOf(ALWAYSDROP_TEXT) >= 0) {
-                return true;
-            } else if (zeroFailures()) {
+        public boolean forceDrop(String msg) {
+            return msg.indexOf(ALWAYSDROP_TEXT) >= 0;
+        }
+
+        public boolean nonForceDrop(String msg) {
+            if (!this.closed && zeroFailures()) {
                 return false;
             } else {
                 return this.rand.nextDouble() < this.failureRate;
@@ -184,17 +191,21 @@ class RobotCommTest {
             return this.numRecvs.get();
         }
 
-        public long getNumDrops() {
-            return this.numDrops.get();
+        public long getNumForceDrops() {
+            return this.numForceDrops.get();
         }
-        
+
+        public long getNumRandomDrops() {
+            return this.numRandomDrops.get();
+        }
+
         public int getMaxDelay() {
             return this.maxDelay;
         }
 
         private void handleSend(String msg) {
             if (this.closed) {
-                TestTransport.this.numDrops.incrementAndGet();
+                TestTransport.this.numForceDrops.incrementAndGet();
                 return; // ************ EARLY RETURN
             }
             if (noDelays()) {
@@ -202,22 +213,22 @@ class RobotCommTest {
                     // Send right now!
                     this.curListener.receiveData(msg);
                 } else {
-                    TestTransport.this.numDrops.incrementAndGet();
+                    TestTransport.this.numForceDrops.incrementAndGet();
                 }
             } else {
                 int delay = (int) (rand.nextDouble() * this.maxDelay);
                 transportTimer.schedule(new TimerTask() {
-        
+
                     @Override
                     public void run() {
                         if (!TestTransport.this.closed && TestTransport.this.curListener != null) {
                             // Delayed send
                             TestTransport.this.curListener.receiveData(msg);
                         } else {
-                            TestTransport.this.numDrops.incrementAndGet();
+                            TestTransport.this.numForceDrops.incrementAndGet();
                         }
                     }
-        
+
                 }, delay);
             }
         }
@@ -237,9 +248,11 @@ class RobotCommTest {
         RobotComm.Channel ch;
 
         ConcurrentHashMap<Long, MessageRecord> msgMap = new ConcurrentHashMap<>();
+        ConcurrentLinkedQueue<MessageRecord> droppedMsgs = new ConcurrentLinkedQueue<>();
         ConcurrentHashMap<Long, CommandRecord> cmdMap = new ConcurrentHashMap<>();
         ConcurrentLinkedQueue<CommandRecord> cmdCliSubmitQueue = new ConcurrentLinkedQueue<>();
         ConcurrentLinkedQueue<CommandRecord> cmdSvrComputeQueue = new ConcurrentLinkedQueue<>();
+        ConcurrentLinkedQueue<CommandRecord> droppedCommands = new ConcurrentLinkedQueue<>();
 
         private class MessageRecord {
             final long id;
@@ -306,27 +319,116 @@ class RobotCommTest {
             this.ch.startReceivingMessages();
         }
 
-        public void submitMessages(int nMessages, int submissionTimespan, double alwaysDropRate) {
+        // Submit a total of {nMewsages} messages at a rate of {submissionRate} per
+        // second.
+        // In addition to any random transport drops, force-drop {alwaysDropRate}
+        // fraction of
+        // the messages.
+        public void submitMessages(int nMessages, int submissionRate, double alwaysDropRate) {
+            final int BATCH_SPAN_MILLIS = 1000;
+            final int LARGE_COUNT = 1000000;
+            // If more than LARGE_COUNT messages, there should be NO transport send failures
+            // else our tracked messages will start to accumulate and take up too much
+            // memory.
+            assert nMessages < LARGE_COUNT || transport.zeroFailures();
+
+            try {
+                int messagesLeft = nMessages;
+                while (messagesLeft > submissionRate) {
+                    submitMessageBatch(submissionRate, BATCH_SPAN_MILLIS, alwaysDropRate);
+                    messagesLeft -= submissionRate;
+                    Thread.sleep(BATCH_SPAN_MILLIS);
+                    pruneDroppedMessages();
+                }
+                int timeLeftMillis = (1000 * messagesLeft) / submissionRate;
+                submitMessageBatch(messagesLeft, timeLeftMillis, alwaysDropRate);
+                Thread.sleep(timeLeftMillis);
+
+                // Having initiated the process of sending all the messages, we now have to
+                // wait for ??? and verify that exactly those messages that are expected to be
+                // received are received correctly.
+                int maxReceiveDelay = transport.getMaxDelay();
+                log.trace("Waiting to receive up to " + nMessages + " messages");
+                Thread.sleep(maxReceiveDelay);
+                int retryCount = 10;
+                while (retryCount-- > 0 && this.msgMap.size() > transport.getNumRandomDrops()) {
+                    Thread.sleep(500);
+                    purgeAllDroppedMessages();
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                Thread.currentThread().interrupt();
+            }
+
+            // Now we do final validation.
+            this.finalSendMessageValidation();
+
+            this.cleanup();
+        }
+
+        // Cleanup our queues and maps so we can do another test
+        private void cleanup() {
+            this.msgMap.clear();
+            this.droppedMsgs.clear();
+            this.cmdMap.clear();
+            this.cmdCliSubmitQueue.clear();
+            this.cmdSvrComputeQueue.clear();
+            this.droppedCommands.clear();
+        }
+
+        // Keep count of dropped messages by removing the older
+        // half of them if their number grows larger than DROP_TRIGGER
+        private void pruneDroppedMessages() {
+            final long DROP_TRIGGER = 1000;
+            // Remember that the message map and queue of dropped messages are concurrently
+            // modified so sizes are estimates.
+            long sizeEst = this.droppedMsgs.size(); // Warning O(n) operation.
+            if (sizeEst > DROP_TRIGGER) {
+                long dropCount = sizeEst / 2;
+                log.trace("Purging about " + dropCount + " force-dropped messages.");
+                MessageRecord mr;
+                while ((mr = this.droppedMsgs.poll()) != null && dropCount > 0) {
+                    this.msgMap.remove(mr.id, mr); // Should be O(log(n)), so it's ok all in all.
+                    dropCount--;
+                }
+            }
+        }
+
+        // Remove all dropped messages (at least the ones that were in the queue when we
+        // entered
+        // this method).
+        private void purgeAllDroppedMessages() {
+            MessageRecord mr;
+            while ((mr = this.droppedMsgs.poll()) != null) {
+                this.msgMap.remove(mr.id, mr); // Should be O(log(n)), so it's ok all in all.
+            }
+        }
+
+        public void submitMessageBatch(int nMessages, int submissionTimespan, double alwaysDropRate) {
+
             assert this.rc != null;
             assert this.ch != null;
             assert alwaysDropRate >= 0 && alwaysDropRate <= 1;
             assert submissionTimespan >= 0;
-            
+
             log.trace("Beginning to submit " + nMessages + " messages.");
+
             for (int i = 0; i < nMessages; i++) {
                 boolean alwaysDrop = rand.nextDouble() < alwaysDropRate;
                 long id = nextId.getAndIncrement();
                 MessageRecord mr = new MessageRecord(id, alwaysDrop);
                 int delay = (int) (rand.nextDouble() * submissionTimespan);
                 this.msgMap.put(id, mr);
-
+                if (alwaysDrop) {
+                    this.droppedMsgs.add(mr);
+                }
                 this.testTimer.schedule(new TimerTask() {
 
                     @Override
                     public void run() {
                         StressTester.this.exPool.submit(() -> {
                             try {
-                                hfLog.trace("Sending message with id " + id);                              
+                                hfLog.trace("Sending message with id " + id);
                                 StressTester.this.ch.sendMessage(mr.msgType, mr.msgBody);
                             } catch (Exception e) {
                                 log.err("EXCEPTION", e.toString());
@@ -337,7 +439,7 @@ class RobotCommTest {
             }
 
             int recvAttempts = Math.max(nMessages / 100, 10);
-            int maxReceiveDelay  = submissionTimespan + transport.getMaxDelay();
+            int maxReceiveDelay = submissionTimespan + transport.getMaxDelay();
             log.info("maxReceiveDelay: " + maxReceiveDelay);
             for (int i = 0; i < recvAttempts; i++) {
                 int delay = (int) (rand.nextDouble() * submissionTimespan);
@@ -369,25 +471,6 @@ class RobotCommTest {
                     }
                 }, delay);
             }
-
-            // Having initiated the process of sending all the messages, we now have to
-            // wait for ??? and verify that exactly those messages that are expected to be
-            // received are received correctly.
-            try {
-                log.trace("Waiting to receive up to " + nMessages + " messages");
-                Thread.sleep(maxReceiveDelay);
-                int retryCount = 10;
-                while (retryCount-- > 0 && this.msgMap.size() > transport.getNumDrops()) {
-                    Thread.sleep(500);
-                }
-             } catch (InterruptedException e) {
-                e.printStackTrace();
-                Thread.currentThread().interrupt();
-            }
-
-            // Now we do final validation.
-            this.finalSendMessageValidation();
-
         }
 
         private void processReceivedMessage(ReceivedMessage rm) {
@@ -419,11 +502,13 @@ class RobotCommTest {
             // Verify that the count of messages that still remain in our map
             // is exactly equal to the number of messages dropped by the transport - i.e.,
             // they were never received.
-            long drops = this.transport.getNumDrops();
+            long randomDrops = this.transport.getNumRandomDrops();
+            long forceDrops = this.transport.getNumForceDrops();
             int mapSize = this.msgMap.size();
-            log.info("Final verification. Dropped: " + drops  + "  Missing: " + (mapSize - drops));
+            log.info("Final verification. ForceDrops: " + forceDrops + "  RandomDrops: " + randomDrops + "   Missing: "
+                    + (mapSize - randomDrops));
             log.flush();
-            assertEquals(drops, mapSize);
+            assertEquals(randomDrops, mapSize);
         }
 
         public void close() {
@@ -528,10 +613,10 @@ class RobotCommTest {
             return ln.equals("test.TRANS") || ln.equals("test.HFLOG") ? false : true;
         };
         StructuredLogger.Filter f2 = (ln, p, cat) -> {
-            return ln.equals("test.TRANS")  ? false : true;
+            return ln.equals("test.TRANS") ? false : true;
         };
         StructuredLogger.Filter f = f1;
-        
+
         StructuredLogger.RawLogger rl = StructuredLogger.createFileRawLogger(logfile, 1000000, f);
         StructuredLogger.RawLogger rl2 = StructuredLogger.createConsoleRawLogger(f);
         StructuredLogger.RawLogger[] rls = { rl, rl2 };
@@ -545,10 +630,10 @@ class RobotCommTest {
     void stressTest1() {
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
-        StressTester stresser = new StressTester(10, transport, baseLogger.defaultLog());
+        StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
         stresser.init();
-        transport.setTransportCharacteristics(0.25, 500);
-        stresser.submitMessages(1000, 500, 0.25);
+        transport.setTransportCharacteristics(0, 0);
+        stresser.submitMessages(1, 1, 0);
         baseLogger.flush();
         baseLogger.endLogging();
         stresser.close();

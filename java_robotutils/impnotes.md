@@ -18,6 +18,17 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+# Feb 23, 2018 RobotComm Stress Test Design Note
+- Before we move on to implementation of stress testing of commands, I (JMJ) would like to be able to
+ have a very longrunning stress test that sends 100s of millions of messages. The current design creates
+ timers for all the messages in one shot - that is going to chew up all available memory. So we need to
+ do this in batches.
+- New design: Take a *rate*  - messages per second - instead of the current timespan. Given a count of messages and a rate, the stress test will batch submit timers
+ at that steady rate per second. Note that the transport delays will often extend beyond each one-second window.
+- [IMP] fairly subtle - one complication is that dropped messages will stick around, either those that are force-dropped or randomly dropped by the transport, and these
+ will accumulate. This is addressed by (a) requiring that random drops are NOT enabled at the transport level if there a very large number of messages to be sent, and
+ (b) Periodically purging the older force-dropped messages sitting around. Keeping track of these for accurate accounting to the last message at the end of the test is quite tricky.
+
 # Feb 21C, 2018 RobotComm Implementation Milestone
 Sent and received a million messages using the test transport, with delays and dropped packets and with sends and receives over 10 threads. Most of the work was flushing out bugs in the test code :-), such as
 not waiting long enough for the scheduled processing of received to actually process the receives before declaring failure.
