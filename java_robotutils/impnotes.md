@@ -18,6 +18,33 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+# Feb 23, 2018 B RobotComm Stress Test Debugging Note - Send/Receive Messages Stress Test
+Spent a lot of time debugging an issue of a few unaccounted-for messages that show up when more than about 2K messages were sent. After lots of investigation and trying various 
+combinations, it emerged that the so-called missing messages were forced-drop messages that should have been deleted from the msgMap. There were roughly one of these per batch.
+It further emerged that the drop queue was empty, so it was pretty clear where the culprit was at that point - it is in this piece of code in prunedropedMessages:
+
+```
+                while ((mr = this.droppedMsgs.poll()) != null && dropCount > 0) {
+                    this.msgMap.remove(mr.id, mr); // Should be O(log(n)), so it's ok all in all.
+                    dropCount--;
+                }
+```
+The problem is the && in the while condition - if dropCount was 0, we would sometimes remove the message record from the queue but not from the map!
+The corrected code is below:
+
+```
+                while (dropCount > 0) {
+                    MessageRecord mr = this.droppedMsgs.poll();
+                    if (mr == null) {
+                        break;
+                    }
+                    this.msgMap.remove(mr.id, mr); // Should be O(log(n)), so it's ok all in all.
+                    dropCount--;
+                }
+```
+Now we can send 10 million messages with force drops, a small fraction of random drops, and with transport delays - at the rate of almost a million messages per second! All messages accounted for!
+
+
 # Feb 23, 2018 RobotComm Stress Test Design Note
 - Before we move on to implementation of stress testing of commands, I (JMJ) would like to be able to
  have a very longrunning stress test that sends 100s of millions of messages. The current design creates

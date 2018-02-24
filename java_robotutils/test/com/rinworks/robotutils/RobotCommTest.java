@@ -21,6 +21,9 @@ import com.rinworks.robotutils.RobotComm.SentCommand;
 
 class RobotCommTest {
 
+    private boolean assertionFailure;
+    private String assertionFailureString;
+
     class TestTransport implements RobotComm.DatagramTransport {
         final String ALWAYSDROP_TEXT = "TRANSPORT-MUST-DROP";
         private final MyRemoteNode loopbackNode = new MyRemoteNode(new MyAddress("loopback"));
@@ -68,7 +71,7 @@ class RobotCommTest {
 
         // {failureRate} "close enough" to 0 is considered to be zero-failures.
         boolean zeroFailures() {
-            return Math.abs(this.failureRate) < 1e-3;
+            return Math.abs(this.failureRate) < 1e-7;
         }
 
         boolean noDelays() {
@@ -202,6 +205,10 @@ class RobotCommTest {
         public int getMaxDelay() {
             return this.maxDelay;
         }
+        
+        public double getFailureRate() {
+            return this.failureRate;
+        }
 
         private void handleSend(String msg) {
             if (this.closed) {
@@ -326,12 +333,16 @@ class RobotCommTest {
         // the messages.
         public void submitMessages(int nMessages, int submissionRate, double alwaysDropRate) {
             final int BATCH_SPAN_MILLIS = 1000;
-            final int LARGE_COUNT = 1000000;
+            final int MAX_EXPECTED_TRANSPORT_FAILURES = 1000000;
             // If more than LARGE_COUNT messages, there should be NO transport send failures
             // else our tracked messages will start to accumulate and take up too much
             // memory.
-            assert nMessages < LARGE_COUNT || transport.zeroFailures();
-
+            final double expectedTransportFailures = nMessages * transport.getFailureRate();
+            if (expectedTransportFailures > MAX_EXPECTED_TRANSPORT_FAILURES) {
+                log.err("Too many transport failures expected " + (int) expectedTransportFailures + ") - resulting in too much memory consumption. Abandoning test.");
+                fail("Too much expected memory consumption to run this test.");
+            }
+  
             try {
                 int messagesLeft = nMessages;
                 while (messagesLeft > submissionRate) {
@@ -352,9 +363,10 @@ class RobotCommTest {
                 Thread.sleep(maxReceiveDelay);
                 int retryCount = 10;
                 while (retryCount-- > 0 && this.msgMap.size() > transport.getNumRandomDrops()) {
-                    Thread.sleep(500);
                     purgeAllDroppedMessages();
+                    Thread.sleep(250);
                 }
+                purgeAllDroppedMessages();
             } catch (InterruptedException e) {
                 e.printStackTrace();
                 Thread.currentThread().interrupt();
@@ -386,8 +398,11 @@ class RobotCommTest {
             if (sizeEst > DROP_TRIGGER) {
                 long dropCount = sizeEst / 2;
                 log.trace("Purging about " + dropCount + " force-dropped messages.");
-                MessageRecord mr;
-                while ((mr = this.droppedMsgs.poll()) != null && dropCount > 0) {
+                while (dropCount > 0) {
+                    MessageRecord mr = this.droppedMsgs.poll();
+                    if (mr == null) {
+                        break;
+                    }
                     this.msgMap.remove(mr.id, mr); // Should be O(log(n)), so it's ok all in all.
                     dropCount--;
                 }
@@ -458,7 +473,6 @@ class RobotCommTest {
                             try {
                                 // Let's pick up all messages received so far and verify them...
                                 RobotComm.ReceivedMessage rm = ch.pollReceivedMessage();
-                                ;
                                 while (rm != null) {
                                     StressTester.this.processReceivedMessage(rm);
                                     rm = ch.pollReceivedMessage();
@@ -488,12 +502,17 @@ class RobotCommTest {
                 long id = Long.parseUnsignedLong(strId, 16);
                 hfLog.trace("Received message with id " + id);
                 MessageRecord mr = this.msgMap.get(id);
-                assertNotEquals(mr, null);
-                assertEquals(mr.msgType, msgType);
-                assertEquals(mr.msgBody, msgBody);
-                assertFalse(mr.alwaysDrop);
+                // assertNotEquals(mr, null);
+                log.loggedAssert(mr != null, "mr == null");
+                // assertEquals(mr.msgType, msgType);
+                log.loggedAssert(mr.msgType.equals(msgType), "mr.msgType not equal to msgType");
+                // assertEquals(mr.msgBody, msgBody);
+                log.loggedAssert(mr.msgBody.equals(msgBody), "mr.msgBody not equal to msgBody");
+                // assertFalse(mr.alwaysDrop);
+                log.loggedAssert(!mr.alwaysDrop, "mr.alwaysDrop is true");
                 this.msgMap.remove(id, mr);
-            } catch (NumberFormatException e) {
+            } catch (Exception e) {
+                log.err("EXCEPTION", e.toString());
                 fail("Exception attempting to parse ID from received message [" + rm.message() + "]");
             }
         }
@@ -507,6 +526,15 @@ class RobotCommTest {
             int mapSize = this.msgMap.size();
             log.info("Final verification. ForceDrops: " + forceDrops + "  RandomDrops: " + randomDrops + "   Missing: "
                     + (mapSize - randomDrops));
+
+            if (randomDrops != mapSize) {
+                // We will fail this test later, but do some logging here...
+                log.info("Drop queue size: " + this.droppedMsgs.size());
+                for (MessageRecord mr : msgMap.values()) {
+                    String mrStr = "missing mr id=" + mr.id + "  drop=" + mr.alwaysDrop;
+                    log.info(mrStr);
+                }
+            }
             log.flush();
             assertEquals(randomDrops, mapSize);
         }
@@ -621,6 +649,10 @@ class RobotCommTest {
         StructuredLogger.RawLogger rl2 = StructuredLogger.createConsoleRawLogger(f);
         StructuredLogger.RawLogger[] rls = { rl, rl2 };
         StructuredLogger sl = new StructuredLogger(rls, "test");
+        sl.setAsseretionFailureHandler((s) -> {
+            this.assertionFailure = true;
+            this.assertionFailureString = s;
+        });
         sl.beginLogging();
         sl.info("INIT LOGGER");
         return sl;
@@ -632,8 +664,8 @@ class RobotCommTest {
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
         StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
         stresser.init();
-        transport.setTransportCharacteristics(0, 0);
-        stresser.submitMessages(1, 1, 0);
+        transport.setTransportCharacteristics(0.01, 500);
+        stresser.submitMessages(10000, 50000, 0.5);
         baseLogger.flush();
         baseLogger.endLogging();
         stresser.close();
