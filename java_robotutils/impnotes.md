@@ -42,7 +42,25 @@ The corrected code is below:
                     dropCount--;
                 }
 ```
-Now we can send 10 million messages with force drops, a small fraction of random drops, and with transport delays - at the rate of almost a million messages per second! All messages accounted for!
+Now we can send 100 million messages with force drops, a small fraction of random drops, and with transport delays - at the rate of 200K messages per second! All messages accounted for!
+
+Here are the parameters for the above long-running test (transport failure rate of 0.00001, transport max delay of 2000ms, 100M messages at the rate of 200K per second, and with a 50% drop rate (so about 50M messages were actually received).
+
+```
+        transport.setTransportCharacteristics(0.00001, 2000);
+        stresser.submitMessages(100000000, 200000, 0.5);
+```
+
+And the last few log entries (the test ran for 517 seconds, so total throughput of 100M/517 sent message per second, so pretty close to 200K per second! 
+
+```       
+_sid: 1519464050061  _sn: 1500  _ts: 514227  _pri: 2  _cat: TRACE  _co: test  _ty: _OTHER  _msg: Purging about 99913 force-dropped messages.
+_sid: 1519464050061  _sn: 1501  _ts: 514243  _pri: 2  _cat: TRACE  _co: test  _ty: _OTHER  _msg: Beginning to submit 200000 messages.
+_sid: 1519464050061  _sn: 1502  _ts: 514383  _pri: 1  _cat: INFO   _co: test  _ty: _OTHER  _msg: maxReceiveDelay: 3000
+_sid: 1519464050061  _sn: 1503  _ts: 515386  _pri: 2  _cat: TRACE  _co: test  _ty: _OTHER  _msg: Waiting to receive up to 100000000 messages
+_sid: 1519464050061  _sn: 1504  _ts: 517685  _pri: 1  _cat: INFO   _co: test  _ty: _OTHER  _msg: Final verification. ForceDrops: 49994269  RandomDrops: 482   Missing: 0
+_sid: 1519464050061  _sn: 1505  _ts: 517704  _pri: 0  _cat: INFO   _co: test  _ty: _LOG_SESSION_ENDED  _msg:  rootName: test
+```
 
 
 # Feb 23, 2018 RobotComm Stress Test Design Note

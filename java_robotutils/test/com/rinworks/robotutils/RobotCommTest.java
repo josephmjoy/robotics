@@ -346,9 +346,12 @@ class RobotCommTest {
             try {
                 int messagesLeft = nMessages;
                 while (messagesLeft > submissionRate) {
+                    long t0 = System.currentTimeMillis();
                     submitMessageBatch(submissionRate, BATCH_SPAN_MILLIS, alwaysDropRate);
                     messagesLeft -= submissionRate;
-                    Thread.sleep(BATCH_SPAN_MILLIS);
+                    long t1 = System.currentTimeMillis();
+                    int sleepTime = (int) Math.max(BATCH_SPAN_MILLIS*0.1,  BATCH_SPAN_MILLIS-(t1-t0));
+                    Thread.sleep(sleepTime);
                     pruneDroppedMessages();
                 }
                 int timeLeftMillis = (1000 * messagesLeft) / submissionRate;
@@ -664,8 +667,8 @@ class RobotCommTest {
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
         StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
         stresser.init();
-        transport.setTransportCharacteristics(0.01, 500);
-        stresser.submitMessages(10000, 50000, 0.5);
+        transport.setTransportCharacteristics(0.2, 250);
+        stresser.submitMessages(1000, 10000, 0.1);
         baseLogger.flush();
         baseLogger.endLogging();
         stresser.close();
