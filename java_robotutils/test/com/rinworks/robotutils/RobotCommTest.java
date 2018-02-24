@@ -205,7 +205,7 @@ class RobotCommTest {
         public int getMaxDelay() {
             return this.maxDelay;
         }
-        
+
         public double getFailureRate() {
             return this.failureRate;
         }
@@ -254,12 +254,12 @@ class RobotCommTest {
         RobotComm rc;
         RobotComm.Channel ch;
 
-        ConcurrentHashMap<Long, MessageRecord> msgMap = new ConcurrentHashMap<>();
-        ConcurrentLinkedQueue<MessageRecord> droppedMsgs = new ConcurrentLinkedQueue<>();
-        ConcurrentHashMap<Long, CommandRecord> cmdMap = new ConcurrentHashMap<>();
-        ConcurrentLinkedQueue<CommandRecord> cmdCliSubmitQueue = new ConcurrentLinkedQueue<>();
-        ConcurrentLinkedQueue<CommandRecord> cmdSvrComputeQueue = new ConcurrentLinkedQueue<>();
-        ConcurrentLinkedQueue<CommandRecord> droppedCommands = new ConcurrentLinkedQueue<>();
+        private final ConcurrentHashMap<Long, MessageRecord> msgMap = new ConcurrentHashMap<>();
+        private final ConcurrentLinkedQueue<MessageRecord> droppedMsgs = new ConcurrentLinkedQueue<>();
+        private final ConcurrentHashMap<Long, CommandRecord> cmdMap = new ConcurrentHashMap<>();
+        private final ConcurrentLinkedQueue<CommandRecord> cmdCliSubmitQueue = new ConcurrentLinkedQueue<>();
+        private final ConcurrentLinkedQueue<CommandRecord> cmdSvrComputeQueue = new ConcurrentLinkedQueue<>();
+        private final ConcurrentLinkedQueue<CommandRecord> droppedCommands = new ConcurrentLinkedQueue<>();
 
         private class MessageRecord {
             final long id;
@@ -326,11 +326,16 @@ class RobotCommTest {
             this.ch.startReceivingMessages();
         }
 
-        // Submit a total of {nMewsages} messages at a rate of {submissionRate} per
-        // second.
-        // In addition to any random transport drops, force-drop {alwaysDropRate}
-        // fraction of
-        // the messages.
+        /**
+         * Stress test sending, receiving and processing of commands.
+         * 
+         * @param nMessages
+         *            - number of messagegs to submit
+         * @param submissionRate
+         *            - rate of submission per second
+         * @param alwaysDropRate
+         *            - rate at which datagrams are always dropped by the transport
+         */
         public void submitMessages(int nMessages, int submissionRate, double alwaysDropRate) {
             final int BATCH_SPAN_MILLIS = 1000;
             final int MAX_EXPECTED_TRANSPORT_FAILURES = 1000000;
@@ -339,10 +344,11 @@ class RobotCommTest {
             // memory.
             final double expectedTransportFailures = nMessages * transport.getFailureRate();
             if (expectedTransportFailures > MAX_EXPECTED_TRANSPORT_FAILURES) {
-                log.err("Too many transport failures expected " + (int) expectedTransportFailures + ") - resulting in too much memory consumption. Abandoning test.");
+                log.err("Too many transport failures expected " + (int) expectedTransportFailures
+                        + ") - resulting in too much memory consumption. Abandoning test.");
                 fail("Too much expected memory consumption to run this test.");
             }
-  
+
             try {
                 int messagesLeft = nMessages;
                 while (messagesLeft > submissionRate) {
@@ -350,7 +356,7 @@ class RobotCommTest {
                     submitMessageBatch(submissionRate, BATCH_SPAN_MILLIS, alwaysDropRate);
                     messagesLeft -= submissionRate;
                     long t1 = System.currentTimeMillis();
-                    int sleepTime = (int) Math.max(BATCH_SPAN_MILLIS*0.1,  BATCH_SPAN_MILLIS-(t1-t0));
+                    int sleepTime = (int) Math.max(BATCH_SPAN_MILLIS * 0.1, BATCH_SPAN_MILLIS - (t1 - t0));
                     Thread.sleep(sleepTime);
                     pruneDroppedMessages();
                 }
@@ -381,14 +387,66 @@ class RobotCommTest {
             this.cleanup();
         }
 
-        // Cleanup our queues and maps so we can do another test
-        private void cleanup() {
-            this.msgMap.clear();
-            this.droppedMsgs.clear();
-            this.cmdMap.clear();
-            this.cmdCliSubmitQueue.clear();
-            this.cmdSvrComputeQueue.clear();
-            this.droppedCommands.clear();
+        /**
+         * Stress test sending, receiving and processing of commands.
+         * 
+         * @param nCommands
+         *            - number of commands to submit
+         * @param submissionRate
+         *            - rate of submission per second
+         * @param alwaysDropCmdRate
+         *            - rate at which CMD datagrams are always dropped by the transporrt
+         * @param alwaysDropRespRate
+         *            - rate at which CMDRESP datagrams are always dropped by the
+         *            transport
+         * @param maxComputeTime
+         *            - max time it takes to compute a response to a command.
+         */
+        public void submitCommands(int nCommands, int submissionRate, double alwaysDropCmdRate,
+                double alwaysDropRespRate, int maxComputeTime) {
+            final int BATCH_SPAN_MILLIS = 1000;
+            final int MAX_EXPECTED_TRANSPORT_FAILURES = 1000000;
+            // If more than LARGE_COUNT messages, there should be NO transport send failures
+            // else our tracked messages will start to accumulate and take up too much
+            // memory.
+
+            try {
+                int commandsLeft = nCommands;
+                while (commandsLeft > submissionRate) {
+                    long t0 = System.currentTimeMillis();
+                    submitCommandBatch(submissionRate, BATCH_SPAN_MILLIS, alwaysDropCmdRate, alwaysDropRespRate,
+                            maxComputeTime);
+                    commandsLeft -= submissionRate;
+                    long t1 = System.currentTimeMillis();
+                    int sleepTime = (int) Math.max(BATCH_SPAN_MILLIS * 0.1, BATCH_SPAN_MILLIS - (t1 - t0));
+                    Thread.sleep(sleepTime);
+                    pruneDroppedCommands();
+                }
+                int timeLeftMillis = (1000 * commandsLeft) / submissionRate;
+                submitCommandBatch(commandsLeft, timeLeftMillis, alwaysDropCmdRate, alwaysDropRespRate, maxComputeTime);
+                Thread.sleep(timeLeftMillis);
+
+                // Having initiated the process of submitting all the commands, we now have to
+                // wait for ??? and verify that exactly those commands that are expected to be
+                // processed were processed correctly.
+                int approxCompletionDelay = 2 * transport.getMaxDelay();
+                log.trace("Waiting to receive up to " + nCommands + " commands");
+                Thread.sleep(approxCompletionDelay);
+                int retryCount = 10;
+                while (retryCount-- > 0 && this.cmdMap.size() > 0) {
+                    purgeAllDroppedCommands();
+                    Thread.sleep(250);
+                }
+                purgeAllDroppedCommands();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                Thread.currentThread().interrupt();
+            }
+
+            // Now we do final validation.
+            this.finalSubmitCommandValidation();
+
+            this.cleanup();
         }
 
         // Keep count of dropped messages by removing the older
@@ -542,9 +600,41 @@ class RobotCommTest {
             assertEquals(randomDrops, mapSize);
         }
 
+        private void submitCommandBatch(int submissionRate, int bATCH_SPAN_MILLIS, double alwaysDropCmdRate,
+                double alwaysDropRespRate, int maxComputeTime) {
+            // TODO Auto-generated method stub
+
+        }
+
+        private void purgeAllDroppedCommands() {
+            // TODO Auto-generated method stub
+
+        }
+
+        private void pruneDroppedCommands() {
+            // TODO Auto-generated method stub
+
+        }
+
+        private void finalSubmitCommandValidation() {
+            // TODO Auto-generated method stub
+
+        }
+
+        // Cleanup our queues and maps so we can do another test
+        private void cleanup() {
+            this.msgMap.clear();
+            this.droppedMsgs.clear();
+            this.cmdMap.clear();
+            this.cmdCliSubmitQueue.clear();
+            this.cmdSvrComputeQueue.clear();
+            this.droppedCommands.clear();
+        }
+
         public void close() {
             this.testTimer.cancel();
             this.exPool.shutdownNow();
+            cleanup();
         }
     }
 
@@ -662,13 +752,26 @@ class RobotCommTest {
     }
 
     @Test
-    void stressTest1() {
+    void stressSendAndRecvMessages() {
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
         StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
         stresser.init();
         transport.setTransportCharacteristics(0.2, 250);
         stresser.submitMessages(1000, 10000, 0.1);
+        baseLogger.flush();
+        baseLogger.endLogging();
+        stresser.close();
+    }
+
+    @Test
+    void stressSubmitAndProcessCommands() {
+        StructuredLogger baseLogger = initStructuredLogger();
+        TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
+        StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
+        stresser.init();
+        transport.setTransportCharacteristics(0, 0);
+        stresser.submitCommands(0, 1, 0, 0, 0);
         baseLogger.flush();
         baseLogger.endLogging();
         stresser.close();
