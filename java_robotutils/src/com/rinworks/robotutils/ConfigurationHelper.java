@@ -38,7 +38,7 @@ public class ConfigurationHelper {
             }
         } catch (IOException e) {
             // Nothing to do as br will be automatically closed.
-           System.err.println(e);
+            System.err.println(e);
         }
         return hm;
     }
@@ -62,7 +62,7 @@ public class ConfigurationHelper {
                     post = line.substring(iColon + 1).trim(); // +1 for space after colon
                 } else {
                     // The other case is the line *ends* in a colon...
-                    int lastIndex = line.length()-1;
+                    int lastIndex = line.length() - 1;
                     if (line.charAt(lastIndex) == ':') {
                         pre = line.substring(0, lastIndex).trim();
                         post = "";
@@ -115,7 +115,7 @@ public class ConfigurationHelper {
                 int iColon = remaining.indexOf(':');
                 if (iColon >= 0) {
                     String preColon = remaining.substring(0, iColon).trim();
-                    String postColon = remaining.substring(iColon+1).trim();
+                    String postColon = remaining.substring(iColon + 1).trim();
                     ret = preColon.length() == 0 && postColon.length() == 0;
                 }
                 break;
@@ -165,22 +165,22 @@ public class ConfigurationHelper {
     public static boolean writeSection(String sectionName, Map<String, String> map, List<String> keys, Writer w) {
         Iterator<String> kIter = keys != null ? keys.iterator() : map.keySet().iterator();
         boolean ret = false;
-        
+
         try (BufferedWriter bw = new BufferedWriter(w)) {
             bw.write(sectionName + ":\n");
             while (kIter.hasNext()) {
                 String k = kIter.next();
                 String v = map.get(k);
                 if (v != null) {
-                       String output = "  " + k + COLONSPACE + v + "\n";
-                       bw.write(output);
+                    String output = "  " + k + COLONSPACE + v + "\n";
+                    bw.write(output);
                 }
             }
             ret = true;
         } catch (IOException e) {
             // Nothing to do as we close br on exception or not.
         }
-        
+
         return ret;
     }
 
