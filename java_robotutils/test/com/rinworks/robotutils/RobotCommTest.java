@@ -16,6 +16,7 @@ import java.util.function.BiConsumer;
 import org.junit.jupiter.api.Test;
 
 import com.rinworks.robotutils.RobotComm.Address;
+import com.rinworks.robotutils.RobotComm.ReceivedCommand;
 import com.rinworks.robotutils.RobotComm.ReceivedMessage;
 import com.rinworks.robotutils.RobotComm.SentCommand;
 
@@ -260,6 +261,7 @@ class RobotCommTest {
         private final ConcurrentLinkedQueue<CommandRecord> cmdCliSubmitQueue = new ConcurrentLinkedQueue<>();
         private final ConcurrentLinkedQueue<CommandRecord> cmdSvrComputeQueue = new ConcurrentLinkedQueue<>();
         private final ConcurrentLinkedQueue<CommandRecord> droppedCommands = new ConcurrentLinkedQueue<>();
+        private final ConcurrentLinkedQueue<CommandRecord> droppedResponses = new ConcurrentLinkedQueue<>();
 
         private class MessageRecord {
             final long id;
@@ -298,6 +300,7 @@ class RobotCommTest {
         private class CommandRecord {
             final MessageRecord cmdRecord;
             final MessageRecord respRecord;
+            protected SentCommand sentCmd;
 
             CommandRecord(MessageRecord cmdRecord, MessageRecord respRecord) {
                 this.cmdRecord = cmdRecord;
@@ -323,7 +326,6 @@ class RobotCommTest {
             this.ch = rc.newChannel("testChannel");
             this.ch.bindToRemoteNode(addr);
             this.rc.startListening();
-            this.ch.startReceivingMessages();
         }
 
         /**
@@ -348,7 +350,9 @@ class RobotCommTest {
                         + ") - resulting in too much memory consumption. Abandoning test.");
                 fail("Too much expected memory consumption to run this test.");
             }
-
+            
+            this.ch.startReceivingMessages();
+ 
             try {
                 int messagesLeft = nMessages;
                 while (messagesLeft > submissionRate) {
@@ -405,11 +409,7 @@ class RobotCommTest {
         public void submitCommands(int nCommands, int submissionRate, double alwaysDropCmdRate,
                 double alwaysDropRespRate, int maxComputeTime) {
             final int BATCH_SPAN_MILLIS = 1000;
-            final int MAX_EXPECTED_TRANSPORT_FAILURES = 1000000;
-            // If more than LARGE_COUNT messages, there should be NO transport send failures
-            // else our tracked messages will start to accumulate and take up too much
-            // memory.
-
+            this.ch.startReceivingCommands();
             try {
                 int commandsLeft = nCommands;
                 while (commandsLeft > submissionRate) {
@@ -420,7 +420,8 @@ class RobotCommTest {
                     long t1 = System.currentTimeMillis();
                     int sleepTime = (int) Math.max(BATCH_SPAN_MILLIS * 0.1, BATCH_SPAN_MILLIS - (t1 - t0));
                     Thread.sleep(sleepTime);
-                    pruneDroppedCommands();
+                    pruneDroppedCommands(this.droppedCommands);
+                    pruneDroppedCommands(this.droppedResponses);
                 }
                 int timeLeftMillis = (1000 * commandsLeft) / submissionRate;
                 submitCommandBatch(commandsLeft, timeLeftMillis, alwaysDropCmdRate, alwaysDropRespRate, maxComputeTime);
@@ -429,15 +430,16 @@ class RobotCommTest {
                 // Having initiated the process of submitting all the commands, we now have to
                 // wait for ??? and verify that exactly those commands that are expected to be
                 // processed were processed correctly.
-                int approxCompletionDelay = 2 * transport.getMaxDelay();
+                int approxCompletionDelay = 10 * transport.getMaxDelay();
                 log.trace("Waiting to receive up to " + nCommands + " commands");
                 Thread.sleep(approxCompletionDelay);
                 int retryCount = 10;
                 while (retryCount-- > 0 && this.cmdMap.size() > 0) {
-                    purgeAllDroppedCommands();
+                    purgeAllDroppedCommands(this.droppedCommands);
+                    purgeAllDroppedCommands(this.droppedResponses);
+                    rc.periodicWork();
                     Thread.sleep(250);
                 }
-                purgeAllDroppedCommands();
             } catch (InterruptedException e) {
                 e.printStackTrace();
                 Thread.currentThread().interrupt();
@@ -516,7 +518,6 @@ class RobotCommTest {
 
             int recvAttempts = Math.max(nMessages / 100, 10);
             int maxReceiveDelay = submissionTimespan + transport.getMaxDelay();
-            log.info("maxReceiveDelay: " + maxReceiveDelay);
             for (int i = 0; i < recvAttempts; i++) {
                 int delay = (int) (rand.nextDouble() * submissionTimespan);
 
@@ -600,25 +601,286 @@ class RobotCommTest {
             assertEquals(randomDrops, mapSize);
         }
 
-        private void submitCommandBatch(int submissionRate, int bATCH_SPAN_MILLIS, double alwaysDropCmdRate,
+        private void submitCommandBatch(int nCommands, int submissionTimespan, double alwaysDropCmdRate,
                 double alwaysDropRespRate, int maxComputeTime) {
-            // TODO Auto-generated method stub
+            assert this.rc != null;
+            assert this.ch != null;
+            assert alwaysDropCmdRate >= 0 && alwaysDropCmdRate <= 1;
+            assert alwaysDropRespRate >= 0 && alwaysDropRespRate <= 1;
+            assert submissionTimespan >= 0;
 
+            log.trace("Beginning to submit " + nCommands + " commands.");
+
+            // Client: send command
+            for (int i = 0; i < nCommands; i++) {
+                boolean alwaysDropCMD = rand.nextDouble() < alwaysDropCmdRate;
+                long id = nextId.getAndIncrement();
+                MessageRecord mrCmd = new MessageRecord(id, alwaysDropCMD);
+                boolean alwaysDropRESP = rand.nextDouble() < alwaysDropRespRate;
+                MessageRecord mrResp = new MessageRecord(id, alwaysDropRESP);
+                CommandRecord cr = new CommandRecord(mrCmd, mrResp);
+                int delay = (int) (rand.nextDouble() * submissionTimespan);
+                this.cmdMap.put(id, cr);
+                if (alwaysDropCMD) {
+                    this.droppedCommands.add(cr);
+                }
+                this.testTimer.schedule(new TimerTask() {
+
+                    @Override
+                    public void run() {
+                        StressTester.this.exPool.submit(() -> {
+                            try {
+                                hfLog.trace("Sending cmd with id " + id);
+                                RobotComm.SentCommand sc = StressTester.this.ch.sendCommand(mrCmd.msgType,
+                                        mrCmd.msgBody, true); // TODO true/false
+                                cr.sentCmd = sc;
+                                if (mrCmd.alwaysDrop) {
+                                    // We *know* that this command will never make it to the server.
+                                    droppedCommands.add(cr);
+                                }
+                            } catch (Exception e) {
+                                log.err("EXCEPTION", e.toString());
+                            }
+                        });
+                    }
+                }, delay);
+            }
+
+            // Client: poll for completed commands
+            int completionChecks = Math.max(nCommands / 100, 10);
+            final int DELAY_MULTIPLYER = 2; // because of CMD->CMDRESP protocol with potential loss
+            int maxCompletionTime = submissionTimespan + DELAY_MULTIPLYER * transport.getMaxDelay();
+            for (int i = 0; i < completionChecks; i++) {
+                int delay = (int) (rand.nextDouble() * maxCompletionTime);
+
+                // Special case of i == 0 - we schedule our final receive attempt to be AFTER
+                // the last packet is actually sent by the transport (after a potential delay)
+                if (i == 0) {
+                    delay = maxCompletionTime;
+                }
+
+                this.testTimer.schedule(new TimerTask() {
+
+                    @Override
+                    public void run() {
+                        StressTester.this.exPool.submit(() -> {
+                            try {
+                                // Let's pick up all messages received so far and verify them...
+                                RobotComm.SentCommand sc = ch.pollCompletedCommand();
+                                while (sc != null) {
+                                    StressTester.this.processCompletedCommand(sc);
+                                    sc = ch.pollCompletedCommand();
+                                }
+                            } catch (Exception e) {
+                                log.err("EXCEPTION", e.toString());
+                            }
+
+                        });
+                    }
+                }, delay);
+            }
+
+            // Server: poll for incoming commands and respond to them
+            int recvAttempts = Math.max(nCommands / 100, 10);
+            final int ARRIVA_DELAY_MULTIPLYER = 1; // Time for CMD message to be transmitted
+            int maxArrivalTime = submissionTimespan + ARRIVA_DELAY_MULTIPLYER * transport.getMaxDelay();
+            for (int i = 0; i < recvAttempts; i++) {
+                int delay = (int) (rand.nextDouble() * maxArrivalTime);
+
+                // Special case of i == 0 - we schedule our final receive attempt to be AFTER
+                // the last packet is actually sent by the transport (after a potential delay)
+                if (i == 0) {
+                    delay = maxArrivalTime;
+                }
+
+                this.testTimer.schedule(new TimerTask() {
+
+                    @Override
+                    public void run() {
+                        StressTester.this.exPool.submit(() -> {
+                            try {
+                                // Let's pick up all incoming commands received so far and process them
+                                RobotComm.ReceivedCommand rCmd = ch.pollReceivedCommand();
+                                while (rCmd != null) {
+                                    final RobotComm.ReceivedCommand rCmd1 = rCmd;
+                                    int computeDelay = (int) (rand.nextDouble() * maxComputeTime);
+                                    CommandRecord cr = StressTester.this.processReceivedCommand(rCmd);
+
+                                    if (cr == null) {
+                                        log.err("NULL_POINTER", "cr #EaHM");
+                                        continue; // ************************************* CONTINUE
+                                    }
+                                    // Schedule a timer task to send the computed response.
+                                    StressTester.this.testTimer.schedule(new TimerTask() {
+
+                                        @Override
+                                        public void run() {
+                                            StressTester.this.exPool.submit(() -> {
+                                                try {
+                                                    rCmd1.respond(cr.respRecord.msgType, cr.respRecord.msgBody);
+                                                    if (cr.respRecord.alwaysDrop) {
+                                                        // We *know* that this response will never make it back to
+                                                        // the cline.t
+                                                        StressTester.this.droppedResponses.add(cr);
+                                                    }
+
+                                                } catch (Exception e) {
+                                                    log.err("EXCEPTION", e.toString());
+                                                }
+
+                                            });
+                                        }
+                                    }, computeDelay);
+                                    rCmd = ch.pollReceivedCommand();
+                                }
+                            } catch (Exception e) {
+                                log.err("EXCEPTION", e.toString());
+                            }
+                        });
+                    }
+                }, delay);
+            }
+            
+            // Both: call process
+            int processCalls = Math.max(nCommands / 100, 10);
+            for (int i = 0; i < processCalls; i++) {
+                int delay = (int) (rand.nextDouble() * maxCompletionTime);
+
+                // Special case of i == 0 - we schedule our final receive attempt to be AFTER
+                // the last packet is actually sent by the transport (after a potential delay)
+                if (i == 0) {
+                    delay = maxCompletionTime;
+                }
+
+                this.testTimer.schedule(new TimerTask() {
+
+                    @Override
+                    public void run() {
+                        StressTester.this.exPool.submit(() -> {
+                            try {
+                                rc.periodicWork();
+                            } catch (Exception e) {
+                                log.err("EXCEPTION", e.toString());
+                            }
+
+                        });
+                    }
+                }, delay);
+            }
         }
 
-        private void purgeAllDroppedCommands() {
-            // TODO Auto-generated method stub
-
+        private CommandRecord processReceivedCommand(ReceivedCommand rCmd) {
+            // Extract id from message.
+            // Look it up - we had better find it in our map.
+            // Verify that we expect to get it - (not alwaysDrop)
+            // Verify we have not already received it - exactly once reception
+            // Verify message type and message body is what we expect.
+            // If all ok return it.
+            String msgType = rCmd.msgType();
+            String msgBody = rCmd.message();
+            int nli = msgBody.indexOf('\n');
+            String strId = nli < 0 ? msgBody : msgBody.substring(0, nli);
+            CommandRecord cr = null;
+            try {
+                long id = Long.parseUnsignedLong(strId, 16);
+                hfLog.trace("Received command with id " + id);
+                cr = this.cmdMap.get(id);
+                // assertNotEquals(mr, null);
+                log.loggedAssert(cr != null, "cr == null");
+                // assertEquals(mr.msgType, msgType);
+                
+                
+                log.loggedAssert(cr.cmdRecord.msgType.equals(msgType), "cmd msgType mismatch #C1IH");
+                // assertEquals(mr.msgBody, msgBody);
+                log.loggedAssert(cr.cmdRecord.msgBody.equals(msgBody), "cmd msgBody mismatch #NmLj");
+                // assertFalse(mr.alwaysDrop);
+                log.loggedAssert(!cr.cmdRecord.alwaysDrop, "cmd alwaysDrop is true #2p0r");
+            } catch (Exception e) {
+                log.err("EXCEPTION", e.toString());
+                fail("Exception attempting to parse ID from received message [" + msgBody + "]");
+            }
+            return cr;
         }
 
-        private void pruneDroppedCommands() {
-            // TODO Auto-generated method stub
-
+        protected void processCompletedCommand(SentCommand cCmd) {
+            // Extract id from message.
+            // Look it up - we had better find it in our map.
+            // Verify that we expect to get it - (not alwaysDrop)
+            // Verify we have not already received it - exactly once completion
+            // Verify message type and message body is what we expect.
+            // If all ok return it.
+            String msgType = cCmd.respType();
+            String msgBody = cCmd.response();
+            int nli = msgBody.indexOf('\n');
+            String strId = nli < 0 ? msgBody : msgBody.substring(0, nli);
+            CommandRecord cr = null;
+            try {
+                long id = Long.parseUnsignedLong(strId, 16);
+                hfLog.trace("Command completed with id " + id);
+                cr = this.cmdMap.get(id);
+                // assertNotEquals(mr, null);
+                log.loggedAssert(cr != null, "cr == null");
+                // assertEquals(mr.msgType, msgType);
+                log.loggedAssert(cr.respRecord.msgType.equals(msgType), "resp msgType mismatch #8K45");
+                // assertEquals(mr.msgBody, msgBody);
+                log.loggedAssert(cr.respRecord.msgBody.equals(msgBody), "resp msgBody mismatch #jPH4");
+                // assertFalse(mr.alwaysDrop);
+                log.loggedAssert(!cr.respRecord.alwaysDrop, "resp alwaysDrop is true #TeA8");
+                log.trace("removing cr with id " + id + "from cmdMap #EwQp");
+                this.cmdMap.remove(id, cr);
+            } catch (Exception e) {
+                log.err("EXCEPTION", e.toString());
+                fail("Exception attempting to parse ID from received message [" + msgBody + "]");
+            }
         }
 
+        private void pruneDroppedCommands(ConcurrentLinkedQueue<CommandRecord> queue) {
+            final long DROP_TRIGGER = 1000;
+            // Remember that the message map and queue of dropped messages are concurrently
+            // modified so sizes are estimates.
+            long sizeEst = queue.size(); // Warning O(n) operation.
+            if (sizeEst > DROP_TRIGGER) {
+                long dropCount = sizeEst / 2;
+                log.trace("Purging about " + dropCount + " force-dropped commands.");
+                while (dropCount > 0) {
+                    CommandRecord cr = queue.poll();
+                    if (cr == null) {
+                        break;
+                    }
+                    this.cmdMap.remove(cr.cmdRecord.id, cr); // Should be O(log(n)), so it's ok all in all.
+                    dropCount--;
+                }
+            }
+        }
+
+
+        private void purgeAllDroppedCommands(ConcurrentLinkedQueue<CommandRecord> queue) {
+            CommandRecord cr;
+            while ((cr = queue.poll()) != null) {
+                this.cmdMap.remove(cr.cmdRecord.id, cr); // Should be O(log(n)), so it's ok all in all.
+            }
+        }
+
+        
         private void finalSubmitCommandValidation() {
-            // TODO Auto-generated method stub
+            // Verify that the count of messages that still remain in our map
+            // is exactly equal to the number of messages dropped by the transport - i.e.,
+            // they were never received.
+            long randomDrops = this.transport.getNumRandomDrops();
+            long forceDrops = this.transport.getNumForceDrops();
+            int mapSize = this.cmdMap.size();
+            log.info("Final COMMAND verification. ForceDrops: " + forceDrops + "  RandomDrops: " + randomDrops + "   Missing: "
+                    + mapSize);
 
+            if (mapSize != 0) {
+                // We will fail this test later, but do some logging here...
+                for (CommandRecord cr : cmdMap.values()) {
+                    String mrStr = "missing cr id=" + cr.cmdRecord.id + "  cdrop=" + cr.cmdRecord.alwaysDrop;
+                    log.info(mrStr);
+                }
+            }
+            log.flush();
+            assertEquals(0, mapSize);
         }
 
         // Cleanup our queues and maps so we can do another test
@@ -629,6 +891,9 @@ class RobotCommTest {
             this.cmdCliSubmitQueue.clear();
             this.cmdSvrComputeQueue.clear();
             this.droppedCommands.clear();
+            
+            this.ch.stopReceivingMessages();
+            this.ch.stopReceivingCommands();
         }
 
         public void close() {
@@ -771,7 +1036,7 @@ class RobotCommTest {
         StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
         stresser.init();
         transport.setTransportCharacteristics(0, 0);
-        stresser.submitCommands(0, 1, 0, 0, 0);
+        stresser.submitCommands(1, 1, 0, 0, 0);
         baseLogger.flush();
         baseLogger.endLogging();
         stresser.close();

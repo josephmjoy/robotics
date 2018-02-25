@@ -18,7 +18,60 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
-# Feb 23, 2018 B RobotComm Stress Test Debugging Note - Send/Receive Messages Stress Test
+#Feb 25B, 2018 General Adding random IDs that mark a location in source code
+- Add a random 5-character alphanumeric string to log messages - unique (with high probability) one for each log call in source code. The following Processing code does the trick. Just
+generate this and paste to notepad. Delete each from notepad as you use them. Code below generates 
+
+```
+#Wgyr
+#JZEs
+#Qnl7
+Permutations: 14776336
+Sqrt(permutations): 3844.0
+```
+The permutations is the number of possible 5-alnum sequences, and sqrt is (roughly) the number of occurrences at which there is a good chance of collisions. With 4 chars the number of places
+in code is a fraction of 3844, we should have low chance of collisions. The cost of a collision is not high - just adds occasional ambiguity that can be quickly resolved by examining the code.
+WARNING - There is a chance that inappropriate words are generated - so be careful when cutting-n-pasting to source code.
+SUGGESTION: Add a '#' character prefix, so it's clear in the log (by convention) that this is a location specifier.
+Example: log.err("NULL_POINTER", "cr #Wgyr");
+
+
+```
+void setup() {
+  final String lcChars = "abcdefghijklmnopqrstuvwxyz";
+  final String digits  = "0123456789";
+  String charSet = lcChars + lcChars.toUpperCase() + digits;
+  int len = 4;
+  for (int i = 0; i < 20; i++) {
+    println("#" + randChars(len, charSet));
+  }
+  
+  long perm = calcPermutations(len, charSet); 
+  println("Permutations: " + perm);
+  println("Sqrt(permutations): " + Math.sqrt(perm));
+}
+
+
+String randChars(int n, String charSet) {
+  String ret = "";
+  for (int i = 0; i < n; i++) {
+    ret += charSet.charAt((int) (Math.random()*charSet.length()));
+  }
+  return ret;
+}
+
+long calcPermutations(int len, String charSet) {
+ return (long) Math.pow(charSet.length(), len); 
+}
+```
+
+#Feb 25A, 2018 RobotComm Stress Test Design Note - Managing dropped commands and responses
+- Keep two queues: droppedCommands - CommandRecords (CRs) are added to this just before a force-dropped command is sent over RobotComm; and droppedResponses - CRs are added to this queue just before the server sends a force-dropped response. These queues are periodically pruned (the same prune method can prune both). 
+- Note that as commands are completed they are removed from cmdMap. 
+- At the end of the (potentially long running) test, both queues are purged in a loop - this is similar logic to send/recieve Messages - except now the termination condition is that the command map goes down to 0. At this point we *know* that all commands that were created were either dropped on send, dropped on receive or completed.
+- There is one wrinkle - that when RobotComm itself decides to purge internal resources - this will result in commands being completed twice or being cancelled "underneath", i.e., by RobotComm itself. With some internal knowlege of RobotComm we can know when this happens, or we can add stats like number of abandoned sentCommands and number of purged srvCompletedCommands to know how stringent to make the validation.
+
+# Feb 23B, 2018 RobotComm Stress Test Debugging Note - Send/Receive Messages Stress Test
 Spent a lot of time debugging an issue of a few unaccounted-for messages that show up when more than about 2K messages were sent. After lots of investigation and trying various 
 combinations, it emerged that the so-called missing messages were forced-drop messages that should have been deleted from the msgMap. There were roughly one of these per batch.
 It further emerged that the drop queue was empty, so it was pretty clear where the culprit was at that point - it is in this piece of code in prunedropedMessages:
