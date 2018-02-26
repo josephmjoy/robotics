@@ -3,6 +3,7 @@ package com.rinworks.robotutils;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
+import java.util.List;
 import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -16,6 +17,7 @@ import java.util.function.BiConsumer;
 import org.junit.jupiter.api.Test;
 
 import com.rinworks.robotutils.RobotComm.Address;
+import com.rinworks.robotutils.RobotComm.ChannelStatistics;
 import com.rinworks.robotutils.RobotComm.ReceivedCommand;
 import com.rinworks.robotutils.RobotComm.ReceivedMessage;
 import com.rinworks.robotutils.RobotComm.SentCommand;
@@ -122,7 +124,7 @@ class RobotCommTest {
             void receiveData(String s) {
                 if (this.clientRecv != null) {
                     TestTransport.this.numRecvs.incrementAndGet();
-                    log.trace("TRANSPORT:\n[" + s + "]\n");
+                    log.trace("TRANSPORT RECV:\n[" + s + "]\n");
                     this.clientRecv.accept(s, loopbackNode);
                 } else {
                     TestTransport.this.numForceDrops.incrementAndGet();
@@ -152,10 +154,12 @@ class RobotCommTest {
             public void send(String msg) {
                 TestTransport.this.numSends.incrementAndGet();
                 if (forceDrop(msg)) {
+                    log.trace("TRANSPORT FORCEDROP:\n[" + msg + "]\n");
                     TestTransport.this.numForceDrops.incrementAndGet();
                     return; // **************** EARLY RETURN *****
                 }
                 if (nonForceDrop(msg)) {
+                    log.trace("TRANSPORT: RANDDROP\n[" + msg + "]\n");
                     TestTransport.this.numRandomDrops.incrementAndGet();
                     return; // **************** EARLY RETURN *****
                 }
@@ -321,6 +325,7 @@ class RobotCommTest {
 
         public void init() {
             StructuredLogger.Log rcLog = log.newLog("RCOMM");
+            rcLog.pauseTracing();
             this.rc = new RobotComm(transport, rcLog);
             RobotComm.Address addr = rc.resolveAddress("localhost");
             this.ch = rc.newChannel("testChannel");
@@ -350,12 +355,12 @@ class RobotCommTest {
                         + ") - resulting in too much memory consumption. Abandoning test.");
                 fail("Too much expected memory consumption to run this test.");
             }
-            
+
             this.ch.startReceivingMessages();
- 
+
             try {
                 int messagesLeft = nMessages;
-                while (messagesLeft > submissionRate) {
+                while (messagesLeft >= submissionRate) {
                     long t0 = System.currentTimeMillis();
                     submitMessageBatch(submissionRate, BATCH_SPAN_MILLIS, alwaysDropRate);
                     messagesLeft -= submissionRate;
@@ -376,10 +381,9 @@ class RobotCommTest {
                 Thread.sleep(maxReceiveDelay);
                 int retryCount = 10;
                 while (retryCount-- > 0 && this.msgMap.size() > transport.getNumRandomDrops()) {
-                    purgeAllDroppedMessages();
                     Thread.sleep(250);
+                    purgeAllDroppedMessages();
                 }
-                purgeAllDroppedMessages();
             } catch (InterruptedException e) {
                 e.printStackTrace();
                 Thread.currentThread().interrupt();
@@ -412,7 +416,7 @@ class RobotCommTest {
             this.ch.startReceivingCommands();
             try {
                 int commandsLeft = nCommands;
-                while (commandsLeft > submissionRate) {
+                while (commandsLeft >= submissionRate) {
                     long t0 = System.currentTimeMillis();
                     submitCommandBatch(submissionRate, BATCH_SPAN_MILLIS, alwaysDropCmdRate, alwaysDropRespRate,
                             maxComputeTime);
@@ -433,12 +437,14 @@ class RobotCommTest {
                 int approxCompletionDelay = 10 * transport.getMaxDelay();
                 log.trace("Waiting to receive up to " + nCommands + " commands");
                 Thread.sleep(approxCompletionDelay);
-                int retryCount = 10;
+                int retryCount = 20;
                 while (retryCount-- > 0 && this.cmdMap.size() > 0) {
+                    rc.periodicWork();
+                    pollServerQueue(maxComputeTime);
+                    pollClientQueue();
+                    Thread.sleep(100);
                     purgeAllDroppedCommands(this.droppedCommands);
                     purgeAllDroppedCommands(this.droppedResponses);
-                    rc.periodicWork();
-                    Thread.sleep(250);
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -609,7 +615,7 @@ class RobotCommTest {
             assert alwaysDropRespRate >= 0 && alwaysDropRespRate <= 1;
             assert submissionTimespan >= 0;
 
-            log.trace("Beginning to submit " + nCommands + " commands.");
+            log.trace("Beginning to submit " + nCommands + " commands over " + submissionTimespan + " ms");
 
             // Client: send command
             for (int i = 0; i < nCommands; i++) {
@@ -660,22 +666,9 @@ class RobotCommTest {
                 }
 
                 this.testTimer.schedule(new TimerTask() {
-
                     @Override
                     public void run() {
-                        StressTester.this.exPool.submit(() -> {
-                            try {
-                                // Let's pick up all messages received so far and verify them...
-                                RobotComm.SentCommand sc = ch.pollCompletedCommand();
-                                while (sc != null) {
-                                    StressTester.this.processCompletedCommand(sc);
-                                    sc = ch.pollCompletedCommand();
-                                }
-                            } catch (Exception e) {
-                                log.err("EXCEPTION", e.toString());
-                            }
-
-                        });
+                        pollClientQueue();
                     }
                 }, delay);
             }
@@ -694,55 +687,18 @@ class RobotCommTest {
                 }
 
                 this.testTimer.schedule(new TimerTask() {
-
                     @Override
                     public void run() {
-                        StressTester.this.exPool.submit(() -> {
-                            try {
-                                // Let's pick up all incoming commands received so far and process them
-                                RobotComm.ReceivedCommand rCmd = ch.pollReceivedCommand();
-                                while (rCmd != null) {
-                                    final RobotComm.ReceivedCommand rCmd1 = rCmd;
-                                    int computeDelay = (int) (rand.nextDouble() * maxComputeTime);
-                                    CommandRecord cr = StressTester.this.processReceivedCommand(rCmd);
-
-                                    if (cr == null) {
-                                        log.err("NULL_POINTER", "cr #EaHM");
-                                        continue; // ************************************* CONTINUE
-                                    }
-                                    // Schedule a timer task to send the computed response.
-                                    StressTester.this.testTimer.schedule(new TimerTask() {
-
-                                        @Override
-                                        public void run() {
-                                            StressTester.this.exPool.submit(() -> {
-                                                try {
-                                                    rCmd1.respond(cr.respRecord.msgType, cr.respRecord.msgBody);
-                                                    if (cr.respRecord.alwaysDrop) {
-                                                        // We *know* that this response will never make it back to
-                                                        // the cline.t
-                                                        StressTester.this.droppedResponses.add(cr);
-                                                    }
-
-                                                } catch (Exception e) {
-                                                    log.err("EXCEPTION", e.toString());
-                                                }
-
-                                            });
-                                        }
-                                    }, computeDelay);
-                                    rCmd = ch.pollReceivedCommand();
-                                }
-                            } catch (Exception e) {
-                                log.err("EXCEPTION", e.toString());
-                            }
-                        });
+                        pollServerQueue(maxComputeTime);
                     }
                 }, delay);
             }
-            
-            // Both: call process
-            int processCalls = Math.max(nCommands / 100, 10);
+
+            // Both: call periodic work "periodically". We actually call somewhat randomly,
+            // and at least twice,
+            // including one at the very end.
+            final int PROCESS_CALL_RATE = 100; // Approx calls to make per second
+            int processCalls = Math.max(PROCESS_CALL_RATE * maxCompletionTime / 1000, 2);
             for (int i = 0; i < processCalls; i++) {
                 int delay = (int) (rand.nextDouble() * maxCompletionTime);
 
@@ -769,6 +725,66 @@ class RobotCommTest {
             }
         }
 
+        protected void pollClientQueue() {
+            StressTester.this.exPool.submit(() -> {
+                try {
+                    // Let's pick up all messages received so far and verify them...
+                    RobotComm.SentCommand sc = ch.pollCompletedCommand();
+                    while (sc != null) {
+                        StressTester.this.processCompletedCommand(sc);
+                        sc = ch.pollCompletedCommand();
+                    }
+                } catch (Exception e) {
+                    log.err("EXCEPTION", e.toString());
+                }
+
+            });
+        }
+
+        private void pollServerQueue(int maxComputeTime) {
+            StressTester.this.exPool.submit(() -> {
+                try {
+                    // Let's pick up all incoming commands received so far and process them
+                    RobotComm.ReceivedCommand rCmd = ch.pollReceivedCommand();
+                    //hfLog.trace("SRV - Polling recv queue. rCmd: " + rCmd);
+                    while (rCmd != null) {
+                        final RobotComm.ReceivedCommand rCmd1 = rCmd;
+                        int computeDelay = (int) (rand.nextDouble() * maxComputeTime);
+                        CommandRecord cr = StressTester.this.processReceivedCommand(rCmd);
+
+                        if (cr == null) {
+                            log.err("NULL_POINTER", "cr #EaHM");
+                            continue; // ************************************* CONTINUE
+                        }
+                        // Schedule a timer task to send the computed response.
+                        StressTester.this.testTimer.schedule(new TimerTask() {
+
+                            @Override
+                            public void run() {
+                                StressTester.this.exPool.submit(() -> {
+                                    try {
+                                        rCmd1.respond(cr.respRecord.msgType, cr.respRecord.msgBody);
+                                        if (cr.respRecord.alwaysDrop) {
+                                            // We *know* that this response will never make it back to
+                                            // the cline.t
+                                            StressTester.this.droppedResponses.add(cr);
+                                        }
+
+                                    } catch (Exception e) {
+                                        log.err("EXCEPTION", e.toString());
+                                    }
+
+                                });
+                            }
+                        }, computeDelay);
+                        rCmd = ch.pollReceivedCommand();
+                    }
+                } catch (Exception e) {
+                    log.err("EXCEPTION", e.toString());
+                }
+            });
+        }
+
         private CommandRecord processReceivedCommand(ReceivedCommand rCmd) {
             // Extract id from message.
             // Look it up - we had better find it in our map.
@@ -788,8 +804,7 @@ class RobotCommTest {
                 // assertNotEquals(mr, null);
                 log.loggedAssert(cr != null, "cr == null");
                 // assertEquals(mr.msgType, msgType);
-                
-                
+
                 log.loggedAssert(cr.cmdRecord.msgType.equals(msgType), "cmd msgType mismatch #C1IH");
                 // assertEquals(mr.msgBody, msgBody);
                 log.loggedAssert(cr.cmdRecord.msgBody.equals(msgBody), "cmd msgBody mismatch #NmLj");
@@ -826,7 +841,7 @@ class RobotCommTest {
                 log.loggedAssert(cr.respRecord.msgBody.equals(msgBody), "resp msgBody mismatch #jPH4");
                 // assertFalse(mr.alwaysDrop);
                 log.loggedAssert(!cr.respRecord.alwaysDrop, "resp alwaysDrop is true #TeA8");
-                log.trace("removing cr with id " + id + "from cmdMap #EwQp");
+                hfLog.trace("removing cr with id " + id + "from cmdMap #EwQp");
                 this.cmdMap.remove(id, cr);
             } catch (Exception e) {
                 log.err("EXCEPTION", e.toString());
@@ -853,7 +868,6 @@ class RobotCommTest {
             }
         }
 
-
         private void purgeAllDroppedCommands(ConcurrentLinkedQueue<CommandRecord> queue) {
             CommandRecord cr;
             while ((cr = queue.poll()) != null) {
@@ -861,7 +875,6 @@ class RobotCommTest {
             }
         }
 
-        
         private void finalSubmitCommandValidation() {
             // Verify that the count of messages that still remain in our map
             // is exactly equal to the number of messages dropped by the transport - i.e.,
@@ -869,14 +882,24 @@ class RobotCommTest {
             long randomDrops = this.transport.getNumRandomDrops();
             long forceDrops = this.transport.getNumForceDrops();
             int mapSize = this.cmdMap.size();
-            log.info("Final COMMAND verification. ForceDrops: " + forceDrops + "  RandomDrops: " + randomDrops + "   Missing: "
-                    + mapSize);
+            log.info("Final COMMAND verification. ForceDrops: " + forceDrops + "  RandomDrops: " + randomDrops
+                    + "   Missing: " + mapSize);
 
+            List<ChannelStatistics> stats = rc.getChannelStatistics();
+            for (ChannelStatistics s : stats) {
+                log.info(s.toString());
+            }
             if (mapSize != 0) {
                 // We will fail this test later, but do some logging here...
+                int i = 0;
                 for (CommandRecord cr : cmdMap.values()) {
+                    if (i > 10) {
+                        log.info(".. more cr's missing (not shown)");
+                        break;
+                    }
                     String mrStr = "missing cr id=" + cr.cmdRecord.id + "  cdrop=" + cr.cmdRecord.alwaysDrop;
                     log.info(mrStr);
+                    i++;
                 }
             }
             log.flush();
@@ -891,7 +914,7 @@ class RobotCommTest {
             this.cmdCliSubmitQueue.clear();
             this.cmdSvrComputeQueue.clear();
             this.droppedCommands.clear();
-            
+
             this.ch.stopReceivingMessages();
             this.ch.stopReceivingCommands();
         }
@@ -1017,29 +1040,85 @@ class RobotCommTest {
     }
 
     @Test
-    void stressSendAndRecvMessages() {
+    // Sends a single message with no failures or delays; single thread
+    void stressSendAndRecvMessagesTrivial() {
+        final int nThreads = 1;
+        final int nMessages = 1;
+        final int messageRate = 10000;
+        final double dropRate = 0;
+        final double transportFailureRate = 0;
+        final int maxTransportDelay = 0; // ms
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
-        StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
+        StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
         stresser.init();
-        transport.setTransportCharacteristics(0.2, 250);
-        stresser.submitMessages(1000, 10000, 0.1);
+        transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
+        stresser.submitMessages(nMessages, messageRate, dropRate);
+        stresser.close();
         baseLogger.flush();
         baseLogger.endLogging();
+    }
+
+    @Test
+    // Sends 1000 messages with delays and drops; 10 threads
+    void stressSendAndRecvMessagesShort() {
+        final int nThreads = 10;
+        final int nMessages = 1000;
+        final int messageRate = 10000;
+        final double dropRate = 0.1;
+        final double transportFailureRate = 0.1;
+        final int maxTransportDelay = 250; // ms
+        StructuredLogger baseLogger = initStructuredLogger();
+        TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
+        StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
+        stresser.init();
+        transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
+        stresser.submitMessages(nMessages, messageRate, dropRate);
         stresser.close();
+        baseLogger.flush();
+        baseLogger.endLogging();
+    }
+
+    @Test
+    // Sends 1 million messages, takes about 10 seconds to run; 10 threads
+    void stressSendAndRecvMessagesMedium() {
+        final int nThreads = 10;
+        final double dropRate = 0.1;
+        final int nMessages = 1000000;
+        final int messageRate = 100000;
+        final double transportFailureRate = 0.1;
+        final int maxTransportDelay = 1500; // ms
+        StructuredLogger baseLogger = initStructuredLogger();
+        TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
+        StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
+        stresser.init();
+        transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
+        stresser.submitMessages(nMessages, messageRate, dropRate);
+        stresser.close();
+        baseLogger.flush();
+        baseLogger.endLogging();
     }
 
     @Test
     void stressSubmitAndProcessCommands() {
+        final int nThreads = 10;
+        final int nCommands = 10000;
+        final int commandRate = 5000;
+        final double dropCommandRate = 0.01;
+        final double dropResponseRate = 0.01;
+        final int maxComputeTime = 0;
+        final double transportFailureRate = 0.1;
+        final int maxTransportDelay = 100; // ms
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
-        StressTester stresser = new StressTester(1, transport, baseLogger.defaultLog());
+        StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
         stresser.init();
-        transport.setTransportCharacteristics(0, 0);
-        stresser.submitCommands(1, 1, 0, 0, 0);
+        transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
+        stresser.submitCommands(nCommands, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
+
+        stresser.close();
         baseLogger.flush();
         baseLogger.endLogging();
-        stresser.close();
     }
 
 }

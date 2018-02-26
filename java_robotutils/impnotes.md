@@ -18,6 +18,14 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#Feb 26A, 2018 RobotComm Milestone - commands 100,000 messages over a noisy transport!
+Successfully ran the command stress test "stressSubmitAndProcessCommands" with 100,000 commands at a rate of
+5000 commands per second over a transport with errors and delays. With greater rates (and esp with more threads) things get bogged down, and probably that is due to an exessive number of re-transmits. The client is rather simplistic about re-sending
+CMD messages, so several million messages are exchange for sending 100K messages with 0.25 failure rate.
+
+Didn't have to fix any bugs in RobotComm to get this working. However now the focus should shift to minimizing resource consumption including purging abandoned commands (both client and server).
+
+
 #Feb 25B, 2018 General Adding random IDs that mark a location in source code
 - Add a random 5-character alphanumeric string to log messages - unique (with high probability) one for each log call in source code. The following Processing code does the trick. Just
 generate this and paste to notepad. Delete each from notepad as you use them. Code below generates 
