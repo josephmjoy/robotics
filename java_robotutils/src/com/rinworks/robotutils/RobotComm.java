@@ -28,7 +28,7 @@ public class RobotComm implements Closeable {
     private boolean commClosed; // set to false when close() is called.
     private final ConcurrentHashMap<String, ChannelImplementation> channels;
     private final Object listenLock;
-    private final Random cmdIdRand; // Used for generating command Ids
+    private final Random rand; // Used for generating command Ids and random delays
 
     private volatile DatagramTransport.Listener listener;
 
@@ -166,7 +166,7 @@ public class RobotComm implements Closeable {
         this.transport = transport;
         this.log = log;
         this.listenLock = new Object();
-        this.cmdIdRand = new Random();
+        this.rand = new Random();
         this.channels = new ConcurrentHashMap<>();
 
     }
@@ -621,6 +621,17 @@ public class RobotComm implements Closeable {
         private final ConcurrentLinkedQueue<ReceivedCommandImplementation> srvPendingRecvCommands;
         private final ConcurrentLinkedQueue<ReceivedCommandImplementation> srvCompletedRecvCommands;
 
+        // Client retransmit-related constants
+        // The client will retransmit CMD packets for non real-time commands starting
+        // with
+        // a random delay on the low end and backing off exponentially to a maximum that
+        // is
+        // between the high range.
+        private final int INITIAL_RETRANSMIT_TIME_LOW = 100;
+        private final int INITIAL_RETRANSMIT_TIME_HIGH = 200;
+        private final int FINAL_RETRANSMIT_TIME_LOW = 10000;
+        private final int FINAL_RETRANSMIT_TIME_HIGH = 20000;
+
         final Object receiverLock;
         DatagramTransport.Listener listener;
 
@@ -695,6 +706,8 @@ public class RobotComm implements Closeable {
             private String resp;
             private String respType;
             private long respTime;
+            private long nextRetransmitTime;
+            private int transmitCount;
 
             SentCommandImplementation(long cmdId, String cmdType, String cmd, boolean addToCompletionQueue) {
                 this.cmdId = cmdId;
@@ -703,6 +716,8 @@ public class RobotComm implements Closeable {
                 this.addToCompletionQueue = addToCompletionQueue;
                 this.submittedTime = System.currentTimeMillis();
                 this.stat = COMMAND_STATUS.STATUS_SUBMITTED;
+                this.transmitCount = 0;
+                this.nextRetransmitTime = Long.MAX_VALUE;
             }
 
             @Override
@@ -803,6 +818,26 @@ public class RobotComm implements Closeable {
                     return this.stat;
                 }
             }
+
+            // Whether or not we should re-send a command at this point in time.
+            public boolean shouldResend(long curTime) {
+                return curTime > this.nextRetransmitTime;
+            }
+
+            public void updateTransmitStats() {
+                // Warning - these increments are not protected by any lock. That's ok as its
+                // highly that this code is reentered
+                // for a particular command instance and even if so, it's ok if it is not
+                // updated properly.
+                this.transmitCount++;
+                int minValue = INITIAL_RETRANSMIT_TIME_HIGH
+                        + rand.nextInt(INITIAL_RETRANSMIT_TIME_HIGH - INITIAL_RETRANSMIT_TIME_LOW);
+                int maxValue = FINAL_RETRANSMIT_TIME_HIGH
+                        + rand.nextInt(FINAL_RETRANSMIT_TIME_HIGH - FINAL_RETRANSMIT_TIME_LOW);
+                int delay = randExpDelay(minValue, maxValue, this.transmitCount);
+                this.nextRetransmitTime = System.currentTimeMillis() + delay;
+
+            }
         }
 
         // Server Side
@@ -874,7 +909,7 @@ public class RobotComm implements Closeable {
         public ChannelImplementation(String channelName) {
             this.name = channelName;
             this.remoteNode = null;
-            this.nextCmdId = new AtomicLong(cmdIdRand.nextLong());
+            this.nextCmdId = new AtomicLong(rand.nextLong());
 
             // For receiving messages
             this.pendingRecvMessages = new ConcurrentLinkedQueue<>();
@@ -1039,7 +1074,7 @@ public class RobotComm implements Closeable {
             if (this.closed) {
                 return null; // EARLY RETURN
             }
-            
+
             if (!this.receiveCommands) {
                 throw new IllegalStateException("Attempt to poll for commands when listening is not enabled.");
                 // ********** EARLY EXCEPTION
@@ -1074,7 +1109,15 @@ public class RobotComm implements Closeable {
             MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMD, name, sc.cmdType, sc.cmdId,
                     MessageHeader.CmdStatus.STATUS_NOVALUE);
             this.approxSendCMDs++;
+            sc.updateTransmitStats();
             this.remoteNode.send(hdr.serialize(sc.cmd));
+        }
+
+
+        private int randExpDelay(int minValue, int maxValue, int retransmitCount) {
+            int expValue = (1 << Math.max(retransmitCount + 4, 30));
+            int delay = minValue + rand.nextInt(expValue);
+            return Math.max(minValue, Math.min(maxValue, delay));
         }
 
         // Client gets this
@@ -1213,14 +1256,15 @@ public class RobotComm implements Closeable {
         }
 
         void periodicWork() {
+            long curTime = System.currentTimeMillis();
             if (!this.closed) {
-                cliHandleRetransmits();
+                cliHandleRetransmits(curTime);
             }
         }
 
-        private void cliHandleRetransmits() {
+        private void cliHandleRetransmits(long curTime) {
             this.cliPendingSentCommands.forEachValue(0, sc -> {
-                if (sc.pending()) {
+                if (sc.shouldResend(curTime)) {
                     cliSendCmd(sc);
                 }
             });
