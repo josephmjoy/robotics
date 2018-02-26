@@ -17,6 +17,26 @@ These are informal notes and TODO lists for the project.
    chance of failed transmission] LOG_SESSION_STARTStructuredLogger: UDP rawlogger should bundle multiple log messages into
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
+   
+#Feb 26A, 2018 Design Note RobotComm Restransmit Strategy
+- After considering various strategies for retransmit including allowing client to set timeout and #retransmits on a per command or per channel level, decided on the following.
+- Two kinds of sendCommands: a regular send command that NEVER times out and a real-time send command that NEVER retransmits. The second kind, called sendRtCommand, takes an additional parameter which   is the timeout. If the response has not been received within that timeout the command is cancelled with TIMEOUT status and if necessary added to the completion queue
+    and all state is is forgotten about this packet.
+- The server also special-cases RT handling - it does not keep those responses around once the response has been sent because we expect that the  command will not be retransmitted. Or it could
+pretty agressively prune RT packets - to guard against duplicate packet injection by the transport.
+- Client doesn't bother including RT packets in CMDRESPACK packets for the same reason.
+- So the RT nature of this command needs to be in the message header somehow. Probably add a CMDTYPE field that is encoded as sequence of strings separated by hyphens (should more status bits come along = like |RT|PNG| (perhaps PNG is a Ping response handled by the server itself, with server-side client code being involved? The bars are on both side so we can easily check for the presense of a particular option without parsing everything there, like search for "|RT|".).
+- SentCommand has an isFresh(int timeout) method that returns true if the time from when the command was submitted until when the isStale method was called is within specified timeout. This would place a upper bound on how stale the response is, including time sitting in the completed command queue. It would return false if the completion was not completed - canceled, rejected, etc.
+- Regular send commands (which never timeout) - the client will eventually implement congestion detection with random exponential backoff. However for now, the plan is to start with a small random value (say between 100 and 200ms) and send subsequent re-transmits with random, exponential delay upto some maximum retransmit time (say 10 seconds). These constants can potentially be settable at a channel level (or sendNode level?). Note that the server-side is not affected - as it only sends a response on getting a CMD message.
+
+Implementation sequence:
+1. Implement regular command retransmit strategy - note that these commands never timeout. This is the more complicated case.
+2. Get long running stress to work, with RobotComm internal resources under control, on both client and server side. Verify the never-times-out behavior, and cancel behavior.
+Implement and test isFresh().
+3. Add CMDTYPE into message header (see above - e.g., |RT|PNG|). For now, it should just be |RT|.
+4. Implement and test client-side logic (server will still hang on to the completed responses). 
+5. Implement and test combined client and server-side logic with purely RT messages. There should be no retransmits! 
+6. Test combinations of RT and non-RT commands.
 
 #Feb 26A, 2018 RobotComm Milestone - commands 100,000 messages over a noisy transport!
 Successfully ran the command stress test "stressSubmitAndProcessCommands" with 100,000 commands at a rate of
