@@ -1102,12 +1102,12 @@ class RobotCommTest {
     @Test
     void stressSubmitAndProcessCommands() {
         final int nThreads = 10;
-        final int nCommands = 10000;
-        final int commandRate = 5000;
+        final int nCommands = 1000000;
+        final int commandRate = 10000;
         final double dropCommandRate = 0.01;
         final double dropResponseRate = 0.01;
         final int maxComputeTime = 0;
-        final double transportFailureRate = 0.1;
+        final double transportFailureRate = 0.25;
         final int maxTransportDelay = 100; // ms
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));

@@ -37,6 +37,7 @@ Implement and test isFresh().
 4. Implement and test client-side logic (server will still hang on to the completed responses). 
 5. Implement and test combined client and server-side logic with purely RT messages. There should be no retransmits! 
 6. Test combinations of RT and non-RT commands.
+[Feb 27, 2018 update: After implementing random exponential backoff, sent 1 million commands over a channel with 25% loss, at the rate of 10,000 commands per second - retransmits are under control - about 2M CMDs were sent for 1M messages. There are a small fraction (about 200 out of 1 million) of missing commaands - commands that are expected to complete but were never completed. This is most likely due to the test quitting too soon, but needs to be investigated.]
 
 #Feb 26A, 2018 RobotComm Milestone - commands 100,000 messages over a noisy transport!
 Successfully ran the command stress test "stressSubmitAndProcessCommands" with 100,000 commands at a rate of

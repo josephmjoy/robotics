@@ -838,6 +838,12 @@ public class RobotComm implements Closeable {
                 this.nextRetransmitTime = System.currentTimeMillis() + delay;
 
             }
+
+            private int randExpDelay(int minValue, int maxValue, int retransmitCount) {
+                int expValue = (1 << Math.min(retransmitCount + 4, 30));
+                int delay = minValue + rand.nextInt(expValue);
+                return Math.max(minValue, Math.min(maxValue, delay));
+            }
         }
 
         // Server Side
@@ -1113,12 +1119,6 @@ public class RobotComm implements Closeable {
             this.remoteNode.send(hdr.serialize(sc.cmd));
         }
 
-
-        private int randExpDelay(int minValue, int maxValue, int retransmitCount) {
-            int expValue = (1 << Math.max(retransmitCount + 4, 30));
-            int delay = minValue + rand.nextInt(expValue);
-            return Math.max(minValue, Math.min(maxValue, delay));
-        }
 
         // Client gets this
         void cliHandleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
