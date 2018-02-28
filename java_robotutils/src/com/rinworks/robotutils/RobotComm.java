@@ -620,6 +620,7 @@ public class RobotComm implements Closeable {
         private final ConcurrentHashMap<Long, ReceivedCommandImplementation> srvRecvCommandsMap;
         private final ConcurrentLinkedQueue<ReceivedCommandImplementation> srvPendingRecvCommands;
         private final ConcurrentLinkedQueue<ReceivedCommandImplementation> srvCompletedRecvCommands;
+        private final AtomicLong srvReceivedCommandCount; // aggregate and accurate number of received commands. Used to trigger purging completed commands
 
         // Client retransmit-related constants
         // The client will retransmit CMD packets for non real-time commands starting
@@ -631,6 +632,7 @@ public class RobotComm implements Closeable {
         private static final int INITIAL_RETRANSMIT_TIME_HIGH = 200;
         private static final int FINAL_RETRANSMIT_TIME_LOW = 10000;
         private static final int FINAL_RETRANSMIT_TIME_HIGH = 20000;
+        private static final int SRV_PURGE_COMPLETED_COMMAND_THRESHOLD = 1000000; // Server ties to keep the list of tracked completed commands below this value
         
         // Logging strings used more than once.
         private static final String CMDTYPE_TAG = "cmdType: ";
@@ -651,6 +653,7 @@ public class RobotComm implements Closeable {
         private volatile long approxRcvdCMDRESPs;
         private volatile long approxSentCMDRESPACKs; // TODO
         private volatile long approxRcvdCMDRESPACKs;
+        private volatile long approxSrvTrackedCommands;
 
         private class ReceivedMessageImplementation implements ReceivedMessage {
             private final String msg;
@@ -945,6 +948,7 @@ public class RobotComm implements Closeable {
             this.srvPendingRecvCommands = new ConcurrentLinkedQueue<>();
             this.srvCompletedRecvCommands = new ConcurrentLinkedQueue<>();
             this.srvRecvCommandsMap = new ConcurrentHashMap<>();
+            this.srvReceivedCommandCount = new AtomicLong(0);
 
         }
 
@@ -1208,6 +1212,25 @@ public class RobotComm implements Closeable {
             log.trace("SRV_CMD_QUEUED", CMDTYPE_TAG + rcNew.cmdType + " cmdId: " + rcNew.cmdId);
             this.approxRcvdCommands++;
             this.srvPendingRecvCommands.add(rcNew);
+            long totCmd = this.srvReceivedCommandCount.incrementAndGet();
+            if (totCmd % SRV_PURGE_COMPLETED_COMMAND_THRESHOLD == 0) {
+                srvPruneCompletedCommands();
+            }
+        }
+
+        // Walk the list of completed commands, oldest first, and kill enough to get size down to half the max.
+        // This call is relatively expensive.
+        private void srvPruneCompletedCommands() {
+            int count = this.srvCompletedRecvCommands.size(); // O(n)
+            ReceivedCommandImplementation rc = this.srvCompletedRecvCommands.poll();
+            int maxAllowed = SRV_PURGE_COMPLETED_COMMAND_THRESHOLD/2;
+            // Note that concurrently the queue could be growing or the map chould be growing or shrinking.
+            while (rc!= null && count > maxAllowed) {
+                log.trace("SRV_CMD_PURGE", "cmdId: " + rc.cmdId);
+                this.srvRecvCommandsMap.remove(rc.cmdId, rc);
+                count-- ;
+                rc = this.srvCompletedRecvCommands.poll();
+            }
         }
 
         // The server command has been completed locally (i.e., on the server)
@@ -1230,6 +1253,7 @@ public class RobotComm implements Closeable {
             }
 
             if (fNotify) {
+                this.srvCompletedRecvCommands.add(rc);
                 srvSendCmdResp(rc);
             }
 

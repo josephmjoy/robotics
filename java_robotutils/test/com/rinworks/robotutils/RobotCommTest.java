@@ -448,7 +448,8 @@ class RobotCommTest {
                     pollClientQueue();
                 }
                 if (retryCount <= 0) {
-                    log.info("TIMED OUT waiting for all the commands to complete. " + cmdMap.size() + " commands in progress.");
+                    log.info("TIMED OUT waiting for all the commands to complete. " + cmdMap.size()
+                            + " commands in progress.");
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -562,7 +563,7 @@ class RobotCommTest {
         protected void logException(Exception e, String loc) {
             log.err("EXCEPTION", e.toString() + "  loc: " + loc);
             e.printStackTrace();
-            
+
         }
 
         private void processReceivedMessage(ReceivedMessage rm) {
@@ -745,7 +746,8 @@ class RobotCommTest {
                         sc = ch.pollCompletedCommand();
                     }
                 } catch (Exception e) {
-                    logException(e, "#1aVV");                }
+                    logException(e, "#1aVV");
+                }
 
             });
         }
@@ -762,8 +764,7 @@ class RobotCommTest {
                         CommandRecord cr = StressTester.this.processReceivedCommand(rCmd);
 
                         if (cr == null) {
-                            log.err("NULL_POINTER", "cr #EaHM");
-                            continue; // ************************************* CONTINUE
+                             continue; // ************************************* CONTINUE
                         }
                         // Schedule a timer task to send the computed response.
                         StressTester.this.testTimer.schedule(new TimerTask() {
@@ -780,7 +781,8 @@ class RobotCommTest {
                                         }
 
                                     } catch (Exception e) {
-                                        logException(e, "#t87d");                                    }
+                                        logException(e, "#t87d");
+                                    }
 
                                 });
                             }
@@ -788,7 +790,8 @@ class RobotCommTest {
                         rCmd = ch.pollReceivedCommand();
                     }
                 } catch (Exception e) {
-                    logException(e, "#mS6i");                }
+                    logException(e, "#mS6i");
+                }
             });
         }
 
@@ -808,17 +811,17 @@ class RobotCommTest {
                 long id = Long.parseUnsignedLong(strId, 16);
                 hfLog.trace("Received command with id " + id);
                 cr = this.cmdMap.get(id);
-                // assertNotEquals(mr, null);
-                log.loggedAssert(cr != null, "cr == null");
-                // assertEquals(mr.msgType, msgType);
-
-                log.loggedAssert(cr.cmdRecord.msgType.equals(msgType), "cmd msgType mismatch #C1IH");
-                // assertEquals(mr.msgBody, msgBody);
-                log.loggedAssert(cr.cmdRecord.msgBody.equals(msgBody), "cmd msgBody mismatch #NmLj");
-                // assertFalse(mr.alwaysDrop);
-                log.loggedAssert(!cr.cmdRecord.alwaysDrop, "cmd alwaysDrop is true #2p0r");
+                //log.loggedAssert(cr != null, "Srv: Incoming UNEXPECTED/FORGOTTEN cmcdId: " + id);
+                if (cr != null) {
+                    log.loggedAssert(cr.cmdRecord.msgType.equals(msgType), "cmd msgType mismatch #C1IH");
+                    // assertEquals(mr.msgBody, msgBody);
+                    log.loggedAssert(cr.cmdRecord.msgBody.equals(msgBody), "cmd msgBody mismatch #NmLj");
+                    // assertFalse(mr.alwaysDrop);
+                    log.loggedAssert(!cr.cmdRecord.alwaysDrop, "cmd alwaysDrop is true #2p0r");
+                }
             } catch (Exception e) {
-                logException(e, "#dD6h");                fail("Exception attempting to parse ID from received message [" + msgBody + "]");
+                logException(e, "#dD6h");
+                fail("Exception attempting to parse ID from received message [" + msgBody + "]");
             }
             return cr;
         }
@@ -830,12 +833,12 @@ class RobotCommTest {
             // Verify we have not already received it - exactly once completion
             // Verify message type and message body is what we expect.
             // If all ok return it.
-            
+
             // If it has been canceled by the client (that's us!) we do nothing.
             if (cCmd.status() == COMMAND_STATUS.STATUS_CLIENT_CANCELED) {
                 return; // ************* EARLY RETURH
             }
-            
+
             String msgType = cCmd.respType();
             String msgBody = cCmd.response();
             int nli = msgBody.indexOf('\n');
@@ -856,7 +859,7 @@ class RobotCommTest {
                 hfLog.trace("removing cr with id " + id + "from cmdMap #EwQp");
                 this.cmdMap.remove(id, cr);
             } catch (Exception e) {
-                logException(e, "#ptzb");              
+                logException(e, "#ptzb");
             }
         }
 
@@ -894,7 +897,7 @@ class RobotCommTest {
             // to a non-null value, in which case we will not cancel it.
             if (sc != null) {
                 cr.sentCmd.cancel();
-            }           
+            }
         }
 
         private void finalSubmitCommandValidation() {
@@ -1124,7 +1127,7 @@ class RobotCommTest {
     @Test
     void stressSubmitAndProcessCommands() {
         final int nThreads = 1;
-        final int nCommands = 10000;
+        final int nCommands = 20000000;
         final int commandRate = 50000;
         final double dropCommandRate = 0.01;
         final double dropResponseRate = 0.01;

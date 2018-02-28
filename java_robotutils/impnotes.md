@@ -18,6 +18,41 @@ These are informal notes and TODO lists for the project.
    chance of failed transmission] LOG_SESSION_STARTStructuredLogger: UDP rawlogger should bundle multiple log messages into
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
+
+ 
+#Feb 28C, 2018 RobotComm Design Note - Thoughts on real-time processing
+- The command server MUST support 'instant' processing of incoming commands, not poll-based notification. This is to ensure responsiveness. Ideally, if the transport has less than 1ms delays,
+and the operation can be completed in (say) 1ms, then there should be no reason to add additional delays in the process. The server user code *could* poll at sub-millisecond intervals, but that seems very wasteful.
+- SO, Channel.startReceivingCommands should be overloaded to take a handler. That handler will be called in the context of the transport receive handler. The handler is expected to not do anything time consuming. Instead it should offload time consuming tasks to a worker thread.
+- If a handler is provided, it is ALWAYS called (for that channel) - nothing is added to the incoming polled queue.
+- Maybe then we should combine this with the idea of an RT channel - only RT messages are sent on that channel? Not sure about the benefit off this.
+- Should we have RT cmds or just leave it to the user to create their own protocol using a commands of commands and messages. The user-specific implementation (server side) can timestamp,
+ and figure out the difference in timestamps between server and client, etc, etc. My (JMJ) thinking is to implement the first version of that purely as a user-mode test application, then
+ decide whether to incorporate any of that in RobotComm. Meanwhile, implementation of RT messages is straightforward. So just need to decide whether to create an RT channel, or allow RT and non-RT things to be in the same channel. Needs more thought.
+
+Unrelated:
+- Client: Add userContext to sentCommand to simplify routing of completed commands.
+
+#Feb 28B, 2018 RobotComm Milestone - sent 20 million commands over a noisy transport!
+Successfully ran the command stress test "stressSubmitAndProcessCommands" with 20 million commands at the rate of 50,000 per second.
+However, we are (temporarily) not tracking duplicate command executions until we finish implementing CMDRESPACK. 
+
+```
+        final int nThreads = 1;
+        final int nCommands = 20000000;
+        final int commandRate = 50000;
+        final double dropCommandRate = 0.01;
+        final double dropResponseRate = 0.01;
+        final int maxComputeTime = 0;
+        final double transportFailureRate = 0.1;
+        final int maxTransportDelay = 100; // ms
+        
+_sid: 1519821865936  _sn: 1136  _ts: 408828  _pri: 2  _cat: TRACE  _co: test  _ty: _OTHER  _msg: Waiting to receive up to 20000000 commands
+_sid: 1519821865936  _sn: 1137  _ts: 414039  _pri: 1  _cat: INFO   _co: test  _ty: _OTHER  _msg: Final COMMAND verification. TSForceDrops: 1932446  TSRandomDrops: 4802395   PendingCmds: 0
+_sid: 1519821865936  _sn: 1138  _ts: 414108  _pri: 1  _cat: INFO   _co: test  _ty: _OTHER  _msg: ch: testChannel sc: 20000000 rc: 19800454 sC: 26641458 rC: 23227166 sCR: 23221122 rCR: 20009576 srvCMap: 1300472 srvCCQ: 1300453
+_sid: 1519821865936  _sn: 1139  _ts: 414116  _pri: 0  _cat: INFO   _co: test  _ty: _LOG_SESSION_ENDED  _msg:  rootName: test
+```
+
    
 #Feb 28A, 2018 Performance Monitoring Note
 Visual VM is amazing. I (JMJ) can simply run it (it's a standalone application) and it reports all kinds of information about all running VMs, including the ability to drill down into individual 
@@ -57,7 +92,7 @@ Implement and test isFresh().
 6. Test combinations of RT and non-RT commands.
 [Feb 27, 2018 update: After implementing random exponential backoff, sent 1 million commands over a channel with 25% loss, at the rate of 10,000 commands per second - retransmits are under control - about 2M CMDs were sent for 1M messages. There are a small fraction (about 200 out of 1 million) of missing commaands - commands that are expected to complete but were never completed. This is most likely due to the test quitting too soon, but needs to be investigated.]
 
-#Feb 26A, 2018 RobotComm Milestone - commands 100,000 messages over a noisy transport!
+#Feb 26A, 2018 RobotComm Milestone - sent 100,000 commands over a noisy transport!
 Successfully ran the command stress test "stressSubmitAndProcessCommands" with 100,000 commands at a rate of
 5000 commands per second over a transport with errors and delays. With greater rates (and esp with more threads) things get bogged down, and probably that is due to an exessive number of re-transmits. The client is rather simplistic about re-sending
 CMD messages, so several million messages are exchange for sending 100K messages with 0.25 failure rate.
