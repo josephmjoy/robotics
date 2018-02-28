@@ -2,6 +2,7 @@
 These are informal notes and TODO lists for the project.
 
 #TODO
+1. UDP Transport: Implement caching of RemoteNodes so we don't create a new one for each incoming message! In our expected use, we have very few of these.
 1. For roboRIO config file, under "logging": add "trace: [logname1, logname2, loname3]", and 
   set these up during init - basically disable tracing on all logs except the list above. This is
   a pragmatic thing to do. For example RobotComm has tracing, but it should obviously not be enabled
@@ -18,6 +19,23 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
    
+#Feb 28A, 2018 Performance Monitoring Note
+Visual VM is amazing. I (JMJ) can simply run it (it's a standalone application) and it reports all kinds of information about all running VMs, including the ability to drill down into individual 
+objects (including individual strings!), all reported in tables sorted by number of instances so you can immediately find out the biggest culprits. Also, it is VERY responsive. The bogged-down stress test had 10s of millions of objects, and it was happy to drill down with almost no delays. It also reports on the execution state of all threads.
+https://docs.oracle.com/javase/7/docs/technotes/guides/visualvm/
+
+Using it on RobotComm command stress test which was attempting to send 10 million commands and getting bogged down in the process, revealed, as expected that the server-side tracking of received and completed commands was the culprit - 5 million instances of ReceivedCommandImplementation (I guess were halfway through the test). The bulk of memory was taken up by 20 million instances of char[]  - 2.2GB of memory! Followed by 500MB for 20M instances of String, 500MB for 5M instances of ReceivedCommandImplementation, 200MB for 5M instances of ConcurrentHashMap.Node.
+500/5 = 100 bytes per instance of ReceivedCommandImplementation and 200/5 = 40 bytes per instance of ConcurrentHashMap.Node. That's not too bad.
+
+The 4:1 ratio of Strings to ReceivedCommandImplementation is because the latter keeps of cmdType, cmdBody, respType and respBody. We don't need to keep cmdType and cmdBody once we have notified
+the server user code - so we should consider nulling these once the server user code has called ReceivedCommand.respond(). However this is tricky as the server user code can always query the command message type and body given a ReceivedCommand.  We could still nuke them. However, this is not a priority as we do not expect large sizes for cmdType and cmdBody!
+
+We also have 5M instances of RemoteNode, taking up 150MB. This seems wasteful, given that we would have relatively few remote node instances. Currently the transport passes one of these for each incoming request. So it's the transport implementation's responsibility to reuse RemoteNode objects. That's fine, something to keep in mind for the UDP implementation.
+
+So purging old receive-command entries (see Feb 14B, 2018 Design Note on the RobotComm protocol) should fix the bogging-down of stress tests issue. Satisfying that this issue was expected to
+be hit by the stress tests! Impressive that at least on my XPS-16 laptop with 32GB memory, the JVM is happy to use gigabytes of memory and manage 100s of millions of objects.
+
+
 #Feb 26A, 2018 Design Note RobotComm Restransmit Strategy
 - After considering various strategies for retransmit including allowing client to set timeout and #retransmits on a per command or per channel level, decided on the following.
 - Two kinds of sendCommands: a regular send command that NEVER times out and a real-time send command that NEVER retransmits. The second kind, called sendRtCommand, takes an additional parameter which   is the timeout. If the response has not been received within that timeout the command is cancelled with TIMEOUT status and if necessary added to the completion queue
@@ -294,7 +312,7 @@ the overhead of one thread) to do this. Some ideas:
 - I considered the CmdId initialized with millis<<32 + nanos % (0xffffffff) - this is pretty unique as we are using bits from both millis and nanos.
 - However in the end, decided on just Random.nexLong to setup the start cmdId for each channel, and then increment it on each new command.
 
-# Feb 15A, 2018 RobotComm - mapping remote (server0 CMDRESP status to local (client) status
+# Feb 15A, 2018 RobotComm - mapping remote (server) CMDRESP status to local (client) status
 - Need to only update if there is progress, as messages from the server can be received out of order.
 - It is very messy to do this conditional updpate on a case-by-case basis, so the idea is to compute an ordering or priority.
 - Create an ordering of status:
@@ -331,7 +349,7 @@ Rationale:
     PeriodicSender periodicSend(int period, String msgType, Supplier<String> messageSource);
 ```
 
-# Feb 14B, 2018 RobotComm Protocol - Laying out Command-Response sequence
+# Feb 14B, 2018 Design Note RobotComm Protocol - Laying out Command-Response sequence
 Consider making CMDRESPACK an aggregate - bulk responding to acks. It does seem very wasteful to generate one CMDRESPACK for every transaction.
 In the absence of errors (the common case) 33.3% of the packets are CMDRESPACK! So...
 1. Make CMDRESPACK have a 0 value for cmdId, and in the message body it has a list of cmdIds, separated by newlines (no other whitespace).

@@ -21,6 +21,7 @@ import com.rinworks.robotutils.RobotComm.ChannelStatistics;
 import com.rinworks.robotutils.RobotComm.ReceivedCommand;
 import com.rinworks.robotutils.RobotComm.ReceivedMessage;
 import com.rinworks.robotutils.RobotComm.SentCommand;
+import com.rinworks.robotutils.RobotComm.SentCommand.COMMAND_STATUS;
 
 class RobotCommTest {
 
@@ -437,14 +438,17 @@ class RobotCommTest {
                 int approxCompletionDelay = 10 * transport.getMaxDelay();
                 log.trace("Waiting to receive up to " + nCommands + " commands");
                 Thread.sleep(approxCompletionDelay);
-                int retryCount = 20;
+                int retryCount = 1000;
                 while (retryCount-- > 0 && this.cmdMap.size() > 0) {
                     rc.periodicWork();
                     pollServerQueue(maxComputeTime);
-                    pollClientQueue();
                     Thread.sleep(100);
                     purgeAllDroppedCommands(this.droppedCommands);
                     purgeAllDroppedCommands(this.droppedResponses);
+                    pollClientQueue();
+                }
+                if (retryCount <= 0) {
+                    log.info("TIMED OUT waiting for all the commands to complete. " + cmdMap.size() + " commands in progress.");
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -515,7 +519,7 @@ class RobotCommTest {
                                 hfLog.trace("Sending message with id " + id);
                                 StressTester.this.ch.sendMessage(mr.msgType, mr.msgBody);
                             } catch (Exception e) {
-                                log.err("EXCEPTION", e.toString());
+                                logException(e, "#HBdp");
                             }
                         });
                     }
@@ -546,13 +550,19 @@ class RobotCommTest {
                                     rm = ch.pollReceivedMessage();
                                 }
                             } catch (Exception e) {
-                                log.err("EXCEPTION", e.toString());
+                                logException(e, "#IEPp");
                             }
 
                         });
                     }
                 }, delay);
             }
+        }
+
+        protected void logException(Exception e, String loc) {
+            log.err("EXCEPTION", e.toString() + "  loc: " + loc);
+            e.printStackTrace();
+            
         }
 
         private void processReceivedMessage(ReceivedMessage rm) {
@@ -580,7 +590,7 @@ class RobotCommTest {
                 log.loggedAssert(!mr.alwaysDrop, "mr.alwaysDrop is true");
                 this.msgMap.remove(id, mr);
             } catch (Exception e) {
-                log.err("EXCEPTION", e.toString());
+                logException(e, "#C49U");
                 fail("Exception attempting to parse ID from received message [" + rm.message() + "]");
             }
         }
@@ -645,7 +655,7 @@ class RobotCommTest {
                                     droppedCommands.add(cr);
                                 }
                             } catch (Exception e) {
-                                log.err("EXCEPTION", e.toString());
+                                logException(e, "#NFG6");
                             }
                         });
                     }
@@ -716,7 +726,7 @@ class RobotCommTest {
                             try {
                                 rc.periodicWork();
                             } catch (Exception e) {
-                                log.err("EXCEPTION", e.toString());
+                                logException(e, "#Olpa");
                             }
 
                         });
@@ -735,8 +745,7 @@ class RobotCommTest {
                         sc = ch.pollCompletedCommand();
                     }
                 } catch (Exception e) {
-                    log.err("EXCEPTION", e.toString());
-                }
+                    logException(e, "#1aVV");                }
 
             });
         }
@@ -746,7 +755,7 @@ class RobotCommTest {
                 try {
                     // Let's pick up all incoming commands received so far and process them
                     RobotComm.ReceivedCommand rCmd = ch.pollReceivedCommand();
-                    //hfLog.trace("SRV - Polling recv queue. rCmd: " + rCmd);
+                    // hfLog.trace("SRV - Polling recv queue. rCmd: " + rCmd);
                     while (rCmd != null) {
                         final RobotComm.ReceivedCommand rCmd1 = rCmd;
                         int computeDelay = (int) (rand.nextDouble() * maxComputeTime);
@@ -771,8 +780,7 @@ class RobotCommTest {
                                         }
 
                                     } catch (Exception e) {
-                                        log.err("EXCEPTION", e.toString());
-                                    }
+                                        logException(e, "#t87d");                                    }
 
                                 });
                             }
@@ -780,8 +788,7 @@ class RobotCommTest {
                         rCmd = ch.pollReceivedCommand();
                     }
                 } catch (Exception e) {
-                    log.err("EXCEPTION", e.toString());
-                }
+                    logException(e, "#mS6i");                }
             });
         }
 
@@ -811,8 +818,7 @@ class RobotCommTest {
                 // assertFalse(mr.alwaysDrop);
                 log.loggedAssert(!cr.cmdRecord.alwaysDrop, "cmd alwaysDrop is true #2p0r");
             } catch (Exception e) {
-                log.err("EXCEPTION", e.toString());
-                fail("Exception attempting to parse ID from received message [" + msgBody + "]");
+                logException(e, "#dD6h");                fail("Exception attempting to parse ID from received message [" + msgBody + "]");
             }
             return cr;
         }
@@ -824,6 +830,12 @@ class RobotCommTest {
             // Verify we have not already received it - exactly once completion
             // Verify message type and message body is what we expect.
             // If all ok return it.
+            
+            // If it has been canceled by the client (that's us!) we do nothing.
+            if (cCmd.status() == COMMAND_STATUS.STATUS_CLIENT_CANCELED) {
+                return; // ************* EARLY RETURH
+            }
+            
             String msgType = cCmd.respType();
             String msgBody = cCmd.response();
             int nli = msgBody.indexOf('\n');
@@ -844,8 +856,7 @@ class RobotCommTest {
                 hfLog.trace("removing cr with id " + id + "from cmdMap #EwQp");
                 this.cmdMap.remove(id, cr);
             } catch (Exception e) {
-                log.err("EXCEPTION", e.toString());
-                fail("Exception attempting to parse ID from received message [" + msgBody + "]");
+                logException(e, "#ptzb");              
             }
         }
 
@@ -862,7 +873,7 @@ class RobotCommTest {
                     if (cr == null) {
                         break;
                     }
-                    this.cmdMap.remove(cr.cmdRecord.id, cr); // Should be O(log(n)), so it's ok all in all.
+                    purgeOneCommand(cr);
                     dropCount--;
                 }
             }
@@ -871,8 +882,19 @@ class RobotCommTest {
         private void purgeAllDroppedCommands(ConcurrentLinkedQueue<CommandRecord> queue) {
             CommandRecord cr;
             while ((cr = queue.poll()) != null) {
-                this.cmdMap.remove(cr.cmdRecord.id, cr); // Should be O(log(n)), so it's ok all in all.
+                purgeOneCommand(cr);
             }
+        }
+
+        private void purgeOneCommand(CommandRecord cr) {
+            this.cmdMap.remove(cr.cmdRecord.id, cr); // Should be O(log(n)), so it's ok all in all.
+            SentCommand sc = cr.sentCmd;
+            // WARNING - race condition.
+            // There is a chance that another thread could have in the mean time set this
+            // to a non-null value, in which case we will not cancel it.
+            if (sc != null) {
+                cr.sentCmd.cancel();
+            }           
         }
 
         private void finalSubmitCommandValidation() {
@@ -882,8 +904,8 @@ class RobotCommTest {
             long randomDrops = this.transport.getNumRandomDrops();
             long forceDrops = this.transport.getNumForceDrops();
             int mapSize = this.cmdMap.size();
-            log.info("Final COMMAND verification. ForceDrops: " + forceDrops + "  RandomDrops: " + randomDrops
-                    + "   Missing: " + mapSize);
+            log.info("Final COMMAND verification. TSForceDrops: " + forceDrops + "  TSRandomDrops: " + randomDrops
+                    + "   PendingCmds: " + mapSize);
 
             List<ChannelStatistics> stats = rc.getChannelStatistics();
             for (ChannelStatistics s : stats) {
@@ -1101,13 +1123,13 @@ class RobotCommTest {
 
     @Test
     void stressSubmitAndProcessCommands() {
-        final int nThreads = 10;
-        final int nCommands = 1000000;
-        final int commandRate = 10000;
+        final int nThreads = 1;
+        final int nCommands = 10000;
+        final int commandRate = 50000;
         final double dropCommandRate = 0.01;
         final double dropResponseRate = 0.01;
         final int maxComputeTime = 0;
-        final double transportFailureRate = 0.25;
+        final double transportFailureRate = 0.1;
         final int maxTransportDelay = 100; // ms
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));

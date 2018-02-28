@@ -227,7 +227,7 @@ public class RobotComm implements Closeable {
                 }
                 headerStr = msg.substring(0, headerLength);
 
-                MessageHeader header = MessageHeader.parse(headerStr, remoteAddr, log);
+                MessageHeader header = MessageHeader.parse(headerStr, log);
                 if (header == null) {
                     return; // EARLY RETURN
                 }
@@ -404,7 +404,7 @@ public class RobotComm implements Closeable {
     }
 
     List<ChannelStatistics> getChannelStatistics() {
-        ArrayList<ChannelStatistics> stats = new ArrayList<ChannelStatistics>();
+        ArrayList<ChannelStatistics> stats = new ArrayList<>();
         for (ChannelImplementation ch : channels.values()) {
             stats.add(ch.getStats());
         }
@@ -419,7 +419,7 @@ public class RobotComm implements Closeable {
     static class MessageHeader {
         enum DgType {
             DG_MSG, DG_CMD, DG_CMDRESP, DG_CMDRESPACK
-        };
+        }
 
         static final String STR_DG_MSG = "MSG";
         static final String STR_DG_CMD = "CMD";
@@ -446,7 +446,7 @@ public class RobotComm implements Closeable {
         enum CmdStatus {
             STATUS_PENDING_QUEUED, STATUS_PENDING_COMPUTING, STATUS_COMPLETED, STATUS_REJECTED, STATUS_NOVALUE // Don't
                                                                                                                // use
-        };
+        }
 
         final CmdStatus status;
 
@@ -472,9 +472,9 @@ public class RobotComm implements Closeable {
         // - "1309JHI,MY_CHANNEL,CMD,MY_COMMAND_TYPE,2888AB89"
         // - "1309JHI,MY_CHANNEL,CMDRESP,MY_RESPONSE_TYPE,2888AB89,OK"
 
-        static MessageHeader parse(String headerStr, Address remoteAddr, StructuredLogger.Log log) {
+        static MessageHeader parse(String headerStr, StructuredLogger.Log log) {
             final String BAD_HEADER_CHARS = " \t\f\n\r";
-
+            
             if (containsChars(headerStr, BAD_HEADER_CHARS)) {
                 log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Header contains invalid chars");
                 return null; // ************ EARLY RETURN
@@ -627,13 +627,13 @@ public class RobotComm implements Closeable {
         // a random delay on the low end and backing off exponentially to a maximum that
         // is
         // between the high range.
-        private final int INITIAL_RETRANSMIT_TIME_LOW = 100;
-        private final int INITIAL_RETRANSMIT_TIME_HIGH = 200;
-        private final int FINAL_RETRANSMIT_TIME_LOW = 10000;
-        private final int FINAL_RETRANSMIT_TIME_HIGH = 20000;
-
-        final Object receiverLock;
-        DatagramTransport.Listener listener;
+        private static final int INITIAL_RETRANSMIT_TIME_LOW = 100;
+        private static final int INITIAL_RETRANSMIT_TIME_HIGH = 200;
+        private static final int FINAL_RETRANSMIT_TIME_LOW = 10000;
+        private static final int FINAL_RETRANSMIT_TIME_HIGH = 20000;
+        
+        // Logging strings used more than once.
+        private static final String CMDTYPE_TAG = "cmdType: ";
 
         private boolean receiveMessages;
         private boolean receiveCommands;
@@ -762,7 +762,24 @@ public class RobotComm implements Closeable {
 
             @Override
             public void cancel() {
-                // TODO Auto-generated method stub
+                boolean notifyCompletion = false;
+                // Remove all tracking of this command.
+                // If necessary post to completion queue.
+
+                if (cliPendingSentCommands.remove(this.cmdId, this)) {
+                    synchronized (this) {
+                        // if we removed this from the pending queue, it MUST be pending.
+                        log.loggedAssert(pending(), "Removed cmd from pending queue but it's status is not pending!");
+                        this.stat = COMMAND_STATUS.STATUS_CLIENT_CANCELED;
+                        if (this.addToCompletionQueue) {
+                            notifyCompletion = true;
+                        }
+                    }
+                }
+
+                if (notifyCompletion) {
+                    ChannelImplementation.this.cliCompletedSentCommands.add(this);
+                }
 
             }
 
@@ -928,19 +945,10 @@ public class RobotComm implements Closeable {
             this.srvPendingRecvCommands = new ConcurrentLinkedQueue<>();
             this.srvCompletedRecvCommands = new ConcurrentLinkedQueue<>();
             this.srvRecvCommandsMap = new ConcurrentHashMap<>();
-            this.receiverLock = new Object();
 
-        }//
+        }
 
         ChannelStatistics getStats() {
-            /*
-             * (String channelName, long sentMessages, long rcvdMessages, long sentCommands,
-             * long rcvdCommands, long sentCMDs, long rcvdCMDs, long sentCMDRESPs, long
-             * rcvdCMDRESPs, long sentCMDRESPACKs, long rcvdCMDRESPACKs, int
-             * curCliSentCmdMapSize, int curCliSentCmdCompletionQueueSize, int
-             * curSvrRecvdCmdMapSize, int curSvrRcvdCmdIncomingQueueSize, int
-             * curSvrRcvdCmdCompletedQueueSize)
-             */
 
             return new ChannelStatistics(this.name, this.approxSentMessages, this.approxRcvdMessages,
                     this.approxSentCommands, this.approxRcvdCommands, this.approxSendCMDs, this.approxRcvdCMDs,
@@ -982,14 +990,11 @@ public class RobotComm implements Closeable {
 
         @Override
         public void sendMessage(String msgType, String message, Address addr) {
-            // TODO Auto-generated method stub
-
+            log.err("UNIMPLEMENTED", "sendMessage #QwWV");
         }
 
         @Override
         public void close() {
-            // TODO: If necessary remote nodes of channel closing.
-            // then remove ourselves from the channels queue.
             log.trace("Removing channel " + name + " from list of channels.");
             channels.remove(name, this);
             this.closed = true;
@@ -1038,7 +1043,7 @@ public class RobotComm implements Closeable {
             }
             SentCommand sc = this.cliCompletedSentCommands.poll();
             if (sc != null) {
-                log.trace("CLI_COMPLETED_COMMAND", "cmd: " + sc.cmdType());
+                log.trace("CLI_COMPLETED_COMMAND", CMDTYPE_TAG + sc.cmdType());
             }
             return sc;
         }
@@ -1102,7 +1107,7 @@ public class RobotComm implements Closeable {
                 }
             }
             if (rc != null) {
-                log.trace("SRV_CMD_POLLED", "cmdType: " + rc.cmdType);
+                log.trace("SRV_CMD_POLLED", CMDTYPE_TAG + rc.cmdType);
             }
             return rc;
         }
@@ -1118,7 +1123,6 @@ public class RobotComm implements Closeable {
             sc.updateTransmitStats();
             this.remoteNode.send(hdr.serialize(sc.cmd));
         }
-
 
         // Client gets this
         void cliHandleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
@@ -1201,7 +1205,7 @@ public class RobotComm implements Closeable {
                 return; // ********** EARLY RETURN
             }
 
-            log.trace("SRV_CMD_QUEUED", "cmdType: " + rcNew.cmdType + " cmdId: " + rcNew.cmdId);
+            log.trace("SRV_CMD_QUEUED", CMDTYPE_TAG + rcNew.cmdType + " cmdId: " + rcNew.cmdId);
             this.approxRcvdCommands++;
             this.srvPendingRecvCommands.add(rcNew);
         }
@@ -1209,7 +1213,7 @@ public class RobotComm implements Closeable {
         // The server command has been completed locally (i.e., on the server)
         public void srvHandleComputedResponse(ReceivedCommandImplementation rc, String respType, String resp) {
 
-            log.trace("SRV_COMPUTING_DONE", "cmdType: " + rc.cmdType);
+            log.trace("SRV_COMPUTING_DONE", CMDTYPE_TAG + rc.cmdType);
             if (this.closed) {
                 return; // EARLY return
             }
@@ -1269,22 +1273,24 @@ public class RobotComm implements Closeable {
                 }
             });
         }
-    }
+        
+        private boolean validSendParams(String msgType, String message, RemoteNode rn, String logMsgType) {
+            final String BAD_MSGTYPE_CHARS = ", \t\f\n\r";
+            boolean ret = false;
 
-    private boolean validSendParams(String msgType, String message, RemoteNode rn, String logMsgType) {
-        final String BAD_MSGTYPE_CHARS = ", \t\f\n\r";
-        boolean ret = false;
+            if (rn == null) {
+                log.trace(logMsgType, "No default send node");
+            } else if (containsChars(msgType, BAD_MSGTYPE_CHARS)) {
+                log.trace(logMsgType, "Message type has invalid chars: " + msgType);
+            } else {
+                ret = true;
+            }
 
-        if (rn == null) {
-            log.trace(logMsgType, "No default send node");
-        } else if (containsChars(msgType, BAD_MSGTYPE_CHARS)) {
-            log.trace(logMsgType, "Message type has invalid chars: " + msgType);
-        } else {
-            ret = true;
+            return ret;
         }
 
-        return ret;
     }
+
 
     /**
      * Creates a remote UDP port - for sending
