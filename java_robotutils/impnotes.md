@@ -7,7 +7,7 @@ These are informal notes and TODO lists for the project.
   set these up during init - basically disable tracing on all logs except the list above. This is
   a pragmatic thing to do. For example RobotComm has tracing, but it should obviously not be enabled
   by default. But adding "trace: [robotcomm]" would enable it in the config file as required.
-1. StructuredLogger AND StructuredMessageMapper: YAML REQUIRES a spacec after ':' and ','. We should
+1. StructuredLogger AND StructuredMessageMapper: YAML REQUIRES a spaces after ':' and ','. We should
    strongly consider adopting this same guideline for parsing!
 1. SUGGESTION: MessageMapper: strip commas at end of tags and values,
    to allow for optional commas to be added.
@@ -23,12 +23,18 @@ These are informal notes and TODO lists for the project.
 #Feb 28C, 2018 RobotComm Design Note - Thoughts on real-time processing
 - The command server MUST support 'instant' processing of incoming commands, not poll-based notification. This is to ensure responsiveness. Ideally, if the transport has less than 1ms delays,
 and the operation can be completed in (say) 1ms, then there should be no reason to add additional delays in the process. The server user code *could* poll at sub-millisecond intervals, but that seems very wasteful.
-- SO, Channel.startReceivingCommands should be overloaded to take a handler. That handler will be called in the context of the transport receive handler. The handler is expected to not do anything time consuming. Instead it should offload time consuming tasks to a worker thread.
-- If a handler is provided, it is ALWAYS called (for that channel) - nothing is added to the incoming polled queue.
-- Maybe then we should combine this with the idea of an RT channel - only RT messages are sent on that channel? Not sure about the benefit off this.
-- Should we have RT cmds or just leave it to the user to create their own protocol using a commands of commands and messages. The user-specific implementation (server side) can timestamp,
- and figure out the difference in timestamps between server and client, etc, etc. My (JMJ) thinking is to implement the first version of that purely as a user-mode test application, then
- decide whether to incorporate any of that in RobotComm. Meanwhile, implementation of RT messages is straightforward. So just need to decide whether to create an RT channel, or allow RT and non-RT things to be in the same channel. Needs more thought.
+- Likewise, the client may need to do something immediately on receiving a completion, so it too may want a completion handler called in the context of the received CMDRESP message.
+- SO: Decided to add RTCMD nd RTCMDRESP as new datagraam types (instead of adding a CMDTYPE field with |RT| as suggested in the Feb 26A design note). These are have fundamentally different
+  handling paths, so appropriate to make them different datagram types.
+- Client has a sendRTMessage that takes a completion handler callback and a timeout. There is no option for queuing completion to be polled for later. The completion  handler will be called
+one way or another - if timed out or other reason to cancel it will have an appropriate status indication. 
+- Client never sends CMDRESPACKs for RT commands.
+- Client periodically checks the  msgMap for timed-out commands. It could potentially keep a separate  map for RT vs non-RT sent cmds, but for starters just use the existing map.
+- Server user code has to have registered a handler for receiving RT commands. So we need a new method for that (startReceivingRtCommands).
+- RTCMDs never go into any map or queue. The user code is notified in the context of the transport receive packet notification - a ReceivedCommand object is created and passed up to the user code. The user code completes it like normal commands. The response is sent
+in the context off the user code's call to ReceivedCommand.respond() (after a quick check that we have not already responded).
+The handler is expected to not do anything time consuming. Instead it should offload time consuming tasks to a worker thread.
+
 
 Unrelated:
 - Client: Add userContext to sentCommand to simplify routing of completed commands.
@@ -76,9 +82,10 @@ be hit by the stress tests! Impressive that at least on my XPS-16 laptop with 32
 - Two kinds of sendCommands: a regular send command that NEVER times out and a real-time send command that NEVER retransmits. The second kind, called sendRtCommand, takes an additional parameter which   is the timeout. If the response has not been received within that timeout the command is cancelled with TIMEOUT status and if necessary added to the completion queue
     and all state is is forgotten about this packet.
 - The server also special-cases RT handling - it does not keep those responses around once the response has been sent because we expect that the  command will not be retransmitted. Or it could
-pretty agressively prune RT packets - to guard against duplicate packet injection by the transport.
+pretty aggressively prune RT packets - to guard against duplicate packet injection by the transport.
 - Client doesn't bother including RT packets in CMDRESPACK packets for the same reason.
-- So the RT nature of this command needs to be in the message header somehow. Probably add a CMDTYPE field that is encoded as sequence of strings separated by hyphens (should more status bits come along = like |RT|PNG| (perhaps PNG is a Ping response handled by the server itself, with server-side client code being involved? The bars are on both side so we can easily check for the presense of a particular option without parsing everything there, like search for "|RT|".).
+- So the RT nature of this command needs to be in the message header somehow. Probably add a CMDTYPE field that is encoded as sequence of strings separated by hyphens (should more status bits come along = like |RT|PNG| (perhaps PNG is a Ping response handled by the server itself, with server-side client code being involved? The bars are on both side so we can easily check for the presence of a particular option without parsing everything there, like search for "|RT|".).
+[FEB 28UPDATE: Decided to NOT use this for RT, instead have new message types RTCMD and RTCMDRESP.]
 - SentCommand has an isFresh(int timeout) method that returns true if the time from when the command was submitted until when the isStale method was called is within specified timeout. This would place a upper bound on how stale the response is, including time sitting in the completed command queue. It would return false if the completion was not completed - canceled, rejected, etc.
 - Regular send commands (which never timeout) - the client will eventually implement congestion detection with random exponential backoff. However for now, the plan is to start with a small random value (say between 100 and 200ms) and send subsequent re-transmits with random, exponential delay upto some maximum retransmit time (say 10 seconds). These constants can potentially be settable at a channel level (or sendNode level?). Note that the server-side is not affected - as it only sends a response on getting a CMD message.
 
