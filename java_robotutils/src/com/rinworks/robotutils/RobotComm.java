@@ -451,7 +451,7 @@ public class RobotComm implements Closeable {
 
         final CmdStatus status;
 
-        private MessageHeader(DgType dgType, String channel, String msgType, long cmdId, CmdStatus status) {
+        MessageHeader(DgType dgType, String channel, String msgType, long cmdId, CmdStatus status) {
             this.dgType = dgType;
             this.channel = channel;
             this.msgType = msgType == null ? "" : msgType;
@@ -608,7 +608,7 @@ public class RobotComm implements Closeable {
         }
     }
 
-    private class ChannelImplementation implements Channel {
+    class ChannelImplementation implements Channel {
         private final String name;
         private DatagramTransport.RemoteNode remoteNode;
 
@@ -1407,7 +1407,7 @@ public class RobotComm implements Closeable {
         return null;
     }
 
-    private static boolean containsChars(String str, String chars) {
+    static boolean containsChars(String str, String chars) {
         for (int i = 0; i < str.length(); i++) {
             char c = str.charAt(i);
             if (chars.indexOf(c) >= 0) {
