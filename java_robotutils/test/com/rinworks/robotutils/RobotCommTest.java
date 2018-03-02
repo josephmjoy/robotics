@@ -1126,12 +1126,12 @@ class RobotCommTest {
 
     @Test
     void stressSubmitAndProcessCommands() {
-        final int nThreads = 1;
-        final int nCommands = 20000000;
+        final int nThreads = 10;
+        final int nCommands = 1000000;
         final int commandRate = 50000;
         final double dropCommandRate = 0.01;
         final double dropResponseRate = 0.01;
-        final int maxComputeTime = 0;
+        final int maxComputeTime = 100; // ms
         final double transportFailureRate = 0.1;
         final int maxTransportDelay = 100; // ms
         StructuredLogger baseLogger = initStructuredLogger();
@@ -1146,4 +1146,25 @@ class RobotCommTest {
         baseLogger.endLogging();
     }
 
+    @Test
+    void stressSubmitAndProcessCommandsTrivial() {
+        final int nThreads = 1;
+        final int nCommands = 1;
+        final int commandRate = 50000;
+        final double dropCommandRate = 0;
+        final double dropResponseRate = 0;
+        final int maxComputeTime = 0;
+        final double transportFailureRate = 0;
+        final int maxTransportDelay = 0; // ms
+        StructuredLogger baseLogger = initStructuredLogger();
+        TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
+        StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
+        stresser.init();
+        transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
+        stresser.submitCommands(nCommands, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
+
+        stresser.close();
+        baseLogger.flush();
+        baseLogger.endLogging();
+    }
 }

@@ -425,6 +425,7 @@ public class RobotComm implements Closeable {
         static final String STR_DG_CMD = "CMD";
         static final String STR_DG_CMDRESP = "CMDRESP";
         static final String STR_DG_CMDRESPACK = "CMDRESPACK";
+        static final String STR_MSGTYPE_IDLIST = "IDLIST"; // body of CMDRESP is a list of IDs.
 
         static final String STR_STATUS_PENDING_QUEUED = "QUEUED";
         static final String STR_STATUS_PENDING_COMPUTING = "COMPUTING";
@@ -474,7 +475,7 @@ public class RobotComm implements Closeable {
 
         static MessageHeader parse(String headerStr, StructuredLogger.Log log) {
             final String BAD_HEADER_CHARS = " \t\f\n\r";
-            
+
             if (containsChars(headerStr, BAD_HEADER_CHARS)) {
                 log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Header contains invalid chars");
                 return null; // ************ EARLY RETURN
@@ -515,7 +516,13 @@ public class RobotComm implements Closeable {
             }
 
             String msgType = header[INDEX_MSG_TYPE];
+
             // We do not do special error checking on user msgType...
+            if (dgType == DgType.DG_CMDRESPACK && !msgType.equals(STR_MSGTYPE_IDLIST)) {
+                log.trace("WARN_DROPPING_RECEIVED_MESSGAGE", "Unexpected CMDRESPACK message type");
+                return null; // ************ EARLY RETURN
+            }
+
             long cmdId = 0;
             if (getCmdId) {
                 if (header.length <= INDEX_CMDID) {
@@ -615,12 +622,20 @@ public class RobotComm implements Closeable {
         // Sending of commands
         private final ConcurrentHashMap<Long, SentCommandImplementation> cliPendingSentCommands;
         private final ConcurrentLinkedQueue<SentCommandImplementation> cliCompletedSentCommands;
+        private final Object cliAckLock; // To serialie access to the next three
+        private long[] cliAckBuffer; // Buffer of command ids of unsent CMDRESPACKs
+        private int cliAckBufferCount; // Count of ids in the buffer (rest will be 0 / unused)
+        private static final int CLI_CMDRESP_BUFFER_SIZE = 25; // Size of buffer - all these must go into a single
+                                                               // packet. 25 => msg body size of just under 500 bytes,
+                                                               // as ids are encoded as 16-digit hex numbers delimited
+                                                               // by the newline char.
 
         // Receiving of commands
         private final ConcurrentHashMap<Long, ReceivedCommandImplementation> srvRecvCommandsMap;
         private final ConcurrentLinkedQueue<ReceivedCommandImplementation> srvPendingRecvCommands;
         private final ConcurrentLinkedQueue<ReceivedCommandImplementation> srvCompletedRecvCommands;
-        private final AtomicLong srvReceivedCommandCount; // aggregate and accurate number of received commands. Used to trigger purging completed commands
+        private final AtomicLong srvReceivedCommandCount; // aggregate and accurate number of received commands. Used to
+                                                          // trigger purging completed commands
 
         // Client retransmit-related constants
         // The client will retransmit CMD packets for non real-time commands starting
@@ -632,8 +647,10 @@ public class RobotComm implements Closeable {
         private static final int INITIAL_RETRANSMIT_TIME_HIGH = 200;
         private static final int FINAL_RETRANSMIT_TIME_LOW = 10000;
         private static final int FINAL_RETRANSMIT_TIME_HIGH = 20000;
-        private static final int SRV_PURGE_COMPLETED_COMMAND_THRESHOLD = 1000000; // Server ties to keep the list of tracked completed commands below this value
-        
+        private static final int SRV_PURGE_COMPLETED_COMMAND_THRESHOLD = 1000000; // Server ties to keep the list of
+                                                                                  // tracked completed commands below
+                                                                                  // this value
+
         // Logging strings used more than once.
         private static final String CMDTYPE_TAG = "cmdType: ";
 
@@ -651,7 +668,7 @@ public class RobotComm implements Closeable {
         private volatile long approxRcvdCMDs;
         private volatile long approxSentCMDRESPs;
         private volatile long approxRcvdCMDRESPs;
-        private volatile long approxSentCMDRESPACKs; // TODO
+        private volatile long approxSentCMDRESPACKs;
         private volatile long approxRcvdCMDRESPACKs;
         private volatile long approxSrvTrackedCommands;
 
@@ -880,6 +897,7 @@ public class RobotComm implements Closeable {
             private MessageHeader.CmdStatus status;
             private String respType;
             private String respBody;
+            public boolean gotRespAck;
 
             public ReceivedCommandImplementation(long cmdId, String msgType, String msgBody, Address remoteAddr,
                     ChannelImplementation ch) {
@@ -943,6 +961,7 @@ public class RobotComm implements Closeable {
             // For sending commands
             this.cliPendingSentCommands = new ConcurrentHashMap<>();
             this.cliCompletedSentCommands = new ConcurrentLinkedQueue<>();
+            this.cliAckLock = new Object();
 
             // For receiving commands
             this.srvPendingRecvCommands = new ConcurrentLinkedQueue<>();
@@ -1150,25 +1169,69 @@ public class RobotComm implements Closeable {
             assert !header.isPending();
 
             SentCommandImplementation sc = this.cliPendingSentCommands.remove(header.cmdId);
-            if (sc == null) {
-                cliQueueCmdRespAck(header, remoteAddr);
-                return; // ************ EARLY RETURN *************
+            if (sc != null) {
+                synchronized (sc) {
+                    // If it *was* in the pending sent queue, it *must* be pending.
+                    assert sc.pending();
+                    sc.updateLK(header, msgBody);
+                    assert !sc.pending();
+                }
+
+                if (sc.addToCompletionQueue) {
+                    this.cliCompletedSentCommands.add(sc);
+                }
             }
 
-            synchronized (sc) {
-                // If it *was* in the pending sent queue, it *must* be pending.
-                assert sc.pending();
-                sc.updateLK(header, msgBody);
-                assert !sc.pending();
-            }
-            if (sc.addToCompletionQueue) {
-                this.cliCompletedSentCommands.add(sc);
-            }
+            cliQueueCmdRespAck(header, remoteAddr); // we always ACK a completed response, whether we find it or not.
         }
 
         private void cliQueueCmdRespAck(MessageHeader header, Address remoteAddr) {
-            // TODO: Validate remoteAddr and add eventually send a CMDRESPACK.
-            // For now we do nothing.
+            // We don't attempt to validate remoteAddr. Because of NAT, perhaps this is
+            // different than
+            // what we have for the channel's remote addr...
+            long[] bufferToSend = null;
+
+            synchronized (this.cliAckLock) {
+                if (this.cliAckBuffer == null) {
+                    this.cliAckBuffer = new long[CLI_CMDRESP_BUFFER_SIZE];
+                }
+                // should always be space in the buffer coming in...
+                assert this.cliAckBufferCount < this.cliAckBuffer.length;
+                this.cliAckBuffer[this.cliAckBufferCount] = header.cmdId;
+                this.cliAckBufferCount++;
+
+                // If buffer is full, we send it,
+                if (this.cliAckBufferCount == CLI_CMDRESP_BUFFER_SIZE) {
+                    bufferToSend = this.cliAckBuffer;
+                    this.cliAckBuffer = null;
+                    this.cliAckBufferCount = 0;
+                }
+            }
+
+            if (bufferToSend != null) {
+                // We assume that remoteAddr is valid, and represents the
+                // server. Perhaps we should validate this, but for now
+                // we assume that given that command IDs are random 64-bit numbers
+                // we can spam the server with bogus ids without too much disruption.
+                cliSendCmdRespAcks(bufferToSend);
+            }
+        }
+
+        private void cliSendCmdRespAcks(long[] bufferToSend) {
+            MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMDRESPACK, name,
+                    MessageHeader.STR_MSGTYPE_IDLIST, 0, MessageHeader.CmdStatus.STATUS_NOVALUE);
+            this.approxSentCMDRESPACKs++;
+            StringBuilder sb = new StringBuilder();
+            String msg = null;
+            for (long id : bufferToSend) {
+                String strId = Long.toHexString(id);
+                if (sb.length() == 0) {
+                    sb.append(strId);
+                } else {
+                    sb.append("\n" + strId);
+                }
+            }
+            this.remoteNode.send(hdr.serialize(sb.toString()));
         }
 
         // Server gets this
@@ -1218,17 +1281,19 @@ public class RobotComm implements Closeable {
             }
         }
 
-        // Walk the list of completed commands, oldest first, and kill enough to get size down to half the max.
+        // Walk the list of completed commands, oldest first, and kill enough to get
+        // size down to half the max.
         // This call is relatively expensive.
         private void srvPruneCompletedCommands() {
             int count = this.srvCompletedRecvCommands.size(); // O(n)
             ReceivedCommandImplementation rc = this.srvCompletedRecvCommands.poll();
-            int maxAllowed = SRV_PURGE_COMPLETED_COMMAND_THRESHOLD/2;
-            // Note that concurrently the queue could be growing or the map chould be growing or shrinking.
-            while (rc!= null && count > maxAllowed) {
+            int maxAllowed = SRV_PURGE_COMPLETED_COMMAND_THRESHOLD / 2;
+            // Note that concurrently the queue could be growing or the map chould be
+            // growing or shrinking.
+            while (rc != null && count > maxAllowed) {
                 log.trace("SRV_CMD_PURGE", "cmdId: " + rc.cmdId);
                 this.srvRecvCommandsMap.remove(rc.cmdId, rc);
-                count-- ;
+                count--;
                 rc = this.srvCompletedRecvCommands.poll();
             }
         }
@@ -1269,7 +1334,21 @@ public class RobotComm implements Closeable {
         // Server gets this
         void srvHandleReceivedCommandResponseAck(MessageHeader header, String msgBody, Address remoteAddr) {
             this.approxRcvdCMDRESPACKs++;
-            // TODO Auto-generated method stub
+            try {
+                String[] parts = msgBody.split("\n");
+                for (String strId : parts) {
+                    long id = Long.parseUnsignedLong(strId, 16);
+                    ReceivedCommandImplementation rc = this.srvRecvCommandsMap.get(id);
+                    if (rc != null) {
+                        rc.gotRespAck = true;
+                        log.trace("SVR_CMCDRESPACK", "cmdId: " + id + "Marking gotRespAck");
+                    } else {
+                        log.trace("SVR_CMDRESPACK", "cmdId: " + id + "not found");
+                    }
+                }
+            } catch (NumberFormatException e) {
+                log.trace("SVR_CMDRESPACK", "error parsing command IDs");
+            }
 
         }
 
@@ -1297,7 +1376,7 @@ public class RobotComm implements Closeable {
                 }
             });
         }
-        
+
         private boolean validSendParams(String msgType, String message, RemoteNode rn, String logMsgType) {
             final String BAD_MSGTYPE_CHARS = ", \t\f\n\r";
             boolean ret = false;
@@ -1314,7 +1393,6 @@ public class RobotComm implements Closeable {
         }
 
     }
-
 
     /**
      * Creates a remote UDP port - for sending

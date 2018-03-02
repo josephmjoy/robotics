@@ -20,6 +20,30 @@ These are informal notes and TODO lists for the project.
    receiving a UDP packet, we should pack as much in there as we can.
 
  
+#March 2A, 2018 RobotCom Design Note - Implementing CMDRESPACK
+
+See Feb 14B, 2018 Design Note for aggregate format of CMDRESPACK, and earlier discussion (now obsolete) on strategy for pruning
+old ReceivedCommand records.
+Client:
+- Keep a simple array of longs, equal in size to how many we want to aggregate. This array is null to start with,
+and created on demand.
+- Keep a lock object for access to this array.
+- Keep a counter indicating how much is filled.
+- For each received response, simply add to this array. Don't bother checking for duplicates or whether we
+  have it in our map (local user could have cancelled it, among other things) - just tack any received cmdresps (to this channel)
+  to the array.
+- When the array is full, (with the lock held of course), remove it (set reference to null), and exit lock.
+- If removed array, generate and send CMDRESPACK - in same context as submitCommand, not periodic work.
+Server:
+- on receiving a CMDRESPACK, look up map. If present, we expect the cmd to be completed. If it is NOT completed, this is an unusual situation - probably the client has been reset while the server is still pending - a very unlikely case. For now we treat it as though the cmd has been completed EXCEPT that we do not nuke the cmdType and cmdBody (as user server code will reference it). 
+- Server maintains a separate map and queue of *just* cmdId's of acked commands. So when processing CMDRESPACK id's, check if it's in the ack'd map, and if not, add it to the map and queue, and *remove* it from the main cmd map. Also (if command has been completed, as most likely it is, as mentioned earlier in this paragraph) set cmdType, cmdBody, respType and respBody to the empty string, as these resources will no longer be needed. The ReceivedCommand object will also typically be in the command completed queue - it can't be removed from there now because removal from the queue is O(n). It will be cleaned up later as part of periodic cleanup.
+- Also: ReceivedCommand.submit method should replace cmdType and cmdBody by the empty string - update the docs for the interface
+to reflect the fact that user code attempting to access these values will get the empty string.
+- The periodic pruning logic will do a first pass clearing out *all* ReceivedCommands that have gotRespAck set (these will already have been queued in the separate ack'd map.). It also keeps a running count of remaining size to avoid calling size() again.
+- If after cleaning out ack'd ReceivedCommands there is still too many left, it runs through and deletes some significant fraction of them (as explained in the Feb 14B discussion) - those would typically be all old/stale records because of lost CMDRESPACKs or dead clients.
+FUTURE: Add a timeout parameter to CMD - this is the client's expectation of when it expects to see the command completed. It will NOT re-send a CMD after this timeout passes. So the server can safely cleanup commands that are still lying around after their timeout has expired - in practice it can delete after min(MAX_TIMEOUT, max(MIN_TIMEOUT, FACTOR*timeout)), because a retransmitted CMD could arrived delayed by the transport.
+Downside is that this places the burden on the client to specify a timeout (though -1 can represent no timeout.). Also adds clutter to the CMD header. 
+
 #Feb 28C, 2018 RobotComm Design Note - Thoughts on real-time processing
 - The command server MUST support 'instant' processing of incoming commands, not poll-based notification. This is to ensure responsiveness. Ideally, if the transport has less than 1ms delays,
 and the operation can be completed in (say) 1ms, then there should be no reason to add additional delays in the process. The server user code *could* poll at sub-millisecond intervals, but that seems very wasteful.
@@ -69,7 +93,7 @@ Using it on RobotComm command stress test which was attempting to send 10 millio
 500/5 = 100 bytes per instance of ReceivedCommandImplementation and 200/5 = 40 bytes per instance of ConcurrentHashMap.Node. That's not too bad.
 
 The 4:1 ratio of Strings to ReceivedCommandImplementation is because the latter keeps of cmdType, cmdBody, respType and respBody. We don't need to keep cmdType and cmdBody once we have notified
-the server user code - so we should consider nulling these once the server user code has called ReceivedCommand.respond(). However this is tricky as the server user code can always query the command message type and body given a ReceivedCommand.  We could still nuke them. However, this is not a priority as we do not expect large sizes for cmdType and cmdBody!
+the server user code - so we should consider nulling these once the server user code has called ReceivedCommand.respond(). However this is tricky as the server user code can always query the command message type and body given a ReceivedCommand.  We could still nuke them. However, this is not a priority as we do not expect large sizes for cmdType and cmdBody![March 2nd update: we will replace cmdType and cmdBody by the empty string when user code calls respond(); We will replace respType and respBody by the empty string when we receive CMDRESPACK]
 
 We also have 5M instances of RemoteNode, taking up 150MB. This seems wasteful, given that we would have relatively few remote node instances. Currently the transport passes one of these for each incoming request. So it's the transport implementation's responsibility to reuse RemoteNode objects. That's fine, something to keep in mind for the UDP implementation.
 
@@ -157,8 +181,8 @@ long calcPermutations(int len, String charSet) {
 #Feb 25A, 2018 RobotComm Stress Test Design Note - Managing dropped commands and responses
 - Keep two queues: droppedCommands - CommandRecords (CRs) are added to this just before a force-dropped command is sent over RobotComm; and droppedResponses - CRs are added to this queue just before the server sends a force-dropped response. These queues are periodically pruned (the same prune method can prune both). 
 - Note that as commands are completed they are removed from cmdMap. 
-- At the end of the (potentially long running) test, both queues are purged in a loop - this is similar logic to send/recieve Messages - except now the termination condition is that the command map goes down to 0. At this point we *know* that all commands that were created were either dropped on send, dropped on receive or completed.
-- There is one wrinkle - that when RobotComm itself decides to purge internal resources - this will result in commands being completed twice or being cancelled "underneath", i.e., by RobotComm itself. With some internal knowlege of RobotComm we can know when this happens, or we can add stats like number of abandoned sentCommands and number of purged srvCompletedCommands to know how stringent to make the validation.
+- At the end of the (potentially long running) test, both queues are purged in a loop - this is similar logic to send/receieve Messages - except now the termination condition is that the command map goes down to 0. At this point we *know* that all commands that were created were either dropped on send, dropped on receive or completed.
+- There is one wrinkle - that when RobotComm itself decides to purge internal resources - this will result in commands being completed twice or being cancelled "underneath", i.e., by RobotComm itself. With some internal knowledge of RobotComm we can know when this happens, or we can add stats like number of abandoned sentCommands and number of purged srvCompletedCommands to know how stringent to make the validation.
 
 # Feb 23B, 2018 RobotComm Stress Test Debugging Note - Send/Receive Messages Stress Test
 Spent a lot of time debugging an issue of a few unaccounted-for messages that show up when more than about 2K messages were sent. After lots of investigation and trying various 
@@ -432,6 +456,7 @@ Some significant observations/guidlines on protocol implementnation.
     If ReceivedCommand is it is NOT in a completed state, this suggests a bogus CMDRESPACK, and  the CMDRESP will be ignored.
 4. Managing the completetdRecvCommands queue. After considering several strategies, the one that is most forgiving is to base it on queue lengths. Every Nth (say 1000) completed items added to
 completedRecvCommaands queue, we perform a cleanup action. This cleanup action iterates through all the items in the queue, oldest (head)to last. We first run through and count the number of 'early deletion' nodes and 'remaining' nodes. If early deletion count > MAX_EARLY_DELETION, we delete MAX_EARLY_DELETION/2 of these. Once that is done, if total length is greater than MAX_TOTAL_COMPLETED, we go and simply delete MAX_TOTAL_COMPLETED/2 of these oldest first - a simple call to poll() to delete up to MAX_TOTAL_COMPLETED/2 will suffice here. This approach uses no worker tasks and no arbitrary timeout values. Nominal values: MAX_EARLY_DELETION = 1000, MAX_TOTAL_COMPLETED = 10,000. This does require an atomic counter for completed commands so we can know when to trigger the check (determining the length of the queue is an O(N) operation, so we obviously can't do that on each queued packet!).
+[March 3rd UPDATE: See Mar 2A, 2018 Design Note - we keep a separate map and queue of ack'd commands - just the cmdIds are kept; so the strategy has been enhanced.]
 
 # Feb 13, 2018 Design Note - on Testing RobotComm transport
 - Unit tests should have a version of MessageHeader that can also create messed up versions of the header.
