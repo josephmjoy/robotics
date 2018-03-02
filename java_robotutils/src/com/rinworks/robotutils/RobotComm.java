@@ -1,4 +1,4 @@
-// RobotComm - UDP based communications for robot status and commands.
+// RobotComm - Datagram based communications for robot status and commands.
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
 package com.rinworks.robotutils;
 

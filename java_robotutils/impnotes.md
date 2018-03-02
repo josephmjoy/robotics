@@ -19,7 +19,14 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
- 
+#March 2B, 2018 General Design Note - Refactoring into more classes
+- Implementations are getting unwieldy
+- Helper methods are folded into core classes
+- To fix these we create more classes.
+RobotComm: add classes CommClientImplementation and CommServerImplementation - these are for client and server implementations of command processing.
+RobotComm: add class CommUtils, placeholder for future utility methods.
+StructuredLogger: add class LoggerUtils and move the various utility methods there.
+
 #March 2A, 2018 RobotCom Design Note - Implementing CMDRESPACK
 
 See Feb 14B, 2018 Design Note for aggregate format of CMDRESPACK, and earlier discussion (now obsolete) on strategy for pruning

@@ -1127,7 +1127,7 @@ class RobotCommTest {
     @Test
     void stressSubmitAndProcessCommands() {
         final int nThreads = 10;
-        final int nCommands = 1000000;
+        final int nCommands = 100000;
         final int commandRate = 50000;
         final double dropCommandRate = 0.01;
         final double dropResponseRate = 0.01;
