@@ -288,9 +288,8 @@ class CommClientImplementation {
                 this.approxSentCMDRESPACKs, this.pendingCommands.size(), this.completedCommands.size());
     }
 
-    public void bindToRemoteNode(Address remoteAddress) {
-        DatagramTransport.RemoteNode node = transport.newRemoteNode(remoteAddress);
-        this.remoteNode = node; // Could override an existing one. That's ok
+    public void bindToRemoteNode(RemoteNode node) {
+         this.remoteNode = node; // Could override an existing one. That's ok
     }
 
     public Address remoteAddress() {
@@ -347,7 +346,7 @@ class CommClientImplementation {
     }
 
     // Client gets this
-    void cliHandleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
+    void handleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
 
         if (this.closed) {
             return;
@@ -456,7 +455,7 @@ class CommClientImplementation {
             log.trace(logMsgType, "No default send node");
         } else if (RobotComm.containsChars(msgType, BAD_MSGTYPE_CHARS)) {
             log.trace(logMsgType, "Message type has invalid chars: " + msgType);
-        } else {
+        } else { 
             ret = true;
         }
 

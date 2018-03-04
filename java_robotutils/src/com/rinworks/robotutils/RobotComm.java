@@ -242,7 +242,7 @@ public class RobotComm implements Closeable {
                     } else if (header.dgType == MessageHeader.DgType.DG_CMD) {
                         ch.srvHandleReceivedCommand(header, msgBody, remoteAddr);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMDRESP) {
-                        ch.cliHandleReceivedCommandResponse(header, msgBody, remoteAddr);
+                        ch.client.handleReceivedCommandResponse(header, msgBody, remoteAddr);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMDRESPACK) {
                         ch.srvHandleReceivedCommandResponseAck(header, msgBody, remoteAddr);
                     } else {
@@ -611,6 +611,7 @@ public class RobotComm implements Closeable {
     class ChannelImplementation implements Channel {
         private final String name;
         private DatagramTransport.RemoteNode remoteNode;
+        private final CommClientImplementation client;
 
         // Initialized to a random value and then incremented for each new command on
         // this channel.
@@ -954,6 +955,7 @@ public class RobotComm implements Closeable {
             this.name = channelName;
             this.remoteNode = null;
             this.nextCmdId = new AtomicLong(rand.nextLong());
+            this.client = new CommClientImplementation(channelName, transport, log);
 
             // For receiving messages
             this.pendingRecvMessages = new ConcurrentLinkedQueue<>();
@@ -990,12 +992,12 @@ public class RobotComm implements Closeable {
         public void bindToRemoteNode(Address remoteAddress) {
             DatagramTransport.RemoteNode node = transport.newRemoteNode(remoteAddress());
             this.remoteNode = node; // Could override an existing one. That's ok
+            client.bindToRemoteNode(node);
         }
 
         @Override
         public Address remoteAddress() {
-            DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
-            return rn == null ? null : rn.remoteAddress();
+            return client.remoteAddress();
         }
 
         @Override
@@ -1019,6 +1021,7 @@ public class RobotComm implements Closeable {
         @Override
         public void close() {
             log.trace("Removing channel " + name + " from list of channels.");
+            this.client.close();
             channels.remove(name, this);
             this.closed = true;
         }
@@ -1034,29 +1037,7 @@ public class RobotComm implements Closeable {
 
         @Override
         public SentCommand sendCommand(String cmdType, String command, boolean addToCompletionQueue) {
-
-            if (this.closed) {
-                throw new IllegalStateException("Channel is closed");
-            }
-
-            if (!isListening()) {
-                throw new IllegalStateException(
-                        "Attempt to call sendCommand on a RobotComm instance that is not listening.");
-
-            }
-            DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
-
-            if (validSendParams(cmdType, command, rn, "DISCARDING_SEND_COMMAND")) {
-                long cmdId = cliNewCommandId();
-                SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command,
-                        addToCompletionQueue);
-                this.cliPendingSentCommands.put(cmdId, sc);
-                this.approxSentCommands++;
-                cliSendCmd(sc);
-                return sc;
-            } else {
-                throw new IllegalArgumentException();
-            }
+            return this.client.sendCommand(cmdType, command, addToCompletionQueue);
         }
 
         @Override
@@ -1064,11 +1045,7 @@ public class RobotComm implements Closeable {
             if (this.closed) {
                 return null; // ********* EARLY RETURN
             }
-            SentCommand sc = this.cliCompletedSentCommands.poll();
-            if (sc != null) {
-                log.trace("CLI_COMPLETED_COMMAND", CMDTYPE_TAG + sc.cmdType());
-            }
-            return sc;
+            return this.client.pollCompletedCommand();
         }
 
         @Override
@@ -1365,7 +1342,8 @@ public class RobotComm implements Closeable {
         void periodicWork() {
             long curTime = System.currentTimeMillis();
             if (!this.closed) {
-                cliHandleRetransmits(curTime);
+                this.client.periodicWork();
+
             }
         }
 

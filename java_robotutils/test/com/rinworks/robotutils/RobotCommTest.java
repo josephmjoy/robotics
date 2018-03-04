@@ -1133,7 +1133,7 @@ class RobotCommTest {
         final double dropResponseRate = 0.01;
         final int maxComputeTime = 100; // ms
         final double transportFailureRate = 0.1;
-        final int maxTransportDelay = 100; // ms
+        final int maxTransportDelay = 200; // ms
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
         StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
