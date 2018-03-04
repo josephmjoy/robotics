@@ -9,6 +9,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -18,7 +19,8 @@ import java.util.regex.Pattern;
 public class ConfigurationHelper {
 
     private static final String COLONSPACE = ": "; // space after : is MANDATORY.
-    private static final Pattern REGEX_WHITESPACE = Pattern.compile("\\s");
+    private static final Pattern REGEX_WHITESPACE = Pattern.compile("\\s+");
+    private static final String HYPHENSPACE = "- "; // space after - is MANDATORY
 
     /**
      * Loads the specified section from the specified reader. It will not throw an
@@ -41,6 +43,84 @@ public class ConfigurationHelper {
             System.err.println(e);
         }
         return hm;
+    }
+
+    /**
+     * Saves the specified section to the specified writer starting at the current
+     * point in the writer. It will not throw an exception. On error (IO exception
+     * or not being able to write the section) it will return false. WARNING: It can
+     * not scan the destination to see if this section has already been written, so
+     * typically this method is called when writing out an entire configuration with
+     * multiple sections in sequence.
+     * 
+     * @return true on success and false on failure.
+     */
+    public static boolean writeSection(String sectionName, Map<String, String> map, List<String> keys, Writer w) {
+        Iterator<String> kIter = keys != null ? keys.iterator() : map.keySet().iterator();
+        boolean ret = false;
+
+        try (BufferedWriter bw = new BufferedWriter(w)) {
+            bw.write(sectionName + ":\n");
+            while (kIter.hasNext()) {
+                String k = kIter.next();
+                String v = map.get(k);
+                if (v != null) {
+                    String output = "  " + k + COLONSPACE + v + "\n";
+                    bw.write(output);
+                }
+            }
+            ret = true;
+        } catch (IOException e) {
+            // Nothing to do as we close br on exception or not.
+        }
+
+        return ret;
+    }
+
+    /**
+     * Loads the specified list-of-strings section from the specified reader. It
+     * will not throw an exception. On error (IO exception or not being able to find
+     * the section) it will return an empty list.
+     * 
+     * @return List of strings in the section
+     */
+    public static List<String> readList(String sectionName, Reader r) {
+        ArrayList<String> li = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(r)) {
+            if (findSection(sectionName, br)) {
+                processListSection(br, li);
+            }
+        } catch (IOException e) {
+            // Nothing to do as br will be automatically closed.
+            System.err.println(e);
+        }
+        return li;
+    }
+
+    /**
+     * Saves the specified list-of-strings section to the specified writer starting
+     * at the current point in the writer. It will not throw an exception. On error
+     * (IO exception or not being able to write the section) it will return false.
+     * WARNING: It can not scan the destination to see if this section has already
+     * been written, so typically this method is called when writing out an entire
+     * configuration with multiple sections in sequence.
+     * 
+     * @return true on success and false on failure.
+     */
+    public static boolean writeList(String sectionName, List<String> list, Writer w) {
+        boolean ret = false;
+
+        try (BufferedWriter bw = new BufferedWriter(w)) {
+            bw.write(sectionName + ":\n");
+            for (String s : list) {
+                String output = "  " + HYPHENSPACE + s + "\n";
+                bw.write(output);
+            }
+            ret = true;
+        } catch (IOException e) {
+            // Nothing to do as we close br on exception or not.
+        }
+        return ret;
     }
 
     private static void processSection(BufferedReader br, HashMap<String, String> hm, List<String> keys)
@@ -152,41 +232,44 @@ public class ConfigurationHelper {
         return s;
     }
 
-    /**
-     * Saves the specified section to the specified writer starting at the current
-     * point in the writer. It will not throw an exception. On error (IO exception
-     * or not being able to write the section) it will return false. WARNING: It can
-     * not scan the destination to see if this section has already been written, so
-     * typically this method is called when writing out an entire configuration with
-     * multiple sections in sequence.
-     * 
-     * @return true on success and false on failure.
-     */
-    public static boolean writeSection(String sectionName, Map<String, String> map, List<String> keys, Writer w) {
-        Iterator<String> kIter = keys != null ? keys.iterator() : map.keySet().iterator();
-        boolean ret = false;
-
-        try (BufferedWriter bw = new BufferedWriter(w)) {
-            bw.write(sectionName + ":\n");
-            while (kIter.hasNext()) {
-                String k = kIter.next();
-                String v = map.get(k);
-                if (v != null) {
-                    String output = "  " + k + COLONSPACE + v + "\n";
-                    bw.write(output);
-                }
-            }
-            ret = true;
-        } catch (IOException e) {
-            // Nothing to do as we close br on exception or not.
-        }
-
-        return ret;
-    }
-
     // To disallow public instance creation.
     private ConfigurationHelper() {
         assert false;
     }
 
+    // Read a list of strings and put them into {li}. Quit early if encountering
+    // anything unexpected
+    private static void processListSection(BufferedReader br, ArrayList<String> li) throws IOException {
+        int indentation = -1; // we will set it when we find the first child of the section.
+        String line;
+        boolean quit = false;
+        while (!quit && (line = br.readLine()) != null && !line.startsWith("...")) {
+            line = trimComment(line);
+            if (line.length() > 0 && !REGEX_WHITESPACE.matcher(line).matches()) {
+                int iHyphen = line.indexOf(HYPHENSPACE);
+                quit = true;
+                if (iHyphen > 0) {
+                    String pre = "", post = "";
+                    pre = line.substring(0, iHyphen).trim();
+                    post = line.substring(iHyphen + 1).trim(); // +1 for space after hyphen
+
+                    if (pre.length() == 0) {
+
+                        int thisIndentation = line.indexOf(HYPHENSPACE);
+                        if (indentation < 0) {
+                            indentation = thisIndentation;
+                            assert indentation >= 0;
+                        }
+
+                        // We expect strictly indented lines with exactly the same
+                        // indentation.
+                        if (indentation >= 1 && thisIndentation == indentation) {
+                            li.add(post); // Empty strings are added too.
+                            quit = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

@@ -551,11 +551,16 @@ created and the channel should not be bound to any endpoint.
    with an older exiting-channel should cause mayhem!
 
 # Feb 8, 2018 Design Note - ConfigurationHelper and StringmapHelper
+[UPDATED March 3, 2018 by adding ability to read a list of strings, and misc. clarifications]
 Design goals:
-- As with rest of robotutils, do not pull in an external dependency, use standard Java apis.
+- As with rest of robotutils, do not pull in an external dependency, use standard Java APIs.
 - If possible base the file format on an existing standard that is not too cumbersome. 
 - Two-level of structure - a set of sections, a top-level for each sub-component or any other logical entity
   (like 'logging' or 'auton'), and the next level is simply key-values, one per line.
+- Note that multiple levels can be crudely simulated by embedding periods in the keys - see example below that uses "limit.in" and "limit.out"
+  as keys.
+- Special support to read a section that is purely a list of strings (in YAML format). This is useful to specify a list of sections that should
+  be processed in some way.
 - Caller has control over where the config file is located - provides a Stream object to read
 - Does have write support - but really just append to an existing stream. Mainly to support keeping the ORDER of appearance
   of keys, read should return the keys in order that they appear and write should take such a key order.
@@ -575,6 +580,8 @@ pick up each section.
 - Subset of YAML parser should gracefully ignore any parts of YAML it does not
  support, while being able to read the things it does understand. In particular, it should skip past hierarchies greater than two-level, and it
 should ignore (strip out) ! directives that explicitly specify a type.
+- Keys can have any characters other than spaces, tabs and the colon character. YAML is more permissive in allowing quoted keys that can contain
+ pretty much anything.
 
 ## Implementation Decisions
 Java has a standard type called Properties. It can fill in a Properties object from a specified file stream.
@@ -582,8 +589,11 @@ There are then methods to read and write string properties. The documentation ou
 I[JMJ] decided to write a simple YAML-subset parser and supporting classes/methods for the following reasons:
 - Properties does not support a two-level hierarchy.
 - Properties imposes the ability to read and write.
-- Properties does not support reading objects other than strings.
-- YAML is minimalist yet supports a two-level hierarchy.
+- Properties does not support reading objects other than strings. Or rather they will show up as strings; for example:
+         foo: [1, 2] # value will be "[1, 2]"
+- Multiline strings are not supported.
+- YAML support is minimalist yet supports a two-level hierarchy.
+- Special support to read a list of strings (each line begins with <indentation><hyphen><space>).
 - Since YAML support is not built-into Java and we don't want to bring in
   3rd party library dependencies, we write our own parser for a subset of
   YAML, which is easy to do.
@@ -593,7 +603,7 @@ I[JMJ] decided to write a simple YAML-subset parser and supporting classes/metho
   with.
 - Use Yaml 1.2 spec, which tightened up certain things, like boolean values
   are strictly true or false (not True, False, Yes, No, etc, etc.).
-  
+ 
 ## Sample Configuration File
 
 ```
@@ -615,6 +625,21 @@ auton:
     # Above, once again, the simpler parser will parse the value into string 
     # "[0.5 0.2, 0.2]". StringmapHelper may in the future support 1D arrays of 
     # doubles and other primitives.
+
+# Example of a list of strings
+test_configurations:
+  - L_WING
+  - INTAKE
+
+L_WING:
+  encoder: [1, 2] # This is a YAML list, for which parsing is not supported so will simply show up as a string "[1, 2]"
+  limit.in: 2 # Note that we allow dots in keys (as does YAML).
+  limit.out: 19
+  pot: 4
+
+INTAKE:
+  limit.in: 3
+  limit.out: 4     
 ```
 
 #Feb 6, 2018 Design Note A - suggestions for log file naming
