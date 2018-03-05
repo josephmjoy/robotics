@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.rinworks.robotutils.RobotComm.Address;
+import com.rinworks.robotutils.RobotComm.ClientStatistics;
 import com.rinworks.robotutils.RobotComm.DatagramTransport;
 import com.rinworks.robotutils.RobotComm.MessageHeader;
 import com.rinworks.robotutils.RobotComm.SentCommand;
@@ -240,48 +241,7 @@ class CommClientImplementation {
         }
     }
 
-    public static class ClientStatistics {
-        public final long sentCommands;
-        public final long sentCMDs;
-        public final long rcvdCMDRESPs;
-        public final long sentCMDRESPACKs;
-        public final int curCliSentCmdMapSize;
-        public final int curCliSentCmdCompletionQueueSize;
-
-        ClientStatistics(long sentCommands, long sentCMDs, long rcvdCMDRESPs, long sentCMDRESPACKs,
-                int curCliSentCmdMapSize, int curCliSentCmdCompletionQueueSize) {
-            this.sentCommands = sentCommands;
-            this.sentCMDs = sentCMDs;
-            this.rcvdCMDRESPs = rcvdCMDRESPs;
-            this.sentCMDRESPACKs = sentCMDRESPACKs;
-            this.curCliSentCmdMapSize = curCliSentCmdMapSize;
-            this.curCliSentCmdCompletionQueueSize = curCliSentCmdCompletionQueueSize;
-        }
-
-        public String toString() {
-            StringBuilder sb = new StringBuilder();
-            if (sentCommands > 0) {
-                sb.append(" sc: " + sentCommands);
-            }
-            if (sentCMDs > 0) {
-                sb.append(" sC: " + sentCMDs);
-            }
-            if (rcvdCMDRESPs > 0) {
-                sb.append(" rCR: " + rcvdCMDRESPs);
-            }
-            if (sentCMDRESPACKs > 0) {
-                sb.append(" sCRA: " + sentCMDRESPACKs);
-            }
-            if (curCliSentCmdMapSize > 0) {
-                sb.append(" cliCMap: " + curCliSentCmdMapSize);
-            }
-            if (curCliSentCmdCompletionQueueSize > 0) {
-                sb.append(" cliCCQ: " + curCliSentCmdCompletionQueueSize);
-            }
-            return sb.toString();
-        }
-    }
-
+    
     ClientStatistics getStats() {
 
         return new ClientStatistics(this.approxSentCommands, this.approxSendCMDs, this.approxRcvdCMDRESPs,
