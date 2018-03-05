@@ -1,4 +1,4 @@
-// Implementation of RobotComm command client. Only called from RobotComm.
+// Implementation of RobotComm command client. Only called from RobotComm's ChannelImplementation.
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
 package com.rinworks.robotutils;
 

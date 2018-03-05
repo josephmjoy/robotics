@@ -1,4 +1,4 @@
-// Implementation of RobotComm command server. Only called from RobotComm.
+// Implementation of RobotComm command server. Only called from RobotCom's ChannelImplementation
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
 
 package com.rinworks.robotutils;
