@@ -351,4 +351,14 @@ class CommServerImplementation {
         rn.send(header.serialize(""));
     }
 
+    public void handleReceivedRtCommand(MessageHeader header, String msgBody, RemoteNode rn) {
+        // TODO Auto-generated method stub
+
+    }
+
+    public void handleReceivedCommandRtResponse(MessageHeader header, String msgBody, RemoteNode rn) {
+        // TODO Auto-generated method stub
+
+    }
+
 }

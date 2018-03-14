@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.rinworks.robotutils.RobotComm.DatagramTransport.RemoteNode;
@@ -98,10 +99,6 @@ public class RobotComm implements Closeable {
 
         void stopReceivingMessages(); // will drop incoming messages in queue
 
-        void startReceivingCommands();
-
-        void stopReceivingCommands(); // will drop incoming commands in queue
-
         // This channel will only communicate with the specified remote node,
         // including received messages and commands.
         // Can be changed on the fly. Set to null to clear.
@@ -109,18 +106,31 @@ public class RobotComm implements Closeable {
 
         Address remoteAddress(); // Can be null
 
+        // Sending and receiving messages
         ReceivedMessage pollReceivedMessage();
-
-        ReceivedCommand pollReceivedCommand();
 
         // Will drop message if not bound to a remote node.
         void sendMessage(String msgType, String message);
 
         void sendMessage(String msgType, String message, Address addr);
 
+        // Commands: Client-side
         SentCommand sendCommand(String cmdType, String command, boolean addToCompletionQueue);
 
         SentCommand pollCompletedCommand();
+
+        SentCommand sendRtCommand(String cmdType, String command, int timeout, Consumer<SentCommand> onComplete);
+
+        // Commands: Server-side
+        void startReceivingCommands();
+
+        void stopReceivingCommands(); // will drop incoming commands in queue
+
+        ReceivedCommand pollReceivedCommand();
+
+        void startReceivingRtCommands(Consumer<ReceivedCommand> incoming);
+
+        void stopReceivingRtCommands();
 
         void close();
     }
@@ -235,8 +245,13 @@ public class RobotComm implements Closeable {
                 if (ch == null) {
                     handleMsgToUnknownChannel(header);
                 } else {
+
                     String msgBody = msg.substring(headerLength + 1);
-                    if (header.dgType == MessageHeader.DgType.DG_MSG) {
+                    if (header.dgType == MessageHeader.DgType.DG_RTCMD) {
+                        ch.server.handleReceivedRtCommand(header, msgBody, rn);
+                    } else if (header.dgType == MessageHeader.DgType.DG_RTCMDRESP) {
+                        ch.server.handleReceivedCommandRtResponse(header, msgBody, rn);
+                    } else if (header.dgType == MessageHeader.DgType.DG_MSG) {
                         ch.handleReceivedMessage(header, msgBody, rn);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMD) {
                         ch.server.handleReceivedCommand(header, msgBody, rn);
@@ -444,12 +459,14 @@ public class RobotComm implements Closeable {
 
     static class MessageHeader {
         enum DgType {
-            DG_MSG, DG_CMD, DG_CMDRESP, DG_CMDRESPACK
+            DG_MSG, DG_CMD, DG_CMDRESP, DG_RTCMD, DG_RTCMDRESP, DG_CMDRESPACK
         }
 
         static final String STR_DG_MSG = "MSG";
         static final String STR_DG_CMD = "CMD";
         static final String STR_DG_CMDRESP = "CMDRESP";
+        static final String STR_DG_RTCMD = "RTCMD";
+        static final String STR_DG_RTCMDRESP = "RTCMDRESP";
         static final String STR_DG_CMDRESPACK = "CMDRESPACK";
         static final String STR_MSGTYPE_IDLIST = "IDLIST"; // body of CMDRESP is a list of IDs.
 
@@ -491,7 +508,7 @@ public class RobotComm implements Closeable {
         }
 
         public boolean isComplete() {
-            return this.dgType == DgType.DG_CMDRESP && !!!isPending();
+            return (this.dgType == DgType.DG_CMDRESP || this.dgType == DgType.DG_RTCMDRESP) && !!!isPending();
         }
 
         // Examples
@@ -526,6 +543,13 @@ public class RobotComm implements Closeable {
                 getCmdId = true;
             } else if (dgTypeStr.equals(STR_DG_CMDRESP)) {
                 dgType = DgType.DG_CMDRESP;
+                getCmdId = true;
+                getStatus = true;
+            } else if (dgTypeStr.equals(STR_DG_RTCMD)) {
+                dgType = DgType.DG_RTCMD;
+                getCmdId = true;
+            } else if (dgTypeStr.equals(STR_DG_RTCMDRESP)) {
+                dgType = DgType.DG_RTCMDRESP;
                 getCmdId = true;
                 getStatus = true;
             } else if (dgTypeStr.equals(STR_DG_CMDRESPACK)) {
@@ -567,7 +591,7 @@ public class RobotComm implements Closeable {
             CmdStatus status = CmdStatus.STATUS_NOVALUE;
             if (getStatus) {
                 if (header.length <= INDEX_CMDSTATUS) {
-                    log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header - missing cmd status");
+                    log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Malformed header - missing [rt]cmd status");
                     return null; // ************ EARLY RETURN
                 }
                 String statusStr = header[INDEX_CMDSTATUS];
@@ -625,6 +649,10 @@ public class RobotComm implements Closeable {
                 return STR_DG_CMD;
             } else if (this.dgType == DgType.DG_CMDRESP) {
                 return STR_DG_CMDRESP;
+            } else if (this.dgType == DgType.DG_RTCMD) {
+                return STR_DG_RTCMD;
+            } else if (this.dgType == DgType.DG_RTCMDRESP) {
+                return STR_DG_RTCMDRESP;
             } else if (this.dgType == DgType.DG_CMDRESPACK) {
                 return STR_DG_CMDRESPACK;
             } else {
@@ -634,7 +662,6 @@ public class RobotComm implements Closeable {
         }
     }
 
-    
     /**
      * Creates a remote UDP port - for sending
      * 

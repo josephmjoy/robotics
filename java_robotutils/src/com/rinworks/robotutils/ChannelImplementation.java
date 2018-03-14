@@ -4,6 +4,7 @@
 package com.rinworks.robotutils;
 
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Consumer;
 
 import com.rinworks.robotutils.RobotComm.Address;
 import com.rinworks.robotutils.RobotComm.Channel;
@@ -33,7 +34,6 @@ class ChannelImplementation implements Channel {
     // by the newline char.
 
     private boolean receiveMessages;
-    private boolean receiveCommands;
     private boolean closed;
 
     // These are purely for statistics reporting
@@ -180,8 +180,7 @@ class ChannelImplementation implements Channel {
 
     void handleReceivedMessage(MessageHeader header, String msgBody, RemoteNode rn) {
         if (this.receiveMessages) {
-            ReceivedMessageImplementation rm = new ReceivedMessageImplementation(header.msgType, msgBody,
-                    rn, this);
+            ReceivedMessageImplementation rm = new ReceivedMessageImplementation(header.msgType, msgBody, rn, this);
             this.approxRcvdMessages++;
             this.pendingRecvMessages.add(rm);
         }
@@ -232,5 +231,19 @@ class ChannelImplementation implements Channel {
 
         return ret;
     }
-}
 
+    @Override
+    public SentCommand sendRtCommand(String cmdType, String command, int timeout, Consumer<SentCommand> onComplete) {
+        return this.client.sendRtCommand(cmdType, command, timeout, onComplete);
+    }
+
+    @Override
+    public void startReceivingRtCommands(Consumer<ReceivedCommand> incoming) {
+        this.client.startReceivingRtCommands(incoming);
+    }
+
+    @Override
+    public void stopReceivingRtCommands() {
+        this.client.stopReceivingRtCommands();
+    }
+}

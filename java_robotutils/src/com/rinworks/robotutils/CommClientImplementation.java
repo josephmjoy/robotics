@@ -6,12 +6,14 @@ import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 import com.rinworks.robotutils.RobotComm.Address;
 import com.rinworks.robotutils.RobotComm.ClientStatistics;
 import com.rinworks.robotutils.RobotComm.DatagramTransport;
 import com.rinworks.robotutils.RobotComm.MessageHeader;
 import com.rinworks.robotutils.RobotComm.MessageHeader.CmdStatus;
+import com.rinworks.robotutils.RobotComm.ReceivedCommand;
 import com.rinworks.robotutils.RobotComm.SentCommand;
 import com.rinworks.robotutils.RobotComm.DatagramTransport.RemoteNode;
 
@@ -32,9 +34,9 @@ class CommClientImplementation {
     private long[] ackBuffer; // Buffer of command ids of unsent CMDRESPACKs
     private int ackBufferCount; // Count of ids in the buffer (rest will be 0 / unused)
     private static final int CMDRESP_BUFFER_SIZE = 25; // 25; // Size of buffer - all these must go into a single
-                                                      // packet. 25 => msg body size of just under 500 bytes,
-                                                      // as ids are encoded as 16-digit hex numbers delimited
-                                                      // by the newline char.
+                                                       // packet. 25 => msg body size of just under 500 bytes,
+                                                       // as ids are encoded as 16-digit hex numbers delimited
+                                                       // by the newline char.
 
     // Client retransmit-related constants
     // The client will retransmit CMD packets for non real-time commands starting
@@ -424,6 +426,20 @@ class CommClientImplementation {
         }
 
         return ret;
+    }
+
+    public SentCommand sendRtCommand(String cmdType, String command, int timeout, Object onC) {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    public void startReceivingRtCommands(Consumer<ReceivedCommand> incoming) {
+        // TODO Auto-generated method stub
+
+    }
+
+    public void stopReceivingRtCommands() {
+        // TODO Auto-generated method stub
     }
 
 }
