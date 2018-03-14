@@ -44,14 +44,14 @@ class ChannelImplementation implements Channel {
     private class ReceivedMessageImplementation implements ReceivedMessage {
         private final String msg;
         private final String msgType;
-        private final Address remoteAddress;
+        private final RemoteNode rn;
         private long recvdTimeStamp;
         private final Channel ch;
 
-        ReceivedMessageImplementation(String msgType, String msg, Address remoteAddress, Channel ch) {
+        ReceivedMessageImplementation(String msgType, String msg, RemoteNode rn, Channel ch) {
             this.msg = msg;
             this.msgType = msgType;
-            this.remoteAddress = remoteAddress;
+            this.rn = rn;
             this.recvdTimeStamp = System.currentTimeMillis();
             this.ch = ch;
         }
@@ -68,7 +68,7 @@ class ChannelImplementation implements Channel {
 
         @Override
         public Address remoteAddress() {
-            return this.remoteAddress;
+            return this.rn.remoteAddress();
         }
 
         @Override
@@ -178,10 +178,10 @@ class ChannelImplementation implements Channel {
         this.receiveMessages = true;
     }
 
-    void handleReceivedMessage(MessageHeader header, String msgBody, Address remoteAddr) {
+    void handleReceivedMessage(MessageHeader header, String msgBody, RemoteNode rn) {
         if (this.receiveMessages) {
             ReceivedMessageImplementation rm = new ReceivedMessageImplementation(header.msgType, msgBody,
-                    remoteAddr, this);
+                    rn, this);
             this.approxRcvdMessages++;
             this.pendingRecvMessages.add(rm);
         }

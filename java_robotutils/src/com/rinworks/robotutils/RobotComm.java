@@ -214,7 +214,6 @@ public class RobotComm implements Closeable {
             log.info("STARTED LISTENING");
 
             li.listen((String msg, DatagramTransport.RemoteNode rn) -> {
-                Address remoteAddr = rn.remoteAddress();
                 if (!msg.startsWith(PROTOCOL_SIGNATURE)) {
                     log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Incorrect protocol signature.");
                     return; // EARLY RETURN
@@ -238,13 +237,13 @@ public class RobotComm implements Closeable {
                 } else {
                     String msgBody = msg.substring(headerLength + 1);
                     if (header.dgType == MessageHeader.DgType.DG_MSG) {
-                        ch.handleReceivedMessage(header, msgBody, remoteAddr);
+                        ch.handleReceivedMessage(header, msgBody, rn);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMD) {
-                        ch.server.handleReceivedCommand(header, msgBody, remoteAddr);
+                        ch.server.handleReceivedCommand(header, msgBody, rn);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMDRESP) {
-                        ch.client.handleReceivedCommandResponse(header, msgBody, remoteAddr);
+                        ch.client.handleReceivedCommandResponse(header, msgBody, rn);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMDRESPACK) {
-                        ch.server.handleReceivedCommandResponseAck(header, msgBody, remoteAddr);
+                        ch.server.handleReceivedCommandResponseAck(header, msgBody, rn);
                     } else {
                         assert false; // we have already validated the message, so shouldn't get here.
                     }

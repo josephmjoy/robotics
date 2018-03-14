@@ -686,8 +686,8 @@ class RobotCommTest {
 
             // Server: poll for incoming commands and respond to them
             int recvAttempts = Math.max(nCommands / 100, 10);
-            final int ARRIVA_DELAY_MULTIPLYER = 1; // Time for CMD message to be transmitted
-            int maxArrivalTime = submissionTimespan + ARRIVA_DELAY_MULTIPLYER * transport.getMaxDelay();
+            final int ARRIVAL_DELAY_MULTIPLYER = 1; // Time for CMD message to be transmitted
+            int maxArrivalTime = submissionTimespan + ARRIVAL_DELAY_MULTIPLYER * transport.getMaxDelay();
             for (int i = 0; i < recvAttempts; i++) {
                 int delay = (int) (rand.nextDouble() * maxArrivalTime);
 
@@ -764,7 +764,8 @@ class RobotCommTest {
                         CommandRecord cr = StressTester.this.processReceivedCommand(rCmd);
 
                         if (cr == null) {
-                             continue; // ************************************* CONTINUE
+                            rCmd = ch.pollReceivedCommand();                            
+                            continue; // ************************************* CONTINUE
                         }
                         // Schedule a timer task to send the computed response.
                         StressTester.this.testTimer.schedule(new TimerTask() {
@@ -837,6 +838,12 @@ class RobotCommTest {
             // If it has been canceled by the client (that's us!) we do nothing.
             if (cCmd.status() == COMMAND_STATUS.STATUS_CLIENT_CANCELED) {
                 return; // ************* EARLY RETURH
+            }
+            
+            if (cCmd.status() == COMMAND_STATUS.STATUS_REMOTE_REJECTED) {
+                hfLog.trace("Command REJECTED with CmdId " + cCmd.cmdId());
+                // TODO: We should probably try to prune these??
+                return; // ************ EARLY RETURN
             }
 
             String msgType = cCmd.respType();
@@ -1127,7 +1134,7 @@ class RobotCommTest {
     @Test
     void stressSubmitAndProcessCommands() {
         final int nThreads = 10;
-        final int nCommands = 100000;
+        final int nCommands = 3000000;
         final int commandRate = 50000;
         final double dropCommandRate = 0.01;
         final double dropResponseRate = 0.01;
@@ -1149,13 +1156,35 @@ class RobotCommTest {
     @Test
     void stressSubmitAndProcessCommandsTrivial() {
         final int nThreads = 1;
-        final int nCommands = 1;
+        final int nCommands = 1000000;
         final int commandRate = 50000;
         final double dropCommandRate = 0;
         final double dropResponseRate = 0;
         final int maxComputeTime = 0;
         final double transportFailureRate = 0;
         final int maxTransportDelay = 0; // ms
+        StructuredLogger baseLogger = initStructuredLogger();
+        TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
+        StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
+        stresser.init();
+        transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
+        stresser.submitCommands(nCommands, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
+
+        stresser.close();
+        baseLogger.flush();
+        baseLogger.endLogging();
+    }
+    
+    @Test
+    void stressSubmitAndProcessCommandsWorking() {
+        final int nThreads = 10;
+        final int nCommands = 10000000;
+        final int commandRate = 50000;
+        final double dropCommandRate = 0.001;
+        final double dropResponseRate = 0.001;
+        final int maxComputeTime = 200; // ms
+        final double transportFailureRate = 0.01;
+        final int maxTransportDelay = 100; // ms
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
         StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());

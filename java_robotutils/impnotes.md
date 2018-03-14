@@ -19,6 +19,16 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#March 10A, 2018 RobotComm Design Note - Implementing CMDRESPACK continued.
+Having a separate zombie hash table and queue seems like overkill, especially when I realized that a SINGLE ReceivedCommandImplementation object could
+replace all zombified commands - so there is effectively no overhead of using ReceivedCommandImplementation object vs. Long objects.
+Longer term, one could use a bloom filter to quickly reject most queries to the zombified commands, followed by a custom hash set. But that is 
+a lower priority. So after implementing a separate hash table and queue for zombie Longs as indicated in the March 2A design note, we are going back
+to a single hash map and 2 queues (incoming, completed) for all commands, including zombified commands.
+The pruning algorithm is:
+1. Run through the completed queue once, counting both zombified objects and completed objects.
+2. Deside how many zombified objects and completed objects need to be delted.
+3. Run through the queue a second time, deleting zombified objects or zombifying completed objects.
 #March 2B, 2018 General Design Note - Refactoring into more classes
 - Implementations are getting unwieldy
 - Helper methods are folded into core classes
@@ -28,7 +38,7 @@ RobotComm: add class CommUtils, placeholder for future utility methods.
 StructuredLogger: add class LoggerUtils and move the various utility methods there.
 
 #March 2A, 2018 RobotCom Design Note - Implementing CMDRESPACK
-
+[March 10 UPDATE - we have gone back to a single hash table and queue for commands - see March 10A, 2018 design note]
 See Feb 14B, 2018 Design Note for aggregate format of CMDRESPACK, and earlier discussion (now obsolete) on strategy for pruning
 old ReceivedCommand records.
 Client:

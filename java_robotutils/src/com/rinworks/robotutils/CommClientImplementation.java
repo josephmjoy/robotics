@@ -11,6 +11,7 @@ import com.rinworks.robotutils.RobotComm.Address;
 import com.rinworks.robotutils.RobotComm.ClientStatistics;
 import com.rinworks.robotutils.RobotComm.DatagramTransport;
 import com.rinworks.robotutils.RobotComm.MessageHeader;
+import com.rinworks.robotutils.RobotComm.MessageHeader.CmdStatus;
 import com.rinworks.robotutils.RobotComm.SentCommand;
 import com.rinworks.robotutils.RobotComm.DatagramTransport.RemoteNode;
 
@@ -30,10 +31,10 @@ class CommClientImplementation {
     private final Object ackLock; // To serialize access to the next three
     private long[] ackBuffer; // Buffer of command ids of unsent CMDRESPACKs
     private int ackBufferCount; // Count of ids in the buffer (rest will be 0 / unused)
-    private static final int CMDRESP_BUFFER_SIZE = 25; // Size of buffer - all these must go into a single
-                                                           // packet. 25 => msg body size of just under 500 bytes,
-                                                           // as ids are encoded as 16-digit hex numbers delimited
-                                                           // by the newline char.
+    private static final int CMDRESP_BUFFER_SIZE = 25; // 25; // Size of buffer - all these must go into a single
+                                                      // packet. 25 => msg body size of just under 500 bytes,
+                                                      // as ids are encoded as 16-digit hex numbers delimited
+                                                      // by the newline char.
 
     // Client retransmit-related constants
     // The client will retransmit CMD packets for non real-time commands starting
@@ -45,7 +46,7 @@ class CommClientImplementation {
     private static final int INITIAL_RETRANSMIT_TIME_HIGH = 200;
     private static final int FINAL_RETRANSMIT_TIME_LOW = 10000;
     private static final int FINAL_RETRANSMIT_TIME_HIGH = 20000;
- 
+
     // Logging strings used more than once.
     private static final String CMDTYPE_TAG = "cmdType: ";
 
@@ -241,7 +242,6 @@ class CommClientImplementation {
         }
     }
 
-    
     ClientStatistics getStats() {
 
         return new ClientStatistics(this.approxSentCommands, this.approxSendCMDs, this.approxRcvdCMDRESPs,
@@ -249,7 +249,7 @@ class CommClientImplementation {
     }
 
     public void bindToRemoteNode(RemoteNode node) {
-         this.remoteNode = node; // Could override an existing one. That's ok
+        this.remoteNode = node; // Could override an existing one. That's ok
     }
 
     public Address remoteAddress() {
@@ -306,7 +306,7 @@ class CommClientImplementation {
     }
 
     // Client gets this
-    void handleReceivedCommandResponse(MessageHeader header, String msgBody, Address remoteAddr) {
+    void handleReceivedCommandResponse(MessageHeader header, String msgBody, RemoteNode rn) {
 
         if (this.closed) {
             return;
@@ -340,10 +340,14 @@ class CommClientImplementation {
             }
         }
 
-        queueCmdRespAck(header, remoteAddr); // we always ACK a completed response, whether we find it or not.
+        // we always ACK a completed response, whether we find it or not, UNLESS it is
+        // rejected - rejected indicates the server doesn't know about this command.
+        if (header.status != CmdStatus.STATUS_REJECTED) {
+            queueCmdRespAck(header, rn);
+        }
     }
 
-    private void queueCmdRespAck(MessageHeader header, Address remoteAddr) {
+    private void queueCmdRespAck(MessageHeader header, RemoteNode rn) {
         // We don't attempt to validate remoteAddr. Because of NAT, perhaps this is
         // different than
         // what we have for the channel's remote addr...
@@ -415,7 +419,7 @@ class CommClientImplementation {
             log.trace(logMsgType, "No default send node");
         } else if (RobotComm.containsChars(msgType, BAD_MSGTYPE_CHARS)) {
             log.trace(logMsgType, "Message type has invalid chars: " + msgType);
-        } else { 
+        } else {
             ret = true;
         }
 
