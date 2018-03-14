@@ -19,6 +19,27 @@ These are informal notes and TODO lists for the project.
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#March 14A, 2018 RobotComm perf milestone - successfully send and received 20 million commands!
+
+```
+final int nThreads = 10;
+        final int nCommands = 20000000;
+        final int commandRate = 50000;
+        final double dropCommandRate = 0.001;
+        final double dropResponseRate = 0.001;
+        final int maxComputeTime = 100; // ms
+        final double transportFailureRate = 0.05;
+        final int maxTransportDelay = 200; // ms
+Final log entries:     
+...  
+_sid: 1521021722208  _sn: 518  _ts: 403515  _pri: 2  _cat: TRACE  _co: test  _ty: _OTHER  _msg: Waiting to receive up to 20000000 commands
+_sid: 1521021722208  _sn: 519  _ts: 406362  _pri: 1  _cat: INFO   _co: test  _ty: _OTHER  _msg: Final COMMAND verification. TSForceDrops: 373245  TSRandomDrops: 3209235   PendingCmds: 0
+_sid: 1521021722208  _sn: 520  _ts: 406373  _pri: 1  _cat: INFO   _co: test  _ty: _OTHER  _msg: ch: testChannel  sc: 19949512 sC: 31369981 rCR: 30129506 sCRA: 1046956  rc: 19980082 rC: 29892275 sCR: 31827905 rCRA: 994479 srvCMap: 184027 srvCCQ: 184027
+```
+An earlier run seemed to have bogged down, not sure why, but this run ran fine - Visual VM was monitoring heap use - it seemed too be under control the whole time - oscillating between 500MB and about 2.7GB(!). But it ran through completion as seen above, with all 20 million commands accounted for, over a period of 400 seconds. So on the Dell XPS 15, we can sustain a rate of sending + receiving 50,000 commands per second (over our loopback test transport) for long periods of time.
+
+You can see that more commands were received (19980082) then were sent (19949512). This means about 40K commands (out of 20M) were executed more than once, because of purging of commands + retransmits of old commands causing the same command to be re-executed.
+
 #March 10A, 2018 RobotComm Design Note - Implementing CMDRESPACK continued.
 Having a separate zombie hash table and queue seems like overkill, especially when I realized that a SINGLE ReceivedCommandImplementation object could
 replace all zombified commands - so there is effectively no overhead of using ReceivedCommandImplementation object vs. Long objects.
