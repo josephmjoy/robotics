@@ -41,7 +41,6 @@ class CommServerImplementation {
     private volatile long approxRcvdCMDs;
     private volatile long approxSentCMDRESPs;
     private volatile long approxRcvdCMDRESPACKs;
-    private volatile long approxTrackedCommands;
 
     private class ReceivedCommandImplementation implements ReceivedCommand {
         private static final String SCRUBBED_VALUE = "EXPIRED";
@@ -141,8 +140,8 @@ class CommServerImplementation {
     }
 
     ServerStatistics getStats() {
-        return new ServerStatistics(approxRcvdCMDRESPACKs, approxRcvdCMDRESPACKs, approxRcvdCMDRESPACKs,
-                approxRcvdCMDRESPACKs, cmdMap.size(), pendingCmds.size(), completedCmds.size());
+        return new ServerStatistics(approxRcvdCommands, approxRcvdCMDs, approxSentCMDRESPs, approxRcvdCMDRESPACKs,
+                cmdMap.size(), pendingCmds.size(), completedCmds.size());
     }
 
     ReceivedCommand pollReceivedCommand() {
@@ -325,7 +324,7 @@ class CommServerImplementation {
         this.completedCmds.removeIf(rc -> {
             if (rc.zombie) {
                 if (counts[IZOMBIE] > 0) {
-                    log.trace("SRV_CMD_PURGE", CMDID_TAG + Long.toHexString(rc.cmdId));                   
+                    log.trace("SRV_CMD_PURGE", CMDID_TAG + Long.toHexString(rc.cmdId));
                     this.cmdMap.remove(rc.cmdId); // SIDE EFFECT; may not be there.
                     counts[IZOMBIE]--;
                     return true; // ********* EARLY RETURN

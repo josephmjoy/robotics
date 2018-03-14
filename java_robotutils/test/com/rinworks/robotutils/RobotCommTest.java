@@ -1134,7 +1134,7 @@ class RobotCommTest {
     @Test
     void stressSubmitAndProcessCommands() {
         final int nThreads = 10;
-        final int nCommands = 3000000;
+        final int nCommands = 500000;
         final int commandRate = 50000;
         final double dropCommandRate = 0.01;
         final double dropResponseRate = 0.01;
@@ -1156,7 +1156,7 @@ class RobotCommTest {
     @Test
     void stressSubmitAndProcessCommandsTrivial() {
         final int nThreads = 1;
-        final int nCommands = 1000000;
+        final int nCommands = 1;
         final int commandRate = 50000;
         final double dropCommandRate = 0;
         final double dropResponseRate = 0;
@@ -1175,16 +1175,17 @@ class RobotCommTest {
         baseLogger.endLogging();
     }
     
+    // This one is to mess around with parameters when debugging. Usually disabled.
     @Test
     void stressSubmitAndProcessCommandsWorking() {
-        final int nThreads = 10;
-        final int nCommands = 10000000;
+        final int nThreads = 1;
+        final int nCommands = 1000000;
         final int commandRate = 50000;
-        final double dropCommandRate = 0.001;
-        final double dropResponseRate = 0.001;
-        final int maxComputeTime = 200; // ms
-        final double transportFailureRate = 0.01;
-        final int maxTransportDelay = 100; // ms
+        final double dropCommandRate = 0;
+        final double dropResponseRate = 0;
+        final int maxComputeTime = 0; // ms
+        final double transportFailureRate = 0.2;
+        final int maxTransportDelay = 0; // ms
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
         StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
