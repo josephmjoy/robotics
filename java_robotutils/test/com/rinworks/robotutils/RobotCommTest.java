@@ -306,10 +306,12 @@ class RobotCommTest {
             final MessageRecord cmdRecord;
             final MessageRecord respRecord;
             protected SentCommand sentCmd;
+            final boolean rt; // real time.
 
-            CommandRecord(MessageRecord cmdRecord, MessageRecord respRecord) {
+            CommandRecord(MessageRecord cmdRecord, MessageRecord respRecord, boolean rt) {
                 this.cmdRecord = cmdRecord;
                 this.respRecord = respRecord;
+                this.rt = rt;
             }
         }
 
@@ -411,7 +413,7 @@ class RobotCommTest {
          * @param maxComputeTime
          *            - max time it takes to compute a response to a command.
          */
-        public void submitCommands(int nCommands, int submissionRate, double alwaysDropCmdRate,
+        public void submitCommands(int nCommands, double rtFrac, int submissionRate, double alwaysDropCmdRate,
                 double alwaysDropRespRate, int maxComputeTime) {
             final int BATCH_SPAN_MILLIS = 1000;
             this.ch.startReceivingCommands();
@@ -419,7 +421,7 @@ class RobotCommTest {
                 int commandsLeft = nCommands;
                 while (commandsLeft >= submissionRate) {
                     long t0 = System.currentTimeMillis();
-                    submitCommandBatch(submissionRate, BATCH_SPAN_MILLIS, alwaysDropCmdRate, alwaysDropRespRate,
+                    submitCommandBatch(submissionRate, rtFrac, BATCH_SPAN_MILLIS, alwaysDropCmdRate, alwaysDropRespRate,
                             maxComputeTime);
                     commandsLeft -= submissionRate;
                     long t1 = System.currentTimeMillis();
@@ -429,7 +431,8 @@ class RobotCommTest {
                     pruneDroppedCommands(this.droppedResponses);
                 }
                 int timeLeftMillis = (1000 * commandsLeft) / submissionRate;
-                submitCommandBatch(commandsLeft, timeLeftMillis, alwaysDropCmdRate, alwaysDropRespRate, maxComputeTime);
+                submitCommandBatch(commandsLeft, rtFrac, timeLeftMillis, alwaysDropCmdRate, alwaysDropRespRate,
+                        maxComputeTime);
                 Thread.sleep(timeLeftMillis);
 
                 // Having initiated the process of submitting all the commands, we now have to
@@ -618,10 +621,11 @@ class RobotCommTest {
             assertEquals(randomDrops, mapSize);
         }
 
-        private void submitCommandBatch(int nCommands, int submissionTimespan, double alwaysDropCmdRate,
+        private void submitCommandBatch(int nCommands, double rtFrac, int submissionTimespan, double alwaysDropCmdRate,
                 double alwaysDropRespRate, int maxComputeTime) {
             assert this.rc != null;
             assert this.ch != null;
+            assert rtFrac >= 0 && rtFrac <= 1;
             assert alwaysDropCmdRate >= 0 && alwaysDropCmdRate <= 1;
             assert alwaysDropRespRate >= 0 && alwaysDropRespRate <= 1;
             assert submissionTimespan >= 0;
@@ -635,7 +639,9 @@ class RobotCommTest {
                 MessageRecord mrCmd = new MessageRecord(id, alwaysDropCMD);
                 boolean alwaysDropRESP = rand.nextDouble() < alwaysDropRespRate;
                 MessageRecord mrResp = new MessageRecord(id, alwaysDropRESP);
-                CommandRecord cr = new CommandRecord(mrCmd, mrResp);
+                boolean rt = rand.nextDouble() < rtFrac;
+                ;
+                CommandRecord cr = new CommandRecord(mrCmd, mrResp, rt);
                 int delay = (int) (rand.nextDouble() * submissionTimespan);
                 this.cmdMap.put(id, cr);
                 if (alwaysDropCMD) {
@@ -648,9 +654,19 @@ class RobotCommTest {
                         StressTester.this.exPool.submit(() -> {
                             try {
                                 hfLog.trace("Sending cmd with id " + id);
-                                RobotComm.SentCommand sc = StressTester.this.ch.sendCommand(mrCmd.msgType,
-                                        mrCmd.msgBody, true); // TODO true/false
+                                RobotComm.SentCommand sc;
+                                int timeout = 10000;
+                                if (rt) {
+                                    // Real time command: completion is notified by the calling
+                                    // the supplied callback.
+                                    sc = StressTester.this.ch.sendRtCommand(mrCmd.msgType, mrCmd.msgBody, timeout,
+                                            sc1 -> StressTester.this.processCompletedCommand(sc1));
+
+                                } else {
+                                    sc = StressTester.this.ch.sendCommand(mrCmd.msgType, mrCmd.msgBody, true);
+                                }
                                 cr.sentCmd = sc;
+
                                 if (mrCmd.alwaysDrop) {
                                     // We *know* that this command will never make it to the server.
                                     droppedCommands.add(cr);
@@ -764,7 +780,7 @@ class RobotCommTest {
                         CommandRecord cr = StressTester.this.processReceivedCommand(rCmd);
 
                         if (cr == null) {
-                            rCmd = ch.pollReceivedCommand();                            
+                            rCmd = ch.pollReceivedCommand();
                             continue; // ************************************* CONTINUE
                         }
                         // Schedule a timer task to send the computed response.
@@ -812,7 +828,8 @@ class RobotCommTest {
                 long id = Long.parseUnsignedLong(strId, 16);
                 hfLog.trace("Received command with id " + id);
                 cr = this.cmdMap.get(id);
-                //log.loggedAssert(cr != null, "Srv: Incoming UNEXPECTED/FORGOTTEN cmcdId: " + id);
+                // log.loggedAssert(cr != null, "Srv: Incoming UNEXPECTED/FORGOTTEN cmcdId: " +
+                // id);
                 if (cr != null) {
                     log.loggedAssert(cr.cmdRecord.msgType.equals(msgType), "cmd msgType mismatch #C1IH");
                     // assertEquals(mr.msgBody, msgBody);
@@ -839,10 +856,17 @@ class RobotCommTest {
             if (cCmd.status() == COMMAND_STATUS.STATUS_CLIENT_CANCELED) {
                 return; // ************* EARLY RETURH
             }
-            
+
             if (cCmd.status() == COMMAND_STATUS.STATUS_REMOTE_REJECTED) {
                 hfLog.trace("Command REJECTED with CmdId " + cCmd.cmdId());
                 // TODO: We should probably try to prune these??
+                return; // ************ EARLY RETURN
+            }
+
+            if (cCmd.status() == COMMAND_STATUS.STATUS_ERROR_TIMEOUT) {
+                hfLog.trace("Command TIMED OUT with CmdId " + cCmd.cmdId());
+                // TODO: we should verify that this error is reasonable, given
+                // the timeout specified when the command was submitted.
                 return; // ************ EARLY RETURN
             }
 
@@ -1130,12 +1154,12 @@ class RobotCommTest {
         baseLogger.flush();
         baseLogger.endLogging();
     }
-    
 
     @Test
     void stressSubmitAndProcessCommandsTrivial() {
         final int nThreads = 1;
         final int nCommands = 1;
+        final double rtFrac = 0;
         final int commandRate = 50000;
         final double dropCommandRate = 0;
         final double dropResponseRate = 0;
@@ -1147,8 +1171,7 @@ class RobotCommTest {
         StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
         stresser.init();
         transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
-        stresser.submitCommands(nCommands, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
-
+        stresser.submitCommands(nCommands, rtFrac, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
         stresser.close();
         baseLogger.flush();
         baseLogger.endLogging();
@@ -1158,6 +1181,7 @@ class RobotCommTest {
     void stressSubmitAndProcessCommands() {
         final int nThreads = 10;
         final int nCommands = 500000;
+        final double rtFrac = 0;
         final int commandRate = 50000;
         final double dropCommandRate = 0.01;
         final double dropResponseRate = 0.01;
@@ -1169,31 +1193,31 @@ class RobotCommTest {
         StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
         stresser.init();
         transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
-        stresser.submitCommands(nCommands, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
+        stresser.submitCommands(nCommands, rtFrac, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
 
         stresser.close();
         baseLogger.flush();
         baseLogger.endLogging();
     }
 
-    
     // This one is to mess around with parameters when debugging. Usually disabled.
     //@Test
     void stressSubmitAndProcessCommandsWorking() {
-        final int nThreads = 10;
-        final int nCommands = 20000000;
+        final int nThreads = 1;
+        final int nCommands = 1;
+        final double rtFrac = 0;
         final int commandRate = 50000;
-        final double dropCommandRate = 0.001;
-        final double dropResponseRate = 0.001;
-        final int maxComputeTime = 100; // ms
-        final double transportFailureRate = 0.05;
-        final int maxTransportDelay = 200; // ms
+        final double dropCommandRate = 0;
+        final double dropResponseRate = 0;
+        final int maxComputeTime = 0;
+        final double transportFailureRate = 0;
+        final int maxTransportDelay = 0; // ms
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
         StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
         stresser.init();
         transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
-        stresser.submitCommands(nCommands, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
+        stresser.submitCommands(nCommands, rtFrac, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
 
         stresser.close();
         baseLogger.flush();
