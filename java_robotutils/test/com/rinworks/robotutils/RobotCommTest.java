@@ -650,7 +650,7 @@ class RobotCommTest {
                 boolean alwaysDropRESP = rand.nextDouble() < alwaysDropRespRate;
                 MessageRecord mrResp = new MessageRecord(id, alwaysDropRESP);
                 boolean rt = rand.nextDouble() < rtFrac;
-                int timeout = 1000000;
+                int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat arbitrary RT timeout
                 CommandRecord cr = new CommandRecord(mrCmd, mrResp, rt, timeout);
                 int delay = (int) (rand.nextDouble() * submissionTimespan);
                 this.cmdMap.put(id, cr);
@@ -956,7 +956,7 @@ class RobotCommTest {
 
             List<ChannelStatistics> stats = rc.getChannelStatistics();
             for (ChannelStatistics s : stats) {
-                log.info(s.toString());
+                log.info("CHANNEL_STATS", s.toString());
             }
             if (mapSize != 0) {
                 // We will fail this test later, but do some logging here...
@@ -989,9 +989,9 @@ class RobotCommTest {
         }
 
         public void close() {
-            this.testTimer.cancel();
             this.exPool.shutdownNow();
             cleanup();
+            this.testTimer.cancel();           
         }
     }
 
@@ -1093,7 +1093,7 @@ class RobotCommTest {
         StructuredLogger.Filter f2 = (ln, p, cat) -> {
             return ln.equals("test.TRANS") ? false : true;
         };
-        StructuredLogger.Filter f =  f1;
+        StructuredLogger.Filter f =   f1;
 
         StructuredLogger.RawLogger rl = StructuredLogger.createFileRawLogger(logfile, 1000000, f);
         StructuredLogger.RawLogger rl2 = StructuredLogger.createConsoleRawLogger(f);
@@ -1213,18 +1213,42 @@ class RobotCommTest {
         baseLogger.endLogging();
     }
 
+    // Sends purely RT commands.
+    @Test
+    void stressSubmitAndProcessPureRtCommands() {
+        final int nThreads = 1;
+        final int nCommands = 100000;
+        final double rtFrac = 1;
+        final int commandRate = 50000;
+        final double dropCommandRate = 0.01;
+        final double dropResponseRate = 0.01;
+        final int maxComputeTime = 100;
+        final double transportFailureRate = 0.1;
+        final int maxTransportDelay = 200; // ms
+        StructuredLogger baseLogger = initStructuredLogger();
+        TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
+        StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
+        stresser.init();
+        transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
+        stresser.submitCommands(nCommands, rtFrac, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
+
+        stresser.close();
+        baseLogger.flush();
+        baseLogger.endLogging();
+    }
+    
     // This one is to mess around with parameters when debugging. Usually disabled.
     //@Test
     void stressSubmitAndProcessCommandsWorking() {
         final int nThreads = 1;
-        final int nCommands = 1;
+        final int nCommands = 1000000;
         final double rtFrac = 1;
         final int commandRate = 50000;
-        final double dropCommandRate = 0;
-        final double dropResponseRate = 0;
-        final int maxComputeTime = 0;
-        final double transportFailureRate = 0;
-        final int maxTransportDelay = 0; // ms
+        final double dropCommandRate = 0.01;
+        final double dropResponseRate = 0.01;
+        final int maxComputeTime = 10;
+        final double transportFailureRate = 0.1;
+        final int maxTransportDelay = 200; // ms
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
         StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());

@@ -101,7 +101,7 @@ class ChannelImplementation implements Channel {
     ChannelStatistics getStats() {
 
         return new ChannelStatistics(this.name, this.approxSentMessages, this.approxRcvdMessages,
-                this.client.getStats(), this.server.getStats());
+                this.client.getStats(), this.client.getRtStats(), this.server.getStats());
     }
 
     @Override

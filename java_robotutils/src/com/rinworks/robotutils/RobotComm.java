@@ -376,9 +376,10 @@ public class RobotComm implements Closeable {
         public final long sentCMDRESPACKs;
         public final int curCliSentCmdMapSize;
         public final int curCliSentCmdCompletionQueueSize;
-
+ 
         ClientStatistics(long sentCommands, long sentCMDs, long rcvdCMDRESPs, long sentCMDRESPACKs,
-                int curCliSentCmdMapSize, int curCliSentCmdCompletionQueueSize) {
+                int curCliSentCmdMapSize, int curCliSentCmdCompletionQueueSize
+                ) {
             this.sentCommands = sentCommands;
             this.sentCMDs = sentCMDs;
             this.rcvdCMDRESPs = rcvdCMDRESPs;
@@ -411,19 +412,64 @@ public class RobotComm implements Closeable {
         }
     }
 
+    public static class ClientRtStatistics {
+        public final long approxSentRtCommands;
+        public final long approxSendRTCMDs;
+        public final long approxRcvdRTCMDRESPs;
+        public final long approxRtTimeouts; 
+        public final int curCliSentRtCmdMapSize;
+         
+        ClientRtStatistics(
+        long approxSentRtCommands,
+        long approxSendRTCMDs,
+        long approxRcvdRTCMDRESPs,
+        long approxRtTimeouts,
+        int curCliSentRtCmdMapSize) {
+            this.approxSentRtCommands = approxSentRtCommands;
+            this.approxSendRTCMDs = approxSendRTCMDs;
+            this.approxRcvdRTCMDRESPs = approxRcvdRTCMDRESPs;
+            this.approxRtTimeouts = approxRtTimeouts;
+            this.curCliSentRtCmdMapSize = curCliSentRtCmdMapSize;
+        }
+
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            if (approxSentRtCommands > 0) {
+                sb.append(" srtc: " + approxSentRtCommands);
+            }
+            if (approxSendRTCMDs > 0) {
+                sb.append(" srtC: " + approxSendRTCMDs);
+            }
+            if (approxRcvdRTCMDRESPs > 0) {
+                sb.append(" rRTCR: " + approxRcvdRTCMDRESPs);
+            }
+            if (approxRtTimeouts > 0) {
+                sb.append(" sRTTO: " + approxRtTimeouts);
+            }
+            if (curCliSentRtCmdMapSize > 0) {
+                sb.append(" cliRTCMap: " + curCliSentRtCmdMapSize);
+            }
+
+            return sb.toString();
+        }
+    }
+    
     public static class ChannelStatistics {
         public final String channelName;
         public final long sentMessages;
         public final long rcvdMessages;
         public final ClientStatistics clientStats;
+        public final ClientRtStatistics clientRtStats;
         public final ServerStatistics serverStats;
 
         ChannelStatistics(String channelName, long sentMessages, long rcvdMessages, ClientStatistics clientStats,
+                ClientRtStatistics clientRtStats,
                 ServerStatistics serverStats) {
             this.channelName = channelName;
             this.sentMessages = sentMessages;
             this.rcvdMessages = rcvdMessages;
             this.clientStats = clientStats;
+            this.clientRtStats = clientRtStats;
             this.serverStats = serverStats;
         }
 
@@ -438,6 +484,8 @@ public class RobotComm implements Closeable {
             }
             sb.append(" ");
             sb.append(clientStats.toString());
+            sb.append(" ");
+            sb.append(clientRtStats.toString());
             sb.append(" ");
             sb.append(serverStats.toString());
             return sb.toString();

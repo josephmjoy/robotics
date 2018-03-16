@@ -2,6 +2,12 @@
 These are informal notes and TODO lists for the project.
 
 #TODO
+1. RobotComm: Investigate and fix bug in RT stress. If the timeout is set to small enough values to trigger, it produces
+various exceptions. So the client-side timeout of RT commands is broken:
+
+```
+int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat arbitrary RT timeout                
+```
 1. UDP Transport: Implement caching of RemoteNodes so we don't create a new one for each incoming message! In our expected use, we have very few of these.
 1. For roboRIO config file, under "logging": add "trace: [logname1, logname2, loname3]", and 
   set these up during init - basically disable tracing on all logs except the list above. This is
@@ -18,6 +24,15 @@ These are informal notes and TODO lists for the project.
    chance of failed transmission] LOG_SESSION_STARTStructuredLogger: UDP rawlogger should bundle multiple log messages into
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
+
+#March 16A, 2018 General Note - ConcurrentHashMap.forEach and parallelism
+See:
+https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentHashMap.html#forEachValue-long-java.util.function.Consumer-
+I wrongly interpreted the first argument (parallelismThreshold) of 0 to indicate NO parallelism. It is quite the opposite. It means
+aggressive parallelism. So this was causing parallel invocation of forEach in RobotComm.CommClientImplementation.processRtTimeouts,
+which was utterly messing up the ArrayList  unpredictable ways. Fix: specify Long.MAX_VALUE for parallelismThreshold. This ensures NO parallelism, which is what we want.
+
+
 
 #March 14A, 2018 RobotComm perf milestone - successfully send and received 20 million commands!
 

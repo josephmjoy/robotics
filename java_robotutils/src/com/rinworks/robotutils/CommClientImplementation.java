@@ -10,11 +10,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import com.rinworks.robotutils.RobotComm.Address;
+import com.rinworks.robotutils.RobotComm.ClientRtStatistics;
 import com.rinworks.robotutils.RobotComm.ClientStatistics;
 import com.rinworks.robotutils.RobotComm.DatagramTransport;
 import com.rinworks.robotutils.RobotComm.MessageHeader;
 import com.rinworks.robotutils.RobotComm.MessageHeader.CmdStatus;
-import com.rinworks.robotutils.RobotComm.ReceivedCommand;
 import com.rinworks.robotutils.RobotComm.SentCommand;
 import com.rinworks.robotutils.RobotComm.SentCommand.COMMAND_STATUS;
 import com.rinworks.robotutils.RobotComm.DatagramTransport.RemoteNode;
@@ -65,6 +65,7 @@ class CommClientImplementation {
     private volatile long approxRcvdCMDRESPs;
     private volatile long approxSentCMDRESPACKs;
     private volatile long approxRcvdRTCMDRESPs;
+    private volatile long approxRtTimeouts; // #times a response was not received in time or never received.
 
     CommClientImplementation(String channelName, StructuredLogger.Log log) {
         this.log = log;
@@ -286,6 +287,12 @@ class CommClientImplementation {
                 this.approxSentCMDRESPACKs, this.pendingCommands.size(), this.completedCommands.size());
     }
 
+    ClientRtStatistics getRtStats() {
+
+        return new ClientRtStatistics(this.approxSentRtCommands, this.approxSendRTCMDs, this.approxRcvdRTCMDRESPs,
+                this.approxRtTimeouts, this.pendingRtCommands.size());
+    }
+
     public void bindToRemoteNode(RemoteNode node) {
         this.remoteNode = node; // Could override an existing one. That's ok
     }
@@ -420,6 +427,7 @@ class CommClientImplementation {
                 // Alas, we are rejecting this response because the client's timeout
                 // has expired...
                 msgType = "CLI_TIMEDOUT_RTCOMMAND";
+                this.approxRtTimeouts++;
                 sc.cancel(COMMAND_STATUS.STATUS_ERROR_TIMEOUT);
             } else {
                 sc.updateSync(header, msgBody);
@@ -495,15 +503,21 @@ class CommClientImplementation {
         // Also, we run through the entire RT list looking for timeouts each time. This
         // is also wasteful, though harder to fix.
         ArrayList<SentCommandImplementation> timedOut = new ArrayList<>();
-        this.pendingRtCommands.forEachValue(0, sc -> {
+        
+        // See impnotes.md note #March 16A, 2018 - if you specify. say, 0, as the first parameter,
+        // the lambda will be executed in parallel for value, resulting in bad and unpredictable behavior
+        // because the timeoutArrayList is not thread safe.
+        this.pendingRtCommands.forEachValue(Long.MAX_VALUE , sc -> {
             if (sc.timedOut(curTime)) {
                 timedOut.add(sc);
-                log.trace("CLI_RTCMD_TIMEOUT", CMDID_TAG + sc.cmdId);
+                    log.trace("CLI_RTCMD_TIMEOUT", CMDID_TAG + sc.cmdId);
+                
             }
         });
 
         for (SentCommandImplementation sc : timedOut) {
             if (sc.cancel(COMMAND_STATUS.STATUS_ERROR_TIMEOUT)) {
+                this.approxRtTimeouts++;
                 log.trace("CLI_TIMEDOUT_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
                 sc.rtCallback.accept(sc);
             }
@@ -511,7 +525,7 @@ class CommClientImplementation {
     }
 
     private void handleRetransmits(long curTime) {
-        this.pendingCommands.forEachValue(0, sc -> {
+        this.pendingCommands.forEachValue(Long.MAX_VALUE, sc -> {
             if (sc.shouldResend(curTime)) {
                 sendCMD(sc);
             }
