@@ -307,11 +307,13 @@ class RobotCommTest {
             final MessageRecord respRecord;
             protected SentCommand sentCmd;
             final boolean rt; // real time.
+            final int timeout;
 
-            CommandRecord(MessageRecord cmdRecord, MessageRecord respRecord, boolean rt) {
+            CommandRecord(MessageRecord cmdRecord, MessageRecord respRecord, boolean rt, int timeout) {
                 this.cmdRecord = cmdRecord;
                 this.respRecord = respRecord;
                 this.rt = rt;
+                this.timeout = timeout;
             }
         }
 
@@ -417,6 +419,14 @@ class RobotCommTest {
                 double alwaysDropRespRate, int maxComputeTime) {
             final int BATCH_SPAN_MILLIS = 1000;
             this.ch.startReceivingCommands();
+
+            // Server: the handler for incoming RT commands is right here! RT commands are
+            // never polled-for.
+            // NON-RT commands are polled for in submitCommandBatch.
+            this.ch.startReceivingRtCommands(rcvdCmd -> {
+                deferredRespond(rcvdCmd, maxComputeTime);
+            });
+
             try {
                 int commandsLeft = nCommands;
                 while (commandsLeft >= submissionRate) {
@@ -640,13 +650,14 @@ class RobotCommTest {
                 boolean alwaysDropRESP = rand.nextDouble() < alwaysDropRespRate;
                 MessageRecord mrResp = new MessageRecord(id, alwaysDropRESP);
                 boolean rt = rand.nextDouble() < rtFrac;
-                ;
-                CommandRecord cr = new CommandRecord(mrCmd, mrResp, rt);
+                int timeout = 1000000;
+                CommandRecord cr = new CommandRecord(mrCmd, mrResp, rt, timeout);
                 int delay = (int) (rand.nextDouble() * submissionTimespan);
                 this.cmdMap.put(id, cr);
                 if (alwaysDropCMD) {
                     this.droppedCommands.add(cr);
                 }
+
                 this.testTimer.schedule(new TimerTask() {
 
                     @Override
@@ -655,12 +666,11 @@ class RobotCommTest {
                             try {
                                 hfLog.trace("Sending cmd with id " + id);
                                 RobotComm.SentCommand sc;
-                                int timeout = 10000;
                                 if (rt) {
                                     // Real time command: completion is notified by the calling
                                     // the supplied callback.
                                     sc = StressTester.this.ch.submitRtCommand(mrCmd.msgType, mrCmd.msgBody, timeout,
-                                            sc1 -> StressTester.this.processCompletedCommand(sc1));
+                                            sc1 -> StressTester.this.processCompletedRtCommand(sc1, cr));
 
                                 } else {
                                     sc = StressTester.this.ch.submitCommand(mrCmd.msgType, mrCmd.msgBody, true);
@@ -775,35 +785,7 @@ class RobotCommTest {
                     RobotComm.ReceivedCommand rCmd = ch.pollReceivedCommand();
                     // hfLog.trace("SRV - Polling recv queue. rCmd: " + rCmd);
                     while (rCmd != null) {
-                        final RobotComm.ReceivedCommand rCmd1 = rCmd;
-                        int computeDelay = (int) (rand.nextDouble() * maxComputeTime);
-                        CommandRecord cr = StressTester.this.processReceivedCommand(rCmd);
-
-                        if (cr == null) {
-                            rCmd = ch.pollReceivedCommand();
-                            continue; // ************************************* CONTINUE
-                        }
-                        // Schedule a timer task to send the computed response.
-                        StressTester.this.testTimer.schedule(new TimerTask() {
-
-                            @Override
-                            public void run() {
-                                StressTester.this.exPool.submit(() -> {
-                                    try {
-                                        rCmd1.respond(cr.respRecord.msgType, cr.respRecord.msgBody);
-                                        if (cr.respRecord.alwaysDrop) {
-                                            // We *know* that this response will never make it back to
-                                            // the cline.t
-                                            StressTester.this.droppedResponses.add(cr);
-                                        }
-
-                                    } catch (Exception e) {
-                                        logException(e, "#t87d");
-                                    }
-
-                                });
-                            }
-                        }, computeDelay);
+                        deferredRespond(rCmd, maxComputeTime);
                         rCmd = ch.pollReceivedCommand();
                     }
                 } catch (Exception e) {
@@ -812,7 +794,36 @@ class RobotCommTest {
             });
         }
 
-        private CommandRecord processReceivedCommand(ReceivedCommand rCmd) {
+        private void deferredRespond(RobotComm.ReceivedCommand rCmd, int maxComputeTime) {
+            int computeDelay = (int) (rand.nextDouble() * maxComputeTime);
+            CommandRecord cr = StressTester.this.validateReceivedCommand(rCmd);
+            if (cr == null) {
+                return; // ******* EARLY RETURN
+            }
+            // Schedule a timer task to send the computed response.
+            StressTester.this.testTimer.schedule(new TimerTask() {
+
+                @Override
+                public void run() {
+                    StressTester.this.exPool.submit(() -> {
+                        try {
+                            rCmd.respond(cr.respRecord.msgType, cr.respRecord.msgBody);
+                            if (cr.respRecord.alwaysDrop) {
+                                // We *know* that this response will never make it back to
+                                // the cline.t
+                                StressTester.this.droppedResponses.add(cr);
+                            }
+
+                        } catch (Exception e) {
+                            logException(e, "#t87d");
+                        }
+
+                    });
+                }
+            }, computeDelay);
+        }
+
+        private CommandRecord validateReceivedCommand(ReceivedCommand rCmd) {
             // Extract id from message.
             // Look it up - we had better find it in our map.
             // Verify that we expect to get it - (not alwaysDrop)
@@ -828,8 +839,7 @@ class RobotCommTest {
                 long id = Long.parseUnsignedLong(strId, 16);
                 hfLog.trace("Received command with id " + id);
                 cr = this.cmdMap.get(id);
-                // log.loggedAssert(cr != null, "Srv: Incoming UNEXPECTED/FORGOTTEN cmcdId: " +
-                // id);
+                log.loggedAssert(cr != null, "Srv: Incoming UNEXPECTED/FORGOTTEN cmcdId: " + id);
                 if (cr != null) {
                     log.loggedAssert(cr.cmdRecord.msgType.equals(msgType), "cmd msgType mismatch #C1IH");
                     // assertEquals(mr.msgBody, msgBody);
@@ -863,13 +873,6 @@ class RobotCommTest {
                 return; // ************ EARLY RETURN
             }
 
-            if (cCmd.status() == COMMAND_STATUS.STATUS_ERROR_TIMEOUT) {
-                hfLog.trace("Command TIMED OUT with CmdId " + cCmd.cmdId());
-                // TODO: we should verify that this error is reasonable, given
-                // the timeout specified when the command was submitted.
-                return; // ************ EARLY RETURN
-            }
-
             String msgType = cCmd.respType();
             String msgBody = cCmd.response();
             int nli = msgBody.indexOf('\n');
@@ -892,6 +895,16 @@ class RobotCommTest {
             } catch (Exception e) {
                 logException(e, "#ptzb");
             }
+        }
+
+        protected void processCompletedRtCommand(SentCommand cCmd, CommandRecord cr) {
+            if (cCmd.status() == COMMAND_STATUS.STATUS_ERROR_TIMEOUT) {
+                hfLog.trace("Command TIMED OUT with CmdId " + cCmd.cmdId());
+                log.loggedAssert(cCmd.submittedTime() + cr.timeout <= System.currentTimeMillis(), "premature timeout");
+                this.cmdMap.remove(cr.cmdRecord.id, cr); // Should be O(log(n)), so it's ok all in all.
+                return; // ************ EARLY RETURN
+            }
+            processCompletedCommand(cCmd);
         }
 
         private void pruneDroppedCommands(ConcurrentLinkedQueue<CommandRecord> queue) {
@@ -1080,7 +1093,7 @@ class RobotCommTest {
         StructuredLogger.Filter f2 = (ln, p, cat) -> {
             return ln.equals("test.TRANS") ? false : true;
         };
-        StructuredLogger.Filter f = f1;
+        StructuredLogger.Filter f =  f1;
 
         StructuredLogger.RawLogger rl = StructuredLogger.createFileRawLogger(logfile, 1000000, f);
         StructuredLogger.RawLogger rl2 = StructuredLogger.createConsoleRawLogger(f);

@@ -239,11 +239,11 @@ class ChannelImplementation implements Channel {
 
     @Override
     public void startReceivingRtCommands(Consumer<ReceivedCommand> incoming) {
-        this.client.startReceivingRtCommands(incoming);
+        this.server.startReceivingRtCommands(incoming);
     }
 
     @Override
     public void stopReceivingRtCommands() {
-        this.client.stopReceivingRtCommands();
+        this.server.stopReceivingRtCommands();
     }
 }

@@ -241,6 +241,7 @@ class CommServerImplementation {
         ReceivedCommandImplementation rc = new ReceivedCommandImplementation(cmdId, header.msgType, msgBody, rn, ch,
                 true); // true==RT
         log.trace("SRV_RTCMD_RECVD", CMDTYPE_TAG + rc.cmdType + " cmdId: " + rc.cmdId);
+        rc.status = MessageHeader.CmdStatus.STATUS_PENDING_COMPUTING;
         this.incomingRtCommandHandler.accept(rc);
     }
 

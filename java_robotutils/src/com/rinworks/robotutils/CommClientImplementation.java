@@ -177,8 +177,8 @@ class CommClientImplementation {
             boolean ret = false;
             // Remove all tracking of this command.
             // If necessary post to completion queue.
-
-            if (pendingCommands.remove(this.cmdId, this)) {
+            ConcurrentHashMap<Long, SentCommandImplementation> map = this.rt ? pendingRtCommands : pendingCommands;
+            if (map.remove(this.cmdId, this)) {
                 synchronized (this) {
                     // if we removed this from the pending queue, it MUST be pending.
                     log.loggedAssert(pending(), "Removed cmd from pending queue but it's status is not pending!");
@@ -495,7 +495,7 @@ class CommClientImplementation {
         // Also, we run through the entire RT list looking for timeouts each time. This
         // is also wasteful, though harder to fix.
         ArrayList<SentCommandImplementation> timedOut = new ArrayList<>();
-        this.pendingCommands.forEachValue(0, sc -> {
+        this.pendingRtCommands.forEachValue(0, sc -> {
             if (sc.timedOut(curTime)) {
                 timedOut.add(sc);
                 log.trace("CLI_RTCMD_TIMEOUT", CMDID_TAG + sc.cmdId);
@@ -532,14 +532,4 @@ class CommClientImplementation {
 
         return ret;
     }
-
-    public void startReceivingRtCommands(Consumer<ReceivedCommand> incoming) {
-        // TODO Auto-generated method stub
-
-    }
-
-    public void stopReceivingRtCommands() {
-        // TODO Auto-generated method stub
-    }
-
 }
