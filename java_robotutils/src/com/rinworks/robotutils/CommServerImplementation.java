@@ -39,8 +39,12 @@ class CommServerImplementation {
     private boolean closed = false; // TODO proper init
     private volatile long approxRcvdCommands;
     private volatile long approxRcvdCMDs;
+    private volatile long approxRcvdRTCMDs;
     private volatile long approxSentCMDRESPs;
+    private volatile long approxSentRTCMDRESPs;
     private volatile long approxRcvdCMDRESPACKs;
+
+    private Consumer<ReceivedCommand> incomingRtCommandHandler;
 
     private class ReceivedCommandImplementation implements ReceivedCommand {
         private static final String SCRUBBED_VALUE = "EXPIRED";
@@ -49,7 +53,7 @@ class CommServerImplementation {
         private final DatagramTransport.RemoteNode rn;
         private long recvdTimeStamp;
         private final Channel ch;
-
+        private final boolean rt; // True iff this is a real-time message.
         // These are not final because we may scrub them when they are no longer needed.
         // See the scrub method.
         private String cmdBody;
@@ -61,13 +65,15 @@ class CommServerImplementation {
         private boolean zombie; // True for expired commands - just want the cmdID to reject duplicate
                                 // command submissions.
 
-        public ReceivedCommandImplementation(long cmdId, String msgType, String msgBody, RemoteNode rn, Channel ch) {
+        public ReceivedCommandImplementation(long cmdId, String msgType, String msgBody, RemoteNode rn, Channel ch,
+                boolean rt) {
             this.cmdId = cmdId;
             this.cmdBody = msgBody;
             this.cmdType = msgType;
             this.rn = rn;
             this.recvdTimeStamp = System.currentTimeMillis();
             this.ch = ch;
+            this.rt = rt;
             this.status = MessageHeader.CmdStatus.STATUS_PENDING_QUEUED;
         }
 
@@ -201,7 +207,8 @@ class CommServerImplementation {
 
         // We haven't seen this request below, let's make a new one.
 
-        ReceivedCommandImplementation rcNew = new ReceivedCommandImplementation(cmdId, header.msgType, msgBody, rn, ch);
+        ReceivedCommandImplementation rcNew = new ReceivedCommandImplementation(cmdId, header.msgType, msgBody, rn, ch,
+                false); // false == NOT RT
         ReceivedCommandImplementation rcPrev = this.cmdMap.putIfAbsent(cmdId, rcNew);
         if (rcPrev != null) {
             // In the tiny amount of time before the previous check, another CMD for this
@@ -224,6 +231,19 @@ class CommServerImplementation {
         }
     }
 
+    public void handleReceivedRTCMD(MessageHeader header, String msgBody, RemoteNode rn) {
+        if (this.closed || this.incomingRtCommandHandler == null) {
+            return; // ************* EARLY RETURN
+        }
+        this.approxRcvdRTCMDs++;
+        long cmdId = header.cmdId;
+        // let's make a new one.
+        ReceivedCommandImplementation rc = new ReceivedCommandImplementation(cmdId, header.msgType, msgBody, rn, ch,
+                true); // true==RT
+        log.trace("SRV_RTCMD_RECVD", CMDTYPE_TAG + rc.cmdType + " cmdId: " + rc.cmdId);
+        this.incomingRtCommandHandler.accept(rc);
+    }
+
     // The server command has been completed locally (i.e., on the server)
     void handleComputedResponse(ReceivedCommandImplementation rc, String respType, String resp) {
 
@@ -244,8 +264,12 @@ class CommServerImplementation {
         }
 
         if (fNotify) {
-            this.completedCmds.add(rc);
-            sendCMDRESP(rc);
+            if (rc.rt) {
+                sendRTCMDRESP(rc);
+            } else {
+                this.completedCmds.add(rc);
+                sendCMDRESP(rc);
+            }
         }
 
     }
@@ -342,6 +366,13 @@ class CommServerImplementation {
         this.approxSentCMDRESPs++;
         rc.rn.send(header.serialize(rc.respBody));
     }
+    
+    private void sendRTCMDRESP(ReceivedCommandImplementation rc) {
+        MessageHeader header = new MessageHeader(MessageHeader.DgType.DG_RTCMDRESP, this.ch.name(), rc.respType, rc.cmdId,
+                rc.status);
+        this.approxSentRTCMDRESPs++;
+        rc.rn.send(header.serialize(rc.respBody));
+    }
 
     private void rejectCmd(MessageHeader headerIn, RemoteNode rn) {
         MessageHeader header = new MessageHeader(MessageHeader.DgType.DG_CMDRESP, this.ch.name(), null, headerIn.cmdId,
@@ -351,17 +382,11 @@ class CommServerImplementation {
     }
 
     public void startReceivingRtCommands(Consumer<ReceivedCommand> incoming) {
-        // TODO Auto-generated method stub
-
+        this.incomingRtCommandHandler = incoming;
     }
 
     public void stopReceivingRtCommands() {
-        // TODO Auto-generated method stub
-    }
-
-    public void handleReceivedRTCMD(MessageHeader header, String msgBody, RemoteNode rn) {
-        // TODO Auto-generated method stub
-
+        this.incomingRtCommandHandler = null;
     }
 
 }
