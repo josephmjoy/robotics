@@ -659,11 +659,11 @@ class RobotCommTest {
                                 if (rt) {
                                     // Real time command: completion is notified by the calling
                                     // the supplied callback.
-                                    sc = StressTester.this.ch.sendRtCommand(mrCmd.msgType, mrCmd.msgBody, timeout,
+                                    sc = StressTester.this.ch.submitRtCommand(mrCmd.msgType, mrCmd.msgBody, timeout,
                                             sc1 -> StressTester.this.processCompletedCommand(sc1));
 
                                 } else {
-                                    sc = StressTester.this.ch.sendCommand(mrCmd.msgType, mrCmd.msgBody, true);
+                                    sc = StressTester.this.ch.submitCommand(mrCmd.msgType, mrCmd.msgBody, true);
                                 }
                                 cr.sentCmd = sc;
 
@@ -1033,7 +1033,7 @@ class RobotCommTest {
         final String TEST_RESP = "TESTRESP1";
         final String TEST_RESPTYPE = "TESTRESPTYPE";
         ch.startReceivingCommands();
-        RobotComm.SentCommand cmd = ch.sendCommand(TEST_CMDTYPE, TEST_COMMAND, true); // true == queue completion
+        RobotComm.SentCommand cmd = ch.submitCommand(TEST_CMDTYPE, TEST_COMMAND, true); // true == queue completion
         baseLogger.flush();
         assertEquals(TEST_CMDTYPE, cmd.cmdType());
         assertEquals(TEST_COMMAND, cmd.command());
@@ -1205,7 +1205,7 @@ class RobotCommTest {
     void stressSubmitAndProcessCommandsWorking() {
         final int nThreads = 1;
         final int nCommands = 1;
-        final double rtFrac = 0;
+        final double rtFrac = 1;
         final int commandRate = 50000;
         final double dropCommandRate = 0;
         final double dropResponseRate = 0;

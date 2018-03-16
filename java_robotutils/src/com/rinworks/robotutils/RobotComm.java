@@ -115,11 +115,11 @@ public class RobotComm implements Closeable {
         void sendMessage(String msgType, String message, Address addr);
 
         // Commands: Client-side
-        SentCommand sendCommand(String cmdType, String command, boolean addToCompletionQueue);
+        SentCommand submitCommand(String cmdType, String command, boolean addToCompletionQueue);
 
         SentCommand pollCompletedCommand();
 
-        SentCommand sendRtCommand(String cmdType, String command, int timeout, Consumer<SentCommand> onComplete);
+        SentCommand submitRtCommand(String cmdType, String command, int timeout, Consumer<SentCommand> onComplete);
 
         // Commands: Server-side
         void startReceivingCommands();
@@ -248,17 +248,17 @@ public class RobotComm implements Closeable {
 
                     String msgBody = msg.substring(headerLength + 1);
                     if (header.dgType == MessageHeader.DgType.DG_RTCMD) {
-                        ch.server.handleReceivedRtCommand(header, msgBody, rn);
+                        ch.server.handleReceivedRTCMD(header, msgBody, rn);
                     } else if (header.dgType == MessageHeader.DgType.DG_RTCMDRESP) {
-                        ch.server.handleReceivedCommandRtResponse(header, msgBody, rn);
+                        ch.client.handleReceivedRTCMDRESP(header, msgBody, rn);
                     } else if (header.dgType == MessageHeader.DgType.DG_MSG) {
                         ch.handleReceivedMessage(header, msgBody, rn);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMD) {
-                        ch.server.handleReceivedCommand(header, msgBody, rn);
+                        ch.server.handleReceivedCMD(header, msgBody, rn);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMDRESP) {
-                        ch.client.handleReceivedCommandResponse(header, msgBody, rn);
+                        ch.client.handleReceivedCMDRESP(header, msgBody, rn);
                     } else if (header.dgType == MessageHeader.DgType.DG_CMDRESPACK) {
-                        ch.server.handleReceivedCommandResponseAck(header, msgBody, rn);
+                        ch.server.handleReceivedCMDRESPACK(header, msgBody, rn);
                     } else {
                         assert false; // we have already validated the message, so shouldn't get here.
                     }

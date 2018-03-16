@@ -7,6 +7,7 @@ import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 import com.rinworks.robotutils.RobotComm.Address;
 import com.rinworks.robotutils.RobotComm.Channel;
@@ -19,7 +20,6 @@ import com.rinworks.robotutils.RobotComm.ServerStatistics;
 
 class CommServerImplementation {
 
-    private final DatagramTransport transport;
     private final StructuredLogger.Log log;
     private final Channel ch;
     private final ConcurrentHashMap<Long, ReceivedCommandImplementation> cmdMap;
@@ -127,8 +127,7 @@ class CommServerImplementation {
         }
     }
 
-    CommServerImplementation(Channel ch, DatagramTransport transport, StructuredLogger.Log log) {
-        this.transport = transport;
+    CommServerImplementation(Channel ch, StructuredLogger.Log log) {
         this.log = log;
         this.ch = ch;
 
@@ -171,7 +170,7 @@ class CommServerImplementation {
     }
 
     // Server gets this
-    void handleReceivedCommand(MessageHeader header, String msgBody, RemoteNode rn) {
+    void handleReceivedCMD(MessageHeader header, String msgBody, RemoteNode rn) {
         if (this.closed) {
             return; // ************* EARLY RETURN
         }
@@ -196,7 +195,7 @@ class CommServerImplementation {
                 // about in the past.
                 rejectCmd(header, rn);
             }
-            sendCmdResp(rc);
+            sendCMDRESP(rc);
             return; // ********* EARLY RETURN
         }
 
@@ -246,13 +245,13 @@ class CommServerImplementation {
 
         if (fNotify) {
             this.completedCmds.add(rc);
-            sendCmdResp(rc);
+            sendCMDRESP(rc);
         }
 
     }
 
     // Server gets this
-    void handleReceivedCommandResponseAck(MessageHeader header, String msgBody, RemoteNode rn) {
+    void handleReceivedCMDRESPACK(MessageHeader header, String msgBody, RemoteNode rn) {
         this.approxRcvdCMDRESPACKs++;
         try {
             String[] parts = msgBody.split("\n");
@@ -337,7 +336,7 @@ class CommServerImplementation {
         });
     }
 
-    private void sendCmdResp(ReceivedCommandImplementation rc) {
+    private void sendCMDRESP(ReceivedCommandImplementation rc) {
         MessageHeader header = new MessageHeader(MessageHeader.DgType.DG_CMDRESP, this.ch.name(), rc.respType, rc.cmdId,
                 rc.status);
         this.approxSentCMDRESPs++;
@@ -351,12 +350,16 @@ class CommServerImplementation {
         rn.send(header.serialize(""));
     }
 
-    public void handleReceivedRtCommand(MessageHeader header, String msgBody, RemoteNode rn) {
+    public void startReceivingRtCommands(Consumer<ReceivedCommand> incoming) {
         // TODO Auto-generated method stub
 
     }
 
-    public void handleReceivedCommandRtResponse(MessageHeader header, String msgBody, RemoteNode rn) {
+    public void stopReceivingRtCommands() {
+        // TODO Auto-generated method stub
+    }
+
+    public void handleReceivedRTCMD(MessageHeader header, String msgBody, RemoteNode rn) {
         // TODO Auto-generated method stub
 
     }

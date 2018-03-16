@@ -90,8 +90,8 @@ class ChannelImplementation implements Channel {
         this.transport = transport;
         this.log = log;
         this.remoteNode = null;
-        this.client = new CommClientImplementation(channelName, transport, log);
-        this.server = new CommServerImplementation(this, transport, log);
+        this.client = new CommClientImplementation(channelName, log);
+        this.server = new CommServerImplementation(this, log);
 
         // For receiving messages
         this.pendingRecvMessages = new ConcurrentLinkedQueue<>();
@@ -157,8 +157,13 @@ class ChannelImplementation implements Channel {
     }
 
     @Override
-    public SentCommand sendCommand(String cmdType, String command, boolean addToCompletionQueue) {
-        return this.client.sendCommand(cmdType, command, addToCompletionQueue);
+    public SentCommand submitCommand(String cmdType, String command, boolean addToCompletionQueue) {
+        return this.client.submitCommand(cmdType, command, addToCompletionQueue);
+    }
+
+    @Override
+    public SentCommand submitRtCommand(String cmdType, String command, int timeout, Consumer<SentCommand> onComplete) {
+        return this.client.submitRtCommand(cmdType, command, timeout, onComplete);
     }
 
     @Override
@@ -230,11 +235,6 @@ class ChannelImplementation implements Channel {
         }
 
         return ret;
-    }
-
-    @Override
-    public SentCommand sendRtCommand(String cmdType, String command, int timeout, Consumer<SentCommand> onComplete) {
-        return this.client.sendRtCommand(cmdType, command, timeout, onComplete);
     }
 
     @Override

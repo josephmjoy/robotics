@@ -2,6 +2,7 @@
 // Created by Joseph M. Joy (https://github.com/josephmjoy)
 package com.rinworks.robotutils;
 
+import java.util.ArrayList;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -15,10 +16,10 @@ import com.rinworks.robotutils.RobotComm.MessageHeader;
 import com.rinworks.robotutils.RobotComm.MessageHeader.CmdStatus;
 import com.rinworks.robotutils.RobotComm.ReceivedCommand;
 import com.rinworks.robotutils.RobotComm.SentCommand;
+import com.rinworks.robotutils.RobotComm.SentCommand.COMMAND_STATUS;
 import com.rinworks.robotutils.RobotComm.DatagramTransport.RemoteNode;
 
 class CommClientImplementation {
-    private final DatagramTransport transport;
     private final StructuredLogger.Log log;
     private final String channelName;
     private DatagramTransport.RemoteNode remoteNode;
@@ -29,6 +30,7 @@ class CommClientImplementation {
     private final AtomicLong nextCmdId;
 
     private final ConcurrentHashMap<Long, SentCommandImplementation> pendingCommands;
+    private final ConcurrentHashMap<Long, SentCommandImplementation> pendingRtCommands;
     private final ConcurrentLinkedQueue<SentCommandImplementation> completedCommands;
     private final Object ackLock; // To serialize access to the next three
     private long[] ackBuffer; // Buffer of command ids of unsent CMDRESPACKs
@@ -51,18 +53,20 @@ class CommClientImplementation {
 
     // Logging strings used more than once.
     private static final String CMDTYPE_TAG = "cmdType: ";
-
+    private static final String CMDID_TAG = "cmdId: ";
     private boolean closed;
 
     // These are purely for statistics reporting
     // They are not incremented atomically, so are approximate
     private volatile long approxSentCommands;
     private volatile long approxSendCMDs;
+    private volatile long approxSentRtCommands;
+    private volatile long approxSendRTCMDs;
     private volatile long approxRcvdCMDRESPs;
     private volatile long approxSentCMDRESPACKs;
+    private volatile long approxRcvdRTCMDRESPs;
 
-    CommClientImplementation(String channelName, DatagramTransport transport, StructuredLogger.Log log) {
-        this.transport = transport;
+    CommClientImplementation(String channelName, StructuredLogger.Log log) {
         this.log = log;
         this.rand = new Random();
         this.channelName = channelName;
@@ -70,6 +74,7 @@ class CommClientImplementation {
         this.nextCmdId = new AtomicLong(rand.nextLong());
 
         this.pendingCommands = new ConcurrentHashMap<>();
+        this.pendingRtCommands = new ConcurrentHashMap<>();
         this.completedCommands = new ConcurrentLinkedQueue<>();
         this.ackLock = new Object();
 
@@ -83,6 +88,9 @@ class CommClientImplementation {
         private final String cmd;
         private final long submittedTime;
         private final boolean addToCompletionQueue;
+        private final Consumer<SentCommand> rtCallback;
+        private final boolean rt; // RT == real time
+        private final int timeout; // RT-only
         private COMMAND_STATUS stat;
         private String resp;
         private String respType;
@@ -95,6 +103,23 @@ class CommClientImplementation {
             this.cmdType = cmdType;
             this.cmd = cmd;
             this.addToCompletionQueue = addToCompletionQueue;
+            this.rtCallback = null;
+            this.rt = false;
+            this.timeout = Integer.MAX_VALUE;
+            this.submittedTime = System.currentTimeMillis();
+            this.stat = COMMAND_STATUS.STATUS_SUBMITTED;
+            this.transmitCount = 0;
+            this.nextRetransmitTime = Long.MAX_VALUE;
+        }
+
+        SentCommandImplementation(long cmdId, String cmdType, String cmd, int timeout, Consumer<SentCommand> callback) {
+            this.cmdId = cmdId;
+            this.cmdType = cmdType;
+            this.cmd = cmd;
+            this.timeout = timeout;
+            this.addToCompletionQueue = false;
+            this.rt = true;
+            this.rtCallback = callback;
             this.submittedTime = System.currentTimeMillis();
             this.stat = COMMAND_STATUS.STATUS_SUBMITTED;
             this.transmitCount = 0;
@@ -143,7 +168,13 @@ class CommClientImplementation {
 
         @Override
         public void cancel() {
+            cancel(COMMAND_STATUS.STATUS_CLIENT_CANCELED);
+        }
+
+        // Return's true if this command was pulled from the pending and cancelled.
+        private boolean cancel(COMMAND_STATUS status) {
             boolean notifyCompletion = false;
+            boolean ret = false;
             // Remove all tracking of this command.
             // If necessary post to completion queue.
 
@@ -151,21 +182,22 @@ class CommClientImplementation {
                 synchronized (this) {
                     // if we removed this from the pending queue, it MUST be pending.
                     log.loggedAssert(pending(), "Removed cmd from pending queue but it's status is not pending!");
-                    this.stat = COMMAND_STATUS.STATUS_CLIENT_CANCELED;
+                    this.stat = status;
                     if (this.addToCompletionQueue) {
                         notifyCompletion = true;
                     }
+                    ret = true;
                 }
             }
 
             if (notifyCompletion) {
                 CommClientImplementation.this.completedCommands.add(this);
             }
-
+            return ret;
         }
 
-        // LK ==> caller should ensure locking
-        public void updateLK(MessageHeader header, String respBody) {
+        // *Sync ==> method is synchronized on the object
+        public synchronized void updateSync(MessageHeader header, String respBody) {
             if (localStatusOrder() < remoteStatusOrder(header)) {
                 this.stat = mapRemoteStatus(header.status);
                 if (this.stat == COMMAND_STATUS.STATUS_COMPLETED) {
@@ -242,6 +274,10 @@ class CommClientImplementation {
             int delay = minValue + rand.nextInt(expValue);
             return Math.max(minValue, Math.min(maxValue, delay));
         }
+
+        public boolean timedOut(long curTime) {
+            return this.submittedTime + this.timeout < curTime;
+        }
     }
 
     ClientStatistics getStats() {
@@ -264,20 +300,36 @@ class CommClientImplementation {
         this.closed = true;
     }
 
-    public SentCommand sendCommand(String cmdType, String command, boolean addToCompletionQueue) {
+    public SentCommand submitCommand(String cmdType, String command, boolean addToCompletionQueue) {
 
         if (this.closed) {
             throw new IllegalStateException("Channel is closed");
         }
 
-        DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
-
-        if (validSendParams(cmdType, rn, "DISCARDING_SEND_COMMAND")) {
+        if (validSendParams(cmdType, this.remoteNode, "DISCARDING_SEND_COMMAND")) {
             long cmdId = newCommandId();
             SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command, addToCompletionQueue);
             this.pendingCommands.put(cmdId, sc);
             this.approxSentCommands++;
-            sendCmd(sc);
+            sendCMD(sc);
+            return sc;
+        } else {
+            throw new IllegalArgumentException();
+        }
+    }
+
+    public SentCommand submitRtCommand(String cmdType, String command, int timeout, Consumer<SentCommand> onComplete) {
+
+        if (this.closed) {
+            throw new IllegalStateException("Channel is closed");
+        }
+
+        if (validSendParams(cmdType, this.remoteNode, "DISCARDING_SEND_RT_COMMAND")) {
+            long cmdId = newCommandId();
+            SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command, timeout, onComplete);
+            this.pendingRtCommands.put(cmdId, sc);
+            this.approxSentRtCommands++;
+            sendRTCMD(sc);
             return sc;
         } else {
             throw new IllegalArgumentException();
@@ -299,7 +351,7 @@ class CommClientImplementation {
         return nextCmdId.getAndIncrement();
     }
 
-    private void sendCmd(SentCommandImplementation sc) {
+    private void sendCMD(SentCommandImplementation sc) {
         MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMD, channelName, sc.cmdType, sc.cmdId,
                 MessageHeader.CmdStatus.STATUS_NOVALUE);
         this.approxSendCMDs++;
@@ -307,8 +359,15 @@ class CommClientImplementation {
         this.remoteNode.send(hdr.serialize(sc.cmd));
     }
 
+    private void sendRTCMD(SentCommandImplementation sc) {
+        MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_RTCMD, channelName, sc.cmdType, sc.cmdId,
+                MessageHeader.CmdStatus.STATUS_NOVALUE);
+        this.approxSendRTCMDs++;
+        this.remoteNode.send(hdr.serialize(sc.cmd));
+    }
+
     // Client gets this
-    void handleReceivedCommandResponse(MessageHeader header, String msgBody, RemoteNode rn) {
+    void handleReceivedCMDRESP(MessageHeader header, String msgBody, RemoteNode rn) {
 
         if (this.closed) {
             return;
@@ -318,9 +377,7 @@ class CommClientImplementation {
         if (header.isPending()) {
             SentCommandImplementation sc = this.pendingCommands.get(header.cmdId);
             if (sc != null) {
-                synchronized (sc) {
-                    sc.updateLK(header, "");
-                }
+                sc.updateSync(header, "");
             }
             // We don't respond to CMDRESP messages with pending status.
             return; // ************ EARLY RETURN *************
@@ -330,13 +387,7 @@ class CommClientImplementation {
 
         SentCommandImplementation sc = this.pendingCommands.remove(header.cmdId);
         if (sc != null) {
-            synchronized (sc) {
-                // If it *was* in the pending sent queue, it *must* be pending.
-                assert sc.pending();
-                sc.updateLK(header, msgBody);
-                assert !sc.pending();
-            }
-
+            sc.updateSync(header, msgBody);
             if (sc.addToCompletionQueue) {
                 this.completedCommands.add(sc);
             }
@@ -347,6 +398,37 @@ class CommClientImplementation {
         if (header.status != CmdStatus.STATUS_REJECTED) {
             queueCmdRespAck(header, rn);
         }
+    }
+
+    public void handleReceivedRTCMDRESP(MessageHeader header, String msgBody, RemoteNode rn) {
+        if (this.closed) {
+            return;
+        }
+
+        this.approxRcvdRTCMDRESPs++;
+        if (header.isPending()) {
+            // We should never get RTCMDRESP messages with pending status.
+            return; // ************ EARLY RETURN *************
+        }
+
+        assert !header.isPending();
+
+        SentCommandImplementation sc = this.pendingRtCommands.remove(header.cmdId);
+        if (sc != null) {
+            String msgType = "CLI_COMPLETED_RTCOMMAND";
+            if (sc.timedOut(System.currentTimeMillis())) {
+                // Alas, we are rejecting this response because the client's timeout
+                // has expired...
+                msgType = "CLI_TIMEDOUT_RTCOMMAND";
+                sc.cancel(COMMAND_STATUS.STATUS_ERROR_TIMEOUT);
+            } else {
+                sc.updateSync(header, msgBody);
+            }
+            log.trace(msgType, CMDTYPE_TAG + sc.cmdType());
+            sc.rtCallback.accept(sc);
+        }
+
+        // We never ACK a completed RT response
     }
 
     private void queueCmdRespAck(MessageHeader header, RemoteNode rn) {
@@ -377,11 +459,11 @@ class CommClientImplementation {
             // server. Perhaps we should validate this, but for now
             // we assume that given that command IDs are random 64-bit numbers
             // we can spam the server with bogus ids without too much disruption.
-            sendCmdRespAcks(bufferToSend);
+            sendCMDRESPACK(bufferToSend);
         }
     }
 
-    private void sendCmdRespAcks(long[] bufferToSend) {
+    private void sendCMDRESPACK(long[] bufferToSend) {
         MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_CMDRESPACK, channelName,
                 MessageHeader.STR_MSGTYPE_IDLIST, 0, MessageHeader.CmdStatus.STATUS_NOVALUE);
         this.approxSentCMDRESPACKs++;
@@ -402,13 +484,36 @@ class CommClientImplementation {
         long curTime = System.currentTimeMillis();
         if (!this.closed) {
             handleRetransmits(curTime);
+            processRtTimeouts(curTime);
+        }
+    }
+
+    // Timeout pending rt commands that have expired.
+    private void processRtTimeouts(long curTime) {
+        // TODO: we create a new array list whether there any rt commands or not. This
+        // is wasteful.
+        // Also, we run through the entire RT list looking for timeouts each time. This
+        // is also wasteful, though harder to fix.
+        ArrayList<SentCommandImplementation> timedOut = new ArrayList<>();
+        this.pendingCommands.forEachValue(0, sc -> {
+            if (sc.timedOut(curTime)) {
+                timedOut.add(sc);
+                log.trace("CLI_RTCMD_TIMEOUT", CMDID_TAG + sc.cmdId);
+            }
+        });
+
+        for (SentCommandImplementation sc : timedOut) {
+            if (sc.cancel(COMMAND_STATUS.STATUS_ERROR_TIMEOUT)) {
+                log.trace("CLI_TIMEDOUT_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
+                sc.rtCallback.accept(sc);
+            }
         }
     }
 
     private void handleRetransmits(long curTime) {
         this.pendingCommands.forEachValue(0, sc -> {
             if (sc.shouldResend(curTime)) {
-                sendCmd(sc);
+                sendCMD(sc);
             }
         });
     }
@@ -426,11 +531,6 @@ class CommClientImplementation {
         }
 
         return ret;
-    }
-
-    public SentCommand sendRtCommand(String cmdType, String command, int timeout, Object onC) {
-        // TODO Auto-generated method stub
-        return null;
     }
 
     public void startReceivingRtCommands(Consumer<ReceivedCommand> incoming) {
