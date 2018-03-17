@@ -25,6 +25,11 @@ int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat a
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#March 17A, 2018 Robot Comm Impementation Milestone 2M RT commands sent
+With today's checkin, all stress tests pass with no known issues. Both RT and non-RT commands work, including together, and with transport delays and timeouts, and computation delays and timeouts. RT per-command timeouts seem to be working, i.e., honoring their timeouts, including timing out even if the response arrives, but arrives too late. 
+As part of stress testing, successfully submitted 2 million RT commands at 50K per second - this is expected
+as RT commands are less overhead than regular, because no retransmits are done.
+
 #March 16A, 2018 General Note - ConcurrentHashMap.forEach and parallelism
 See:
 https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentHashMap.html#forEachValue-long-java.util.function.Consumer-

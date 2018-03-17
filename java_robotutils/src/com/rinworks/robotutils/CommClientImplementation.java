@@ -169,32 +169,48 @@ class CommClientImplementation {
 
         @Override
         public void cancel() {
-            cancel(COMMAND_STATUS.STATUS_CLIENT_CANCELED);
-        }
 
-        // Return's true if this command was pulled from the pending and cancelled.
-        private boolean cancel(COMMAND_STATUS status) {
+            if (this.rt) {
+                rtCancel(COMMAND_STATUS.STATUS_CLIENT_CANCELED, false); // false: remove from map
+                return; // ***** EARLY RETURN
+            }
+
+            // non-RT case...
             boolean notifyCompletion = false;
-            boolean ret = false;
             // Remove all tracking of this command.
             // If necessary post to completion queue.
-            ConcurrentHashMap<Long, SentCommandImplementation> map = this.rt ? pendingRtCommands : pendingCommands;
-            if (map.remove(this.cmdId, this)) {
+            if (pendingCommands.remove(this.cmdId, this)) {
                 synchronized (this) {
                     // if we removed this from the pending queue, it MUST be pending.
                     log.loggedAssert(pending(), "Removed cmd from pending queue but it's status is not pending!");
-                    this.stat = status;
+                    this.stat = COMMAND_STATUS.STATUS_CLIENT_CANCELED;
                     if (this.addToCompletionQueue) {
                         notifyCompletion = true;
                     }
-                    ret = true;
                 }
             }
 
             if (notifyCompletion) {
                 CommClientImplementation.this.completedCommands.add(this);
             }
-            return ret;
+        }
+
+        private void rtCancel(COMMAND_STATUS status, boolean alreadyRemoved) {
+            // Set state to the appropriate final state and if necessary notify client.
+            // If necessary post to completion queue.
+            if (alreadyRemoved || pendingRtCommands.remove(this.cmdId, this)) {
+                boolean notify = false;
+                synchronized (this) {
+                    // if we removed this from the pending queue, it MUST be pending.
+                    log.loggedAssert(pending(), "Removed cmd from pending queue but it's status is not pending!");
+                    this.stat = status;
+                    assert !this.pending();
+                    notify = true;
+                }
+                if (notify) {
+                    this.rtCallback.accept(this);
+                }
+            }
         }
 
         // *Sync ==> method is synchronized on the object
@@ -422,17 +438,17 @@ class CommClientImplementation {
 
         SentCommandImplementation sc = this.pendingRtCommands.remove(header.cmdId);
         if (sc != null) {
-            String msgType = "CLI_COMPLETED_RTCOMMAND";
             if (sc.timedOut(System.currentTimeMillis())) {
                 // Alas, we are rejecting this response because the client's timeout
                 // has expired...
-                msgType = "CLI_TIMEDOUT_RTCOMMAND";
                 this.approxRtTimeouts++;
-                sc.cancel(COMMAND_STATUS.STATUS_ERROR_TIMEOUT);
+                log.trace("CLI_TIMEDOUT_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
+                sc.rtCancel(COMMAND_STATUS.STATUS_ERROR_TIMEOUT, true);
+                return; // *********** EARLY RETURN
             } else {
                 sc.updateSync(header, msgBody);
             }
-            log.trace(msgType, CMDTYPE_TAG + sc.cmdType());
+            log.trace("CLI_COMPLETED_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
             sc.rtCallback.accept(sc);
         }
 
@@ -503,24 +519,24 @@ class CommClientImplementation {
         // Also, we run through the entire RT list looking for timeouts each time. This
         // is also wasteful, though harder to fix.
         ArrayList<SentCommandImplementation> timedOut = new ArrayList<>();
-        
-        // See impnotes.md note #March 16A, 2018 - if you specify. say, 0, as the first parameter,
-        // the lambda will be executed in parallel for value, resulting in bad and unpredictable behavior
+
+        // See impnotes.md note #March 16A, 2018 - if you specify. say, 0, as the first
+        // parameter,
+        // the lambda will be executed in parallel for value, resulting in bad and
+        // unpredictable behavior
         // because the timeoutArrayList is not thread safe.
-        this.pendingRtCommands.forEachValue(Long.MAX_VALUE , sc -> {
+        this.pendingRtCommands.forEachValue(Long.MAX_VALUE, sc -> {
             if (sc.timedOut(curTime)) {
                 timedOut.add(sc);
-                    log.trace("CLI_RTCMD_TIMEOUT", CMDID_TAG + sc.cmdId);
-                
+                log.trace("CLI_RTCMD_TIMEOUT", CMDID_TAG + sc.cmdId);
+
             }
         });
 
         for (SentCommandImplementation sc : timedOut) {
-            if (sc.cancel(COMMAND_STATUS.STATUS_ERROR_TIMEOUT)) {
-                this.approxRtTimeouts++;
-                log.trace("CLI_TIMEDOUT_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
-                sc.rtCallback.accept(sc);
-            }
+            sc.rtCancel(COMMAND_STATUS.STATUS_ERROR_TIMEOUT, false); // false == remove from map
+            this.approxRtTimeouts++;
+            log.trace("CLI_TIMEDOUT_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
         }
     }
 

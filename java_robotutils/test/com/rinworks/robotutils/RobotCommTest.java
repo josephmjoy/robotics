@@ -650,13 +650,10 @@ class RobotCommTest {
                 boolean alwaysDropRESP = rand.nextDouble() < alwaysDropRespRate;
                 MessageRecord mrResp = new MessageRecord(id, alwaysDropRESP);
                 boolean rt = rand.nextDouble() < rtFrac;
-                int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat arbitrary RT timeout
+                int timeout = (int) (rand.nextDouble() * 1000); // Somewhat arbitrary RT timeout
                 CommandRecord cr = new CommandRecord(mrCmd, mrResp, rt, timeout);
                 int delay = (int) (rand.nextDouble() * submissionTimespan);
                 this.cmdMap.put(id, cr);
-                if (alwaysDropCMD) {
-                    this.droppedCommands.add(cr);
-                }
 
                 this.testTimer.schedule(new TimerTask() {
 
@@ -677,8 +674,9 @@ class RobotCommTest {
                                 }
                                 cr.sentCmd = sc;
 
-                                if (mrCmd.alwaysDrop) {
+                                if (mrCmd.alwaysDrop && !cr.rt) {
                                     // We *know* that this command will never make it to the server.
+                                    // If it is RT, however, it will timeout.
                                     droppedCommands.add(cr);
                                 }
                             } catch (Exception e) {
@@ -808,9 +806,9 @@ class RobotCommTest {
                     StressTester.this.exPool.submit(() -> {
                         try {
                             rCmd.respond(cr.respRecord.msgType, cr.respRecord.msgBody);
-                            if (cr.respRecord.alwaysDrop) {
+                            if (cr.respRecord.alwaysDrop && !cr.rt) {
                                 // We *know* that this response will never make it back to
-                                // the cline.t
+                                // the client. If it is an RT message the client will get a timeout.
                                 StressTester.this.droppedResponses.add(cr);
                             }
 
@@ -839,7 +837,10 @@ class RobotCommTest {
                 long id = Long.parseUnsignedLong(strId, 16);
                 hfLog.trace("Received command with id " + id);
                 cr = this.cmdMap.get(id);
-                log.loggedAssert(cr != null, "Srv: Incoming UNEXPECTED/FORGOTTEN cmcdId: " + id);
+                // We comment this out because we can hit this because a delayed command can arrive
+                // after the client-side has timed-out or completed the command.
+                // log.loggedAssert(cr != null, "Srv: Incoming UNEXPECTED/FORGOTTEN cmcdId: " +
+                // id);
                 if (cr != null) {
                     log.loggedAssert(cr.cmdRecord.msgType.equals(msgType), "cmd msgType mismatch #C1IH");
                     // assertEquals(mr.msgBody, msgBody);
@@ -875,6 +876,10 @@ class RobotCommTest {
 
             String msgType = cCmd.respType();
             String msgBody = cCmd.response();
+            if (msgBody == null) {
+                System.err.println("MSGBODY IS NULL!!!!");
+                ;
+            }
             int nli = msgBody.indexOf('\n');
             String strId = nli < 0 ? msgBody : msgBody.substring(0, nli);
             CommandRecord cr = null;
@@ -991,7 +996,7 @@ class RobotCommTest {
         public void close() {
             this.exPool.shutdownNow();
             cleanup();
-            this.testTimer.cancel();           
+            this.testTimer.cancel();
         }
     }
 
@@ -1086,14 +1091,14 @@ class RobotCommTest {
     }
 
     StructuredLogger initStructuredLogger() {
-        File logfile = new File("C:\\Users\\jmj\\Documents\\robotics\\temp\\log.txt");
+        File logfile = new File("G:\\KUMBH\\Projects\\ihs\\robotics\\temp\\log.txt");
         StructuredLogger.Filter f1 = (ln, p, cat) -> {
             return ln.equals("test.TRANS") || ln.equals("test.HFLOG") ? false : true;
         };
         StructuredLogger.Filter f2 = (ln, p, cat) -> {
             return ln.equals("test.TRANS") ? false : true;
         };
-        StructuredLogger.Filter f =   f1;
+        StructuredLogger.Filter f = f1;
 
         StructuredLogger.RawLogger rl = StructuredLogger.createFileRawLogger(logfile, 1000000, f);
         StructuredLogger.RawLogger rl2 = StructuredLogger.createConsoleRawLogger(f);
@@ -1191,9 +1196,9 @@ class RobotCommTest {
     }
 
     @Test
-    void stressSubmitAndProcessCommands() {
+    void stressSubmitAndProcessNonRtCommands() {
         final int nThreads = 10;
-        final int nCommands = 500000;
+        final int nCommands = 100000;
         final double rtFrac = 0;
         final int commandRate = 50000;
         final double dropCommandRate = 0.01;
@@ -1215,14 +1220,38 @@ class RobotCommTest {
 
     // Sends purely RT commands.
     @Test
-    void stressSubmitAndProcessPureRtCommands() {
-        final int nThreads = 1;
+    void stressSubmitAndProcessOnlyRtCommands() {
+        final int nThreads = 10;
         final int nCommands = 100000;
         final double rtFrac = 1;
         final int commandRate = 50000;
         final double dropCommandRate = 0.01;
         final double dropResponseRate = 0.01;
-        final int maxComputeTime = 100;
+        final int maxComputeTime = 100; // ms
+        final double transportFailureRate = 0.1;
+        final int maxTransportDelay = 200; // ms
+        StructuredLogger baseLogger = initStructuredLogger();
+        TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
+        StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
+        stresser.init();
+        transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
+        stresser.submitCommands(nCommands, rtFrac, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
+
+        stresser.close();
+        baseLogger.flush();
+        baseLogger.endLogging();
+    }
+
+    // Sends purely RT commands.
+    //@Test
+    void stressSubmitAndProcessAllCommands() {
+        final int nThreads = 10;
+        final int nCommands = 100000;
+        final double rtFrac = 0.5;
+        final int commandRate = 50000;
+        final double dropCommandRate = 0.01;
+        final double dropResponseRate = 0.01;
+        final int maxComputeTime = 100; // ms
         final double transportFailureRate = 0.1;
         final int maxTransportDelay = 200; // ms
         StructuredLogger baseLogger = initStructuredLogger();
@@ -1240,22 +1269,27 @@ class RobotCommTest {
     // This one is to mess around with parameters when debugging. Usually disabled.
     //@Test
     void stressSubmitAndProcessCommandsWorking() {
-        final int nThreads = 1;
-        final int nCommands = 1000000;
+        final int nThreads = 10;
+        final int nCommands = 2000000;
         final double rtFrac = 1;
         final int commandRate = 50000;
         final double dropCommandRate = 0.01;
         final double dropResponseRate = 0.01;
-        final int maxComputeTime = 10;
-        final double transportFailureRate = 0.1;
-        final int maxTransportDelay = 200; // ms
+        final int maxComputeTime = 0;
+        final double transportFailureRate = 0.05;
+        final int maxTransportDelay = 50; // ms
         StructuredLogger baseLogger = initStructuredLogger();
         TestTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
         StressTester stresser = new StressTester(nThreads, transport, baseLogger.defaultLog());
         stresser.init();
         transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
         stresser.submitCommands(nCommands, rtFrac, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
-
+        try {
+            Thread.sleep(0);
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
         stresser.close();
         baseLogger.flush();
         baseLogger.endLogging();
