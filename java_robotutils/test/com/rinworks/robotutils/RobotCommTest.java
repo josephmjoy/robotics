@@ -870,7 +870,6 @@ class RobotCommTest {
 
             if (cCmd.status() == COMMAND_STATUS.STATUS_REMOTE_REJECTED) {
                 hfLog.trace("Command REJECTED with CmdId " + cCmd.cmdId());
-                // TODO: We should probably try to prune these??
                 return; // ************ EARLY RETURN
             }
 
@@ -1284,12 +1283,6 @@ class RobotCommTest {
         stresser.init();
         transport.setTransportCharacteristics(transportFailureRate, maxTransportDelay);
         stresser.submitCommands(nCommands, rtFrac, commandRate, dropCommandRate, dropResponseRate, maxComputeTime);
-        try {
-            Thread.sleep(0);
-        } catch (InterruptedException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
         stresser.close();
         baseLogger.flush();
         baseLogger.endLogging();
