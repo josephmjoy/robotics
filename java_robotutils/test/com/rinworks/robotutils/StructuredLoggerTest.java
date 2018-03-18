@@ -250,7 +250,7 @@ class StructuredLoggerTest {
         File logFile = File.createTempFile("testLog", ".txt");
 
         int maxSize = 1000000;
-        StructuredLogger.RawLogger rawLogger = StructuredLogger.createFileRawLogger(logFile, maxSize, null);
+        StructuredLogger.RawLogger rawLogger = LoggerUtils.createFileRawLogger(logFile, maxSize, null);
 
         // Then we create a structured logger. Typically there is just one of these per
         // system.
@@ -294,12 +294,12 @@ class StructuredLoggerTest {
         }
         System.out.println("Log directory: " + logDir.getAbsolutePath());
         final int MAX_SIZE = 1000000; // Maximum size the logfile is allowed to grow.
-        StructuredLogger.RawLogger rawFileLogger = StructuredLogger.createFileRawLogger(logDir, "myLog", ".log",
+        StructuredLogger.RawLogger rawFileLogger = LoggerUtils.createFileRawLogger(logDir, "myLog", ".log",
                 MAX_SIZE, null);
 
         // Let's create a second raw logger. This one logs only Priority 0 or 1 messages
         // to a UDP port 31899 on the local host.
-        StructuredLogger.RawLogger rawUDPLogger = StructuredLogger.createUDPRawLogger("localhost", 41899,
+        StructuredLogger.RawLogger rawUDPLogger = LoggerUtils.createUDPRawLogger("localhost", 41899,
                 new StructuredLogger.Filter() {
                     @Override
                     public boolean filter(String logName, int pri, String cat) {
@@ -478,21 +478,21 @@ class StructuredLoggerTest {
         path.deleteOnExit(); // So tests don't leave stuff lying around.
 
         System.out.println("FileLogging: Logging to specific file " + path.getAbsolutePath());
-        StructuredLogger.RawLogger rawLog = StructuredLogger.createFileRawLogger(path, 10000, null);
+        StructuredLogger.RawLogger rawLog = LoggerUtils.createFileRawLogger(path, 10000, null);
         rawLog.beginSession("123");
         rawLog.write("Test raw message 1");
         rawLog.flush();
         rawLog.close();
 
         // Let's do it a 2nd time.
-        StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileRawLogger(path, 10000, null);
+        StructuredLogger.RawLogger rawLog2 = LoggerUtils.createFileRawLogger(path, 10000, null);
         rawLog2.beginSession("123");
         rawLog2.write("Test raw message 2");
         rawLog2.flush();
         rawLog2.close();
 
         // And a 3rd time, specififying a tiny max size.
-        StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileRawLogger(path, 10, null);
+        StructuredLogger.RawLogger rawLog3 = LoggerUtils.createFileRawLogger(path, 10, null);
         System.out.println("TEST: Ignore subsequent error message - it is expected");
         rawLog3.beginSession("123");
         rawLog3.write("Test raw message 3");
@@ -521,7 +521,7 @@ class StructuredLoggerTest {
         dirPath.listFiles();
 
         System.out.println("FileLogging: Per-session logs are under " + dirPath.getAbsolutePath());
-        StructuredLogger.RawLogger rawLog = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000,
+        StructuredLogger.RawLogger rawLog = LoggerUtils.createFileRawLogger(dirPath, "testLog", ".txt", 1000,
                 null);
         rawLog.beginSession("123");
         rawLog.write("Test raw message 1");
@@ -530,7 +530,7 @@ class StructuredLoggerTest {
 
         // Let's attempt to create the same exact session again - it should fail because
         // the file exists...
-        StructuredLogger.RawLogger rawLog2 = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 1000,
+        StructuredLogger.RawLogger rawLog2 = LoggerUtils.createFileRawLogger(dirPath, "testLog", ".txt", 1000,
                 null);
         System.out.println("TEST: Ignore subsequent error message - it is expected");
         rawLog2.beginSession("123");
@@ -541,7 +541,7 @@ class StructuredLoggerTest {
         // Let's attempt to create a session with a really small max capacity - should
         // fail!
         System.out.println("FileLogging: Per-session logs are under " + dirPath.getAbsolutePath());
-        StructuredLogger.RawLogger rawLog3 = StructuredLogger.createFileRawLogger(dirPath, "testLog", ".txt", 10, null);
+        StructuredLogger.RawLogger rawLog3 = LoggerUtils.createFileRawLogger(dirPath, "testLog", ".txt", 10, null);
         rawLog3.beginSession("456");
         System.out.println("TEST: Ignore subsequent error message - it is expected");
         rawLog3.write("Test raw message 1");
@@ -554,7 +554,7 @@ class StructuredLoggerTest {
     void testUDPRawLogger() throws SocketException, InterruptedException {
         final int PORT = 9876;
         ConcurrentLinkedQueue<String> receivedMessageQueue = new ConcurrentLinkedQueue<String>();
-        StructuredLogger.RawLogger rawLog = StructuredLogger.createUDPRawLogger("localhost", PORT, null); // false==don't
+        StructuredLogger.RawLogger rawLog = LoggerUtils.createUDPRawLogger("localhost", PORT, null); // false==don't
                                                                                                           // append
         DatagramSocket serverSocket = new DatagramSocket(PORT);
 

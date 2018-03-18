@@ -1099,8 +1099,8 @@ class RobotCommTest {
         };
         StructuredLogger.Filter f = f1;
 
-        StructuredLogger.RawLogger rl = StructuredLogger.createFileRawLogger(logfile, 1000000, f);
-        StructuredLogger.RawLogger rl2 = StructuredLogger.createConsoleRawLogger(f);
+        StructuredLogger.RawLogger rl = LoggerUtils.createFileRawLogger(logfile, 1000000, f);
+        StructuredLogger.RawLogger rl2 = LoggerUtils.createConsoleRawLogger(f);
         StructuredLogger.RawLogger[] rls = { rl, rl2 };
         StructuredLogger sl = new StructuredLogger(rls, "test");
         sl.setAsseretionFailureHandler((s) -> {

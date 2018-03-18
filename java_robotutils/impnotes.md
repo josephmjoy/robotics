@@ -25,6 +25,9 @@ int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat a
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#March 17B, 2018 Structured Logger - moved utility functions to LoggerUtils
+Per impnotes.md #March 2B, 2018 General Design Note.
+
 #March 17A, 2018 Robot Comm Impementation Milestone 2M RT commands sent
 With today's checkin, all stress tests pass with no known issues. Both RT and non-RT commands work, including together, and with transport delays and timeouts, and computation delays and timeouts. RT per-command timeouts seem to be working, i.e., honoring their timeouts, including timing out even if the response arrives, but arrives too late. 
 As part of stress testing, successfully submitted 2 million RT commands at 50K per second - this is expected
@@ -70,6 +73,7 @@ The pruning algorithm is:
 1. Run through the completed queue once, counting both zombified objects and completed objects.
 2. Deside how many zombified objects and completed objects need to be delted.
 3. Run through the queue a second time, deleting zombified objects or zombifying completed objects.
+
 #March 2B, 2018 General Design Note - Refactoring into more classes
 - Implementations are getting unwieldy
 - Helper methods are folded into core classes
