@@ -88,6 +88,7 @@ class CommClientImplementation {
         private final String cmdType;
         private final String cmd;
         private final long submittedTime;
+        private final Object clientContext;
         private final boolean addToCompletionQueue;
         private final Consumer<SentCommand> rtCallback;
         private final boolean rt; // RT == real time
@@ -99,10 +100,11 @@ class CommClientImplementation {
         private long nextRetransmitTime;
         private int transmitCount;
 
-        SentCommandImplementation(long cmdId, String cmdType, String cmd, boolean addToCompletionQueue) {
+        SentCommandImplementation(long cmdId, String cmdType, String cmd, Object clientContext, boolean addToCompletionQueue) {
             this.cmdId = cmdId;
             this.cmdType = cmdType;
             this.cmd = cmd;
+            this.clientContext = clientContext;
             this.addToCompletionQueue = addToCompletionQueue;
             this.rtCallback = null;
             this.rt = false;
@@ -113,11 +115,13 @@ class CommClientImplementation {
             this.nextRetransmitTime = Long.MAX_VALUE;
         }
 
+        // Real time command constructor
         SentCommandImplementation(long cmdId, String cmdType, String cmd, int timeout, Consumer<SentCommand> callback) {
             this.cmdId = cmdId;
             this.cmdType = cmdType;
             this.cmd = cmd;
             this.timeout = timeout;
+            this.clientContext = null; // No client context for RT commands.
             this.addToCompletionQueue = false;
             this.rt = true;
             this.rtCallback = callback;
@@ -125,6 +129,11 @@ class CommClientImplementation {
             this.stat = COMMAND_STATUS.STATUS_SUBMITTED;
             this.transmitCount = 0;
             this.nextRetransmitTime = Long.MAX_VALUE;
+        }
+        
+        @Override
+        public Object clientContext() {
+            return this.clientContext;
         }
 
         @Override
@@ -323,7 +332,7 @@ class CommClientImplementation {
         this.closed = true;
     }
 
-    public SentCommand submitCommand(String cmdType, String command, boolean addToCompletionQueue) {
+    public SentCommand submitCommand(String cmdType, String command, Object clientContext, boolean addToCompletionQueue) {
 
         if (this.closed) {
             throw new IllegalStateException("Channel is closed");
@@ -331,7 +340,7 @@ class CommClientImplementation {
 
         if (validSendParams(cmdType, this.remoteNode, "DISCARDING_SEND_COMMAND")) {
             long cmdId = newCommandId();
-            SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command, addToCompletionQueue);
+            SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command, clientContext, addToCompletionQueue);
             this.pendingCommands.put(cmdId, sc);
             this.approxSentCommands++;
             sendCMD(sc);

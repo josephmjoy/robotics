@@ -48,6 +48,8 @@ public class RobotComm implements Closeable {
         String cmdType();
 
         String command();
+        
+        public Object clientContext();
 
         long submittedTime();
 
@@ -114,7 +116,7 @@ public class RobotComm implements Closeable {
         void sendMessage(String msgType, String message, Address addr);
 
         // Commands: Client-side
-        SentCommand submitCommand(String cmdType, String command, boolean addToCompletionQueue);
+        SentCommand submitCommand(String cmdType, String command, Object clientContext, boolean addToCompletionQueue);
 
         SentCommand pollCompletedCommand();
 

@@ -25,6 +25,10 @@ int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat a
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#March 21B, 2018 RobotComm Design Note - Adding client context to SentCommand
+Currently, when retrieving a SentCommand by calling pollCompletedCommands, the client does not have a direct
+connection to any client-context specific to this command. So the proposal is to add an Object clientContext to submitCommand. This client context can be retrieved by querying the sentCommand.
+
 #March 21A, 2018 RobotComm Design Note - Simplifying DatagramTransport
 The sole consumer of DatagramTransport is RobotCom itself, and it does not support multiple listeners. Therefore we should make DatagramTansport instances also pre-bould to a particular local address - details would be specific to the implementation (like UdpDatagramTransport). With this simplification, the Listener sub-interface goes away, and instead we have DatagramTransport methods startListening and stopListening.
 

@@ -87,14 +87,13 @@ class RobotCommTest {
             return new MyAddress(address);
         }
 
-        
         @Override
         public void startListening(BiConsumer<String, RemoteNode> handler) {
             // Listen should only be called once.
             assert this.clientRecv == null;
             this.clientRecv = handler;
         }
-        
+
         @Override
         public void stopListening() {
             assert this.clientRecv != null;
@@ -194,7 +193,7 @@ class RobotCommTest {
                 return; // ************ EARLY RETURN
             }
             if (noDelays()) {
-                receiveData(msg);                
+                receiveData(msg);
             } else {
                 int delay = (int) (rand.nextDouble() * this.maxDelay);
                 transportTimer.schedule(new TimerTask() {
@@ -637,7 +636,8 @@ class RobotCommTest {
                                             sc1 -> StressTester.this.processCompletedRtCommand(sc1, cr));
 
                                 } else {
-                                    sc = StressTester.this.ch.submitCommand(mrCmd.msgType, mrCmd.msgBody, true);
+                                    sc = StressTester.this.ch.submitCommand(mrCmd.msgType, mrCmd.msgBody, cr, true);
+                                    log.loggedAssert(sc.clientContext() == cr, "Invalid clientContext value");
                                 }
                                 cr.sentCmd = sc;
 
@@ -804,7 +804,8 @@ class RobotCommTest {
                 long id = Long.parseUnsignedLong(strId, 16);
                 hfLog.trace("Received command with id " + id);
                 cr = this.cmdMap.get(id);
-                // We comment this out because we can hit this because a delayed command can arrive
+                // We comment this out because we can hit this because a delayed command can
+                // arrive
                 // after the client-side has timed-out or completed the command.
                 // log.loggedAssert(cr != null, "Srv: Incoming UNEXPECTED/FORGOTTEN cmcdId: " +
                 // id);
@@ -855,6 +856,7 @@ class RobotCommTest {
                 cr = this.cmdMap.get(id);
                 // assertNotEquals(mr, null);
                 log.loggedAssert(cr != null, "cr == null");
+                log.loggedAssert(cr.rt || cr == cCmd.clientContext(), "Invalid clientContext");
                 // assertEquals(mr.msgType, msgType);
                 log.loggedAssert(cr.respRecord.msgType.equals(msgType), "resp msgType mismatch #8K45");
                 // assertEquals(mr.msgBody, msgBody);
@@ -1017,7 +1019,10 @@ class RobotCommTest {
         final String TEST_RESP = "TESTRESP1";
         final String TEST_RESPTYPE = "TESTRESPTYPE";
         ch.startReceivingCommands();
-        RobotComm.SentCommand cmd = ch.submitCommand(TEST_CMDTYPE, TEST_COMMAND, true); // true == queue completion
+        Object ctxt = new Object(); // client context.
+        RobotComm.SentCommand cmd = ch.submitCommand(TEST_CMDTYPE, TEST_COMMAND, ctxt, true); // true == queue
+                                                                                              // completion
+        assertEquals(ctxt, cmd.clientContext());
         baseLogger.flush();
         assertEquals(TEST_CMDTYPE, cmd.cmdType());
         assertEquals(TEST_COMMAND, cmd.command());
@@ -1042,8 +1047,10 @@ class RobotCommTest {
         }
         assertEquals(TEST_RESPTYPE, cmd.respType());
         assertEquals(TEST_RESP, cmd.response());
+        // We should also pick it up from the completion queue.
         RobotComm.SentCommand cmd1 = ch.pollCompletedCommand();
-        assertEquals(cmd, cmd1); // We should also pick it up from the completion queue.
+        assertEquals(cmd, cmd1);
+        assertEquals(ctxt, cmd.clientContext()); // We checked it at start, but let's check again anyway.
 
         for (RobotComm.ChannelStatistics stats : rc.getChannelStatistics()) {
             System.out.println(stats);
@@ -1209,7 +1216,7 @@ class RobotCommTest {
     }
 
     // Sends purely RT commands.
-    //@Test
+    // @Test
     void stressSubmitAndProcessAllCommands() {
         final int nThreads = 10;
         final int nCommands = 100000;
@@ -1231,9 +1238,9 @@ class RobotCommTest {
         baseLogger.flush();
         baseLogger.endLogging();
     }
-    
+
     // This one is to mess around with parameters when debugging. Usually disabled.
-    //@Test
+    // @Test
     void stressSubmitAndProcessCommandsWorking() {
         final int nThreads = 10;
         final int nCommands = 2000000;

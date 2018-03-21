@@ -157,8 +157,8 @@ class ChannelImplementation implements Channel {
     }
 
     @Override
-    public SentCommand submitCommand(String cmdType, String command, boolean addToCompletionQueue) {
-        return this.client.submitCommand(cmdType, command, addToCompletionQueue);
+    public SentCommand submitCommand(String cmdType, String command, Object clientContext, boolean addToCompletionQueue) {
+        return this.client.submitCommand(cmdType, command, clientContext, addToCompletionQueue);
     }
 
     @Override
