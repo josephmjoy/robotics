@@ -16,7 +16,7 @@ import java.util.function.BiConsumer;
 
 import org.junit.jupiter.api.Test;
 
-import com.rinworks.robotutils.RobotComm.Address;
+import com.rinworks.robotutils.RobotComm.DatagramTransport.Address;
 import com.rinworks.robotutils.RobotComm.ChannelStatistics;
 import com.rinworks.robotutils.RobotComm.ReceivedCommand;
 import com.rinworks.robotutils.RobotComm.ReceivedMessage;
@@ -43,7 +43,7 @@ class RobotCommTest {
         private boolean closed = false;
         private double failureRate = 0;
         private int maxDelay = 0;
-        private MyListener curListener = null; // we support only one listener at a time.
+        private BiConsumer<String, RemoteNode> clientRecv; // we support only one listener at a time.
 
         private class MyAddress implements Address {
             final String addr;
@@ -87,56 +87,28 @@ class RobotCommTest {
             return new MyAddress(address);
         }
 
-        private class MyListener implements Listener {
-
-            final private Address addr;
-            final MyRemoteNode loopbackNode;
-            BiConsumer<String, RemoteNode> clientRecv;
-            boolean closed;
-
-            MyListener(Address a) {
-                this.addr = a;
-                this.loopbackNode = new MyRemoteNode(addr);
-                this.closed = false;
-
-                // Test transport supports only one listener at a time.
-                assert (TestTransport.this.curListener == null);
-                TestTransport.this.curListener = this;
-            }
-
-            @Override
-            public void listen(BiConsumer<String, RemoteNode> handler) {
-                // Listen should only be called once.
-                assert this.clientRecv == null;
-                this.clientRecv = handler;
-            }
-
-            @Override
-            public Address getAddress() {
-                return this.addr;
-            }
-
-            @Override
-            public void close() {
-                this.closed = true;
-                this.clientRecv = null;
-            }
-
-            void receiveData(String s) {
-                if (this.clientRecv != null) {
-                    TestTransport.this.numRecvs.incrementAndGet();
-                    log.trace("TRANSPORT RECV:\n[" + s + "]\n");
-                    this.clientRecv.accept(s, loopbackNode);
-                } else {
-                    TestTransport.this.numForceDrops.incrementAndGet();
-                }
-            }
-
+        
+        @Override
+        public void startListening(BiConsumer<String, RemoteNode> handler) {
+            // Listen should only be called once.
+            assert this.clientRecv == null;
+            this.clientRecv = handler;
+        }
+        
+        @Override
+        public void stopListening() {
+            assert this.clientRecv != null;
+            this.clientRecv = null;
         }
 
-        @Override
-        public Listener newListener(Address localAddress) {
-            return new MyListener(localAddress);
+        void receiveData(String s) {
+            if (this.clientRecv != null) {
+                this.numRecvs.incrementAndGet();
+                log.trace("TRANSPORT RECV:\n[" + s + "]\n");
+                this.clientRecv.accept(s, loopbackNode);
+            } else {
+                this.numForceDrops.incrementAndGet();
+            }
         }
 
         private class MyRemoteNode implements RemoteNode {
@@ -222,21 +194,16 @@ class RobotCommTest {
                 return; // ************ EARLY RETURN
             }
             if (noDelays()) {
-                if (this.curListener != null) {
-                    // Send right now!
-                    this.curListener.receiveData(msg);
-                } else {
-                    TestTransport.this.numForceDrops.incrementAndGet();
-                }
+                receiveData(msg);                
             } else {
                 int delay = (int) (rand.nextDouble() * this.maxDelay);
                 transportTimer.schedule(new TimerTask() {
 
                     @Override
                     public void run() {
-                        if (!TestTransport.this.closed && TestTransport.this.curListener != null) {
+                        if (!TestTransport.this.closed) {
                             // Delayed send
-                            TestTransport.this.curListener.receiveData(msg);
+                            receiveData(msg);
                         } else {
                             TestTransport.this.numForceDrops.incrementAndGet();
                         }
@@ -332,7 +299,7 @@ class RobotCommTest {
             StructuredLogger.Log rcLog = log.newLog("RCOMM");
             rcLog.pauseTracing();
             this.rc = new RobotComm(transport, rcLog);
-            RobotComm.Address addr = rc.resolveAddress("localhost");
+            RobotComm.DatagramTransport.Address addr = rc.resolveAddress("localhost");
             this.ch = rc.newChannel("testChannel");
             this.ch.bindToRemoteNode(addr);
             this.rc.startListening();
@@ -1005,7 +972,7 @@ class RobotCommTest {
         RobotComm.DatagramTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
 
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
-        RobotComm.Address addr = rc.resolveAddress("localhost");
+        RobotComm.DatagramTransport.Address addr = rc.resolveAddress("localhost");
         RobotComm.Channel ch = rc.newChannel("testChannel");
         ch.bindToRemoteNode(addr);
         rc.startListening();
@@ -1040,7 +1007,7 @@ class RobotCommTest {
         RobotComm.DatagramTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
 
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
-        RobotComm.Address addr = rc.resolveAddress("localhost");
+        RobotComm.DatagramTransport.Address addr = rc.resolveAddress("localhost");
         RobotComm.Channel ch = rc.newChannel("testChannel");
         ch.bindToRemoteNode(addr);
         rc.startListening();

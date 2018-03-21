@@ -6,7 +6,7 @@ package com.rinworks.robotutils;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
-import com.rinworks.robotutils.RobotComm.Address;
+import com.rinworks.robotutils.RobotComm.DatagramTransport.Address;
 import com.rinworks.robotutils.RobotComm.Channel;
 import com.rinworks.robotutils.RobotComm.ChannelStatistics;
 import com.rinworks.robotutils.RobotComm.DatagramTransport;

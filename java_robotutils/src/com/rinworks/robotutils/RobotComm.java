@@ -14,6 +14,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import com.rinworks.robotutils.RobotComm.DatagramTransport.Address;
 import com.rinworks.robotutils.RobotComm.DatagramTransport.RemoteNode;
 import com.rinworks.robotutils.RobotComm.MessageHeader.CmdStatus;
 import com.rinworks.robotutils.RobotComm.SentCommand.COMMAND_STATUS;
@@ -31,11 +32,9 @@ public class RobotComm implements Closeable {
     private final Object listenLock;
     private final Random rand; // Used for generating command Ids and random delays
 
-    private volatile DatagramTransport.Listener listener;
+    private volatile boolean listening;
 
-    interface Address {
-        String stringRepresentation();
-    }
+
 
     interface SentCommand {
         enum COMMAND_STATUS {
@@ -136,6 +135,10 @@ public class RobotComm implements Closeable {
     }
 
     public interface DatagramTransport extends Closeable {
+        
+        interface Address {
+            String stringRepresentation();
+        }
 
         interface RemoteNode {
             Address remoteAddress();
@@ -143,29 +146,24 @@ public class RobotComm implements Closeable {
             void send(String msg);
         }
 
-        interface Listener extends Closeable {
-
-            /**
-             * Listens for messages.
-             * 
-             * @param handler
-             *            called when a message arrives. Will likely be called in some other
-             *            thread's context. The handler is expected NOT to block. If time
-             *            consuming operations need to be performed, queue the message for
-             *            further processing, or implement a state machine. The handler
-             *            *may* be reentered or called concurrently from another thread.
-             *            Call close to stop new messages from being received.
-             */
-            void listen(BiConsumer<String, RemoteNode> handler);
-
-            Address getAddress();
-
-            void close(); // idempotent. handler MAY get called after close() returns.
-        }
 
         Address resolveAddress(String address);
-
-        Listener newListener(Address localAddress);
+        
+        /**
+         * Starts listening for incoming datagrams. This will likely use up resources, such as a dedicated
+         * thread, depending on the implementation.
+         * 
+         * @param handler
+         *            called when a message arrives. Will likely be called in some other
+         *            thread's context. The handler is expected NOT to block. If time
+         *            consuming operations need to be performed, queue the message for
+         *            further processing, or implement a state machine. The handler
+         *            *may* be reentered or called concurrently from another thread.
+         *            Call stopListening to stop new messages from being received.
+         */
+        void startListening(BiConsumer<String, RemoteNode> handler);
+        
+        void stopListening();
 
         RemoteNode newRemoteNode(Address remoteAddress);
 
@@ -212,18 +210,19 @@ public class RobotComm implements Closeable {
 
     // Idempotent, thread safe
     public void startListening() {
-        DatagramTransport.Listener li = null;
+        boolean start = false;
         synchronized (listenLock) {
-            if (this.listener == null) {
-                li = this.transport.newListener(null);
-                this.listener = li;
+            if (!this.listening) {
+                start = true;
+                this.listening = true;
+                start = true;
             }
         }
 
-        if (li != null) {
-            log.info("STARTED LISTENING");
+        if (start) {
+            log.info("STARTING LISTENING");
 
-            li.listen((String msg, DatagramTransport.RemoteNode rn) -> {
+            this.transport.startListening((String msg, DatagramTransport.RemoteNode rn) -> {
                 if (!msg.startsWith(PROTOCOL_SIGNATURE)) {
                     log.trace("WARN_DROPPING_RECIEVED_MESSAGE", "Incorrect protocol signature.");
                     return; // EARLY RETURN
@@ -269,22 +268,22 @@ public class RobotComm implements Closeable {
 
     // Idempotent, thread safe
     public void stopListening() {
-        DatagramTransport.Listener li = null;
+        boolean stop = false;
         synchronized (listenLock) {
-            if (this.listener != null) {
-                li = this.listener;
-                this.listener = null;
+            if (this.listening) {
+                this.listening = false;
+                stop = true;
             }
-        }
-        log.info("STOPPED LISTENING");
-        if (li != null) {
-            li.close();
+        }        
+        if (stop) {
+            log.info("STOPPING LISTENING");
+            this.transport.stopListening();
         }
     }
 
     public boolean isListening() {
         // Not synchronized as there is no point
-        return this.listener != null;
+        return this.listening;
     }
 
     public void close() {
