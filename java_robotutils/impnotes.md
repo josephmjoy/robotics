@@ -25,6 +25,78 @@ int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat a
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#March 22A, 2018 StructuredLogger Design Note - "root name" becomes "system name" logged to _sys
+Presently, the root name is logged to the _co field, and any new logs created have this root prefixed with a '.' separator to the log name.
+The proposed changes are:
+1. Change '_co' which stood for component, to '_ln' which stands for log name.
+2. Change rootName to systemName. It is the name of the system being logged by the structured logger.
+2. Add new tag _sys to every log - in fact this will be the first tag that is logged, before the session ID. This will contain the system name.
+
+Motivations:
+1. '_co' was confusing and logs are not necessarily tied to a component. '_ln' simply calls it what it is, a log name.
+2. Prefixing the "root" was a bit arbitrary and more importantly would require the list of logs specified in the trace field of config to
+include this prefix (or require some ad-hoc ignoring of this prefix when comparing). The intention was to be able to identify the system,
+so we just make this intention explicit by including the new _sys field.
+3. The sys prefix will make analysis that involves combining logs from different systems much more straightforward. For example, combining the logs from the roboRIO and one or more raspberry pi's or across multiple roboRIO's. Visually, it's width will be constant across the entire session, and will make it clear which system it applies two, especially if tabbing between logs from different systems.
+
+Disadvantage:
+1. We're adding a new tag - so that's an overhead of 8 characters ('_sys: ' plus two blank separator), which is not trivial.
+
+
+#March 21D, 2018 StructuredLogger Design Note - Turnkey Utility Logging setup
+
+```
+logger:
+  sysname: rioTARS # "root" name
+  trace: transport robotcomm # Tracing will be enabled for logs with these names, which are space-separated.
+  logdir: /dev/sda1/logs # Path to log dir (presumably a thumbdrive)
+  maxdirsize_mb: 1200 # Max total size the files under the dir can reach (in mb) 
+```
+Note on finding device paths in Unix: https://askubuntu.com/questions/311772/how-do-i-know-the-device-path-to-an-usb-stick
+
+The turnkey logging static method has signature `StructuredLogger makeStandardLogger(String sysName, FILE configDir)`.
+The 2nd parameter (configDir) is optional - an overloaded method can take just the 1st parameter. The utility method does the following:
+1. Creates the log directory if not present.
+2. Calculates the existing size of the files under the log directory.
+3. It creates two file raw loggers. One will be called <sysName>_sessions.txt and one will be <sysname>_<sessionID>.txt. Example: `rioTARS_sessions.txt` and `rioTARS_130989098909.txt` The first
+  one is appended to - and will contain just log entries of session starts and stops. The 2nd is created afresh for each new session.
+  Each file raw logger is given a quota that takes into account the the max allowed size for the log directory. This defaults to
+  some value (say 10mb) but can be specified by the "maxdirsize_mb" field in the configuration. 
+
+The sysName will be overridden by the sysname field in the configuration. If the logdir is not specified in the configuration, it is set to be
+~/logs.
+
+Tracing is effectively off by default - the only way to enable it is by adding a trace field in the config. Log names must be specified
+explicitly to enable tracing. [FUTURE] Need a way to specify trace levels if and when they become available. One way is to add `trace3:` etc
+as fields. (`trace3:` specifies those components to enabling tracing up to level 3, which is presumably very verbose tracing). Other ad-hoc ways could be encoding the trace level in the log name, such as `trace: transport(3)` or `trace: transport/3`.
+
+
+#March 21C, 2018 StructuredLogger Design Note - Changes to how Log messages are filtered
+Currently for every message logged, every log consumer is consulted (filter method) to see if it intends to log that message. If none are interested, then the message is not queued up for logging in the background.
+There are two problems with this:
+ - Doing this for every message is wasteful, especially since the most frequent messages will be trace 
+  messages which will only be selectively logged.
+ - It is not possible  for client code to find out ahead of time if the message will be logged - 
+  so as to avoid setting up the the log message.
+  
+The new proposal is as follows.
+1. The current filter method will be replaced by method with the following signature: `int maxPriority(String logName);`
+2. Each time a log is created (via newLog), the above method is queried for all log consumers, and the "max of the max" is computed and saved as a field variable of the log instance. The individual max values are also saved in an array field variable of the log instance.
+3. Now, each log command (err, warn, info, trace) checks whether the priority is <= the max-of-the-max priority and if so it does not log. So this is a very fast check against a field variable!
+4. To decide which log consumers to log to, rawLog (called by all the public logging methods) will run
+ through the array, which is in the same sequence of the StructureLogger's list of log consumers, and
+ determine on a case-by-case basis whether to log this message. 
+5. A new method `boolean traceEnabled()` is added to Log. This method checks both if tracing is paused or not AND whether the trace priority (currently fixed at 2) is (numerically) low enough to be <= 'max-of-the-max'. This is the only way for the client to determine ahead of time whether or not a message is logged is going to be logged. The rational is that only trace messages will be high-frequency. The other kinds of logging (err, warn, info) have no business being done at high frequency or time critical points.
+6. In the future, additional priority levels can be added for tracing - the system proposed here will work fine for that with the addition of traceEnabled taking a trace level.
+
+This proposal provides the following benefits:
+1. The per-log overhead of checking if a message is going to be logged or not is now negligible.
+2. There is an efficient way (traceEnabled) to check if tracing is going to actually be logged.
+
+The change introduces the following disadvantage:
+1. Log consumers can no longer dynamically filter log messages based on the triple (logName, priority, category). I (JMJ) could not come up
+with any compelling scenario why this would be a disadvantage in actual practice.
+
 #March 21B, 2018 RobotComm Design Note - Adding client context to SentCommand
 Currently, when retrieving a SentCommand by calling pollCompletedCommands, the client does not have a direct
 connection to any client-context specific to this command. So the proposal is to add an Object clientContext to submitCommand. This client context can be retrieved by querying the sentCommand.
