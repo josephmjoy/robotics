@@ -1078,10 +1078,10 @@ class RobotCommTest {
     StructuredLogger initStructuredLogger() {
         File logfile = new File("G:\\KUMBH\\Projects\\ihs\\robotics\\temp\\log.txt");
         ToIntFunction<String> f1 = name -> {
-            return name.equals("test.TRANS") || name.equals("test.HFLOG") ? -1 : Integer.MAX_VALUE;
+            return name.equals("TRANS") || name.equals("HFLOG") ? -1 : Integer.MAX_VALUE;
         };
         ToIntFunction<String> f2 = name -> {
-            return name.equals("test.TRANS") ? -1 : Integer.MAX_VALUE;
+            return name.equals("TRANS") ? -1 : Integer.MAX_VALUE;
         };
         ToIntFunction<String> f = f1;
 

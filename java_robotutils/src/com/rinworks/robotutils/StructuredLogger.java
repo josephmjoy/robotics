@@ -62,10 +62,11 @@ public class StructuredLogger {
 
     // These are reserved tag (key) names - don't use them for generating key-value
     // pairs:
+    public static final String TAG_SYSNAME = "_sys"; // System name
     public static final String TAG_SESSION_ID = "_sid"; // Session ID
     public static final String TAG_SEQ_NO = "_sn"; // Sequence number
     public static final String TAG_TIMESTAMP = "_ts"; // Time stamp - milliseconds since session started.
-    public static final String TAG_COMPONENT = "_co";
+    public static final String TAG_LOGNAME = "_ln";
     public static final String TAG_PRI = "_pri"; // Priority: 0/1/2
     public static final String TAG_CAT = "_cat"; // CATEGORY: ERR/WARN/INFO
     public static final String TAG_TYPE = "_ty"; // Message type
@@ -100,7 +101,7 @@ public class StructuredLogger {
     public static final String TYPE_DEINIT_START = "DEINIT_START";
     public static final String TYPE_DEINIT_END = "DEINIT_END";
 
-    private final String rootName;
+    private final String systemName;
     private final LogImplementation defaultLog;
     private String sessionId;
     private long sessionStart;
@@ -372,18 +373,17 @@ public class StructuredLogger {
     /**
      * Creates the main structured logging object, typically one per system.
      * {_rawLoggers} is an array of low-level consumers of generated log messages.
-     * {rootName} is the top-level name. Any StructuredLogger.Log object created
-     * have {rootName} + '.' prefixed to their own log name when generating the
-     * component tag for each log message.
+     * {sysName} is the top-level name, representing the system that is being
+     * logged.
      */
-    public StructuredLogger(RawLogger[] rawLoggers, String rootName) {
+    public StructuredLogger(RawLogger[] rawLoggers, String sysName) {
         this.bufferedLoggers = new BufferedRawLogger[rawLoggers.length];
         for (int i = 0; i < rawLoggers.length; i++) {
             this.bufferedLoggers[i] = new BufferedRawLogger(rawLoggers[i]);
         }
 
-        this.rootName = rootName;
-        this.defaultLog = this.commonNewLog(rootName);
+        this.systemName = sysName;
+        this.defaultLog = this.commonNewLog(sysName);
     }
 
     /**
@@ -424,11 +424,11 @@ public class StructuredLogger {
     public synchronized void beginLogging() {
 
         if (this.sessionStarted || this.sessionEnded) {
-            printErr("Ignoring attempt to begin structured logger " + rootName + ":invalid state");
+            printErr("Ignoring attempt to begin structured logger " + systemName + ":invalid state");
         } else {
             long startTime = System.currentTimeMillis();
             String sessionID = "" + startTime;
-            this.timer = new Timer("Structured Logger (" + rootName + ")", true);// true == daemon task.
+            this.timer = new Timer("Structured Logger (" + systemName + ")", true);// true == daemon task.
             TimerTask periodicFlushTask = newBackgroundProcessor(false, null); // false, null== don't flush immediately,
 
             // no
@@ -446,8 +446,8 @@ public class StructuredLogger {
             this.timer.schedule(periodicFlushTask, this.periodicFlushMillis, this.periodicFlushMillis);
 
             // Log very first message...
-            String msg = String.format(" dateTime: %s  rootName: %s  maxBuffered: %s  autoFlushPeriod: %s",
-                    LocalDateTime.now(), this.rootName, this.maxBufferedMessageCount, this.periodicFlushMillis);
+            String msg = String.format(" dateTime: %s  maxBuffered: %s  autoFlushPeriod: %s", LocalDateTime.now(),
+                    this.maxBufferedMessageCount, this.periodicFlushMillis);
             defaultLog.pri0(TYPE_LOG_SESSION_START, msg);
         }
 
@@ -464,11 +464,11 @@ public class StructuredLogger {
         boolean deinit = true;
 
         logDiscardedMessageCount();
-        defaultLog.pri0(TYPE_LOG_SESSION_END, " rootName: " + rootName);
+        defaultLog.pri0(TYPE_LOG_SESSION_END, LocalDateTime.now().toString());
 
         synchronized (this) {
             if (!this.sessionStarted) {
-                printErr("Ignoring attempt to end structured logger " + rootName + ":invalid state");
+                printErr("Ignoring attempt to end structured logger " + systemName + ":invalid state");
                 deinit = false;
             }
             this.sessionStarted = false; // no more messages will be logged.
@@ -668,7 +668,7 @@ public class StructuredLogger {
 
         @Override
         public LogImplementation newLog(String logName) {
-            return commonNewLog(rootName + "." + logName);
+            return commonNewLog(logName);
         }
 
         @Override
@@ -735,7 +735,7 @@ public class StructuredLogger {
             tracingEnabled = true;
 
         }
-        
+
         @Override
         public boolean tracing() {
             return this.maxMaxPriority >= PRI2 && tracingEnabled;
@@ -777,8 +777,8 @@ public class StructuredLogger {
 
         private void rawLog(int pri, String cat, String msgType, String msg) {
             // Example:
-            // _sid:989, _sn:1, _ts: 120, _co: .b, _pri:1, _sev:INFO, _ty:OTHER, Hello
-            // world!
+            // _sys: test _sid: 1521742908212 _sn: 4 _ts: 1 _pri: 2 _cat: TRACE _ln: test
+            // _ty: _OTHER _msg: Beginning to submit 1000 messages.
 
             // Note that sessionStarted is defined in the containing class -
             // StructuredLogger!
@@ -848,9 +848,10 @@ public class StructuredLogger {
             long millis = System.currentTimeMillis();
             long timestamp = millis - sessionStart;
             String rtsKeyValue = (rtsEnabled) ? TAG_RELATIVE_TIMESTAMP + ": " + (millis - rtsStartTime) + "  " : "";
-            return String.format("%s: %s  %s: %-2s  %s: %-3s  %s: %s  %s: %-5s  %s: %s  %s: %s  %s%s%s: %s",
-                    TAG_SESSION_ID, sessionId, TAG_SEQ_NO, curSeq, TAG_TIMESTAMP, timestamp, TAG_PRI, pri, TAG_CAT, cat,
-                    TAG_COMPONENT, logName, TAG_TYPE, msgType, rtsKeyValue, tagsString, TAG_DEF_MSG, msg);
+            return String.format("%s: %s  %s: %s  %s: %-2s  %s: %-3s  %s: %s  %s: %-5s  %s: %s  %s: %s  %s%s%s: %s",
+                    TAG_SYSNAME, systemName, TAG_SESSION_ID, sessionId, TAG_SEQ_NO, curSeq, TAG_TIMESTAMP, timestamp,
+                    TAG_PRI, pri, TAG_CAT, cat, TAG_LOGNAME, logName, TAG_TYPE, msgType, rtsKeyValue, tagsString,
+                    TAG_DEF_MSG, msg);
         }
 
         // RTS implementation:

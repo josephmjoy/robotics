@@ -231,13 +231,10 @@ class StructuredLoggerTest {
         String mPri = map.getOrDefault(StructuredLogger.TAG_PRI, "bad");
         String mCat = map.getOrDefault(StructuredLogger.TAG_CAT, "bad");
         String mType = map.getOrDefault(StructuredLogger.TAG_TYPE, "bad");
-        String rootName = map.getOrDefault("rootName", "bad");
         assertEquals(mPri, "" + StructuredLogger.PRI0);
         assertEquals(mCat, StructuredLogger.CAT_INFO);
         String expectedType = start ? StructuredLogger.TYPE_LOG_SESSION_START : StructuredLogger.TYPE_LOG_SESSION_END;
         assertEquals(mType, expectedType);
-        // We must find the session description on the message part.
-        assertTrue(rootName.equals(ROOT_LOG_NAME));
     }
 
     // Simple self-contained example that goes into README.md introductory text.
