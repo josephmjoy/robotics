@@ -100,7 +100,8 @@ class CommClientImplementation {
         private long nextRetransmitTime;
         private int transmitCount;
 
-        SentCommandImplementation(long cmdId, String cmdType, String cmd, Object clientContext, boolean addToCompletionQueue) {
+        SentCommandImplementation(long cmdId, String cmdType, String cmd, Object clientContext,
+                boolean addToCompletionQueue) {
             this.cmdId = cmdId;
             this.cmdType = cmdType;
             this.cmd = cmd;
@@ -130,7 +131,7 @@ class CommClientImplementation {
             this.transmitCount = 0;
             this.nextRetransmitTime = Long.MAX_VALUE;
         }
-        
+
         @Override
         public Object clientContext() {
             return this.clientContext;
@@ -332,7 +333,8 @@ class CommClientImplementation {
         this.closed = true;
     }
 
-    public SentCommand submitCommand(String cmdType, String command, Object clientContext, boolean addToCompletionQueue) {
+    public SentCommand submitCommand(String cmdType, String command, Object clientContext,
+            boolean addToCompletionQueue) {
 
         if (this.closed) {
             throw new IllegalStateException("Channel is closed");
@@ -340,7 +342,8 @@ class CommClientImplementation {
 
         if (validSendParams(cmdType, this.remoteNode, "DISCARDING_SEND_COMMAND")) {
             long cmdId = newCommandId();
-            SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command, clientContext, addToCompletionQueue);
+            SentCommandImplementation sc = new SentCommandImplementation(cmdId, cmdType, command, clientContext,
+                    addToCompletionQueue);
             this.pendingCommands.put(cmdId, sc);
             this.approxSentCommands++;
             sendCMD(sc);
@@ -373,7 +376,7 @@ class CommClientImplementation {
             return null; // ********* EARLY RETURN
         }
         SentCommand sc = this.completedCommands.poll();
-        if (sc != null) {
+        if (sc != null && log.tracing()) {
             log.trace("CLI_COMPLETED_COMMAND", CMDTYPE_TAG + sc.cmdType());
         }
         return sc;
@@ -451,13 +454,15 @@ class CommClientImplementation {
                 // Alas, we are rejecting this response because the client's timeout
                 // has expired...
                 this.approxRtTimeouts++;
-                log.trace("CLI_TIMEDOUT_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
+                if (log.tracing())
+                    log.trace("CLI_TIMEDOUT_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
                 sc.rtCancel(COMMAND_STATUS.STATUS_ERROR_TIMEOUT, true);
                 return; // *********** EARLY RETURN
             } else {
                 sc.updateSync(header, msgBody);
             }
-            log.trace("CLI_COMPLETED_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
+            if (log.tracing())
+                log.trace("CLI_COMPLETED_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
             sc.rtCallback.accept(sc);
         }
 
@@ -537,7 +542,8 @@ class CommClientImplementation {
         this.pendingRtCommands.forEachValue(Long.MAX_VALUE, sc -> {
             if (sc.timedOut(curTime)) {
                 timedOut.add(sc);
-                log.trace("CLI_RTCMD_TIMEOUT", CMDID_TAG + sc.cmdId);
+                if (log.tracing())
+                    log.trace("CLI_RTCMD_TIMEOUT", CMDID_TAG + sc.cmdId);
 
             }
         });
@@ -545,7 +551,8 @@ class CommClientImplementation {
         for (SentCommandImplementation sc : timedOut) {
             sc.rtCancel(COMMAND_STATUS.STATUS_ERROR_TIMEOUT, false); // false == remove from map
             this.approxRtTimeouts++;
-            log.trace("CLI_TIMEDOUT_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
+            if (log.tracing())
+                log.trace("CLI_TIMEDOUT_RTCOMMAND", CMDTYPE_TAG + sc.cmdType());
         }
     }
 
@@ -562,9 +569,11 @@ class CommClientImplementation {
         boolean ret = false;
 
         if (rn == null) {
-            log.trace(logMsgType, "No default send node");
+            if (log.tracing())
+                log.trace(logMsgType, "No default send node");
         } else if (RobotComm.containsChars(msgType, BAD_MSGTYPE_CHARS)) {
-            log.trace(logMsgType, "Message type has invalid chars: " + msgType);
+            if (log.tracing())
+                log.trace(logMsgType, "Message type has invalid chars: " + msgType);
         } else {
             ret = true;
         }

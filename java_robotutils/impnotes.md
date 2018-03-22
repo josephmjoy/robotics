@@ -86,7 +86,7 @@ The new proposal is as follows.
 4. To decide which log consumers to log to, rawLog (called by all the public logging methods) will run
  through the array, which is in the same sequence of the StructureLogger's list of log consumers, and
  determine on a case-by-case basis whether to log this message. 
-5. A new method `boolean traceEnabled()` is added to Log. This method checks both if tracing is paused or not AND whether the trace priority (currently fixed at 2) is (numerically) low enough to be <= 'max-of-the-max'. This is the only way for the client to determine ahead of time whether or not a message is logged is going to be logged. The rational is that only trace messages will be high-frequency. The other kinds of logging (err, warn, info) have no business being done at high frequency or time critical points.
+5. A new method `boolean tracing()` is added to Log. This method checks both if tracing is paused or not AND whether the trace priority (currently fixed at 2) is (numerically) low enough to be <= 'max-of-the-max'. This is the only way for the client to determine ahead of time whether or not a message is logged is going to be logged. The rational is that only trace messages will be high-frequency. The other kinds of logging (err, warn, info) have no business being done at high frequency or time critical points.
 6. In the future, additional priority levels can be added for tracing - the system proposed here will work fine for that with the addition of traceEnabled taking a trace level.
 
 This proposal provides the following benefits:

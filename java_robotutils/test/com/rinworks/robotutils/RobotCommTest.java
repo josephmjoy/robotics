@@ -13,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
+import java.util.function.ToIntFunction;
 
 import org.junit.jupiter.api.Test;
 
@@ -103,7 +104,8 @@ class RobotCommTest {
         void receiveData(String s) {
             if (this.clientRecv != null) {
                 this.numRecvs.incrementAndGet();
-                log.trace("TRANSPORT RECV:\n[" + s + "]\n");
+                if (log.tracing())
+                    log.trace("TRANSPORT RECV:\n[" + s + "]\n");
                 this.clientRecv.accept(s, loopbackNode);
             } else {
                 this.numForceDrops.incrementAndGet();
@@ -126,12 +128,14 @@ class RobotCommTest {
             public void send(String msg) {
                 TestTransport.this.numSends.incrementAndGet();
                 if (forceDrop(msg)) {
-                    log.trace("TRANSPORT FORCEDROP:\n[" + msg + "]\n");
+                    if (log.tracing())
+                        log.trace("TRANSPORT FORCEDROP:\n[" + msg + "]\n");
                     TestTransport.this.numForceDrops.incrementAndGet();
                     return; // **************** EARLY RETURN *****
                 }
                 if (nonForceDrop(msg)) {
-                    log.trace("TRANSPORT: RANDDROP\n[" + msg + "]\n");
+                    if (log.tracing())
+                        log.trace("TRANSPORT: RANDDROP\n[" + msg + "]\n");
                     TestTransport.this.numRandomDrops.incrementAndGet();
                     return; // **************** EARLY RETURN *****
                 }
@@ -496,7 +500,8 @@ class RobotCommTest {
                     public void run() {
                         StressTester.this.exPool.submit(() -> {
                             try {
-                                hfLog.trace("Sending message with id " + id);
+                                if (hfLog.tracing())
+                                    hfLog.trace("Sending message with id " + id);
                                 StressTester.this.ch.sendMessage(mr.msgType, mr.msgBody);
                             } catch (Exception e) {
                                 logException(e, "#HBdp");
@@ -558,7 +563,8 @@ class RobotCommTest {
             String strId = nli < 0 ? msgBody : msgBody.substring(0, nli);
             try {
                 long id = Long.parseUnsignedLong(strId, 16);
-                hfLog.trace("Received message with id " + id);
+                if (hfLog.tracing())
+                    hfLog.trace("Received message with id " + id);
                 MessageRecord mr = this.msgMap.get(id);
                 // assertNotEquals(mr, null);
                 log.loggedAssert(mr != null, "mr == null");
@@ -627,7 +633,8 @@ class RobotCommTest {
                     public void run() {
                         StressTester.this.exPool.submit(() -> {
                             try {
-                                hfLog.trace("Sending cmd with id " + id);
+                                if (hfLog.tracing())
+                                    hfLog.trace("Sending cmd with id " + id);
                                 RobotComm.SentCommand sc;
                                 if (rt) {
                                     // Real time command: completion is notified by the calling
@@ -802,7 +809,8 @@ class RobotCommTest {
             CommandRecord cr = null;
             try {
                 long id = Long.parseUnsignedLong(strId, 16);
-                hfLog.trace("Received command with id " + id);
+                if (hfLog.tracing())
+                    hfLog.trace("Received command with id " + id);
                 cr = this.cmdMap.get(id);
                 // We comment this out because we can hit this because a delayed command can
                 // arrive
@@ -837,7 +845,8 @@ class RobotCommTest {
             }
 
             if (cCmd.status() == COMMAND_STATUS.STATUS_REMOTE_REJECTED) {
-                hfLog.trace("Command REJECTED with CmdId " + cCmd.cmdId());
+                if (hfLog.tracing())
+                    hfLog.trace("Command REJECTED with CmdId " + cCmd.cmdId());
                 return; // ************ EARLY RETURN
             }
 
@@ -852,7 +861,8 @@ class RobotCommTest {
             CommandRecord cr = null;
             try {
                 long id = Long.parseUnsignedLong(strId, 16);
-                hfLog.trace("Command completed with id " + id);
+                if (hfLog.tracing())
+                    hfLog.trace("Command completed with id " + id);
                 cr = this.cmdMap.get(id);
                 // assertNotEquals(mr, null);
                 log.loggedAssert(cr != null, "cr == null");
@@ -863,7 +873,8 @@ class RobotCommTest {
                 log.loggedAssert(cr.respRecord.msgBody.equals(msgBody), "resp msgBody mismatch #jPH4");
                 // assertFalse(mr.alwaysDrop);
                 log.loggedAssert(!cr.respRecord.alwaysDrop, "resp alwaysDrop is true #TeA8");
-                hfLog.trace("removing cr with id " + id + "from cmdMap #EwQp");
+                if (hfLog.tracing())
+                    hfLog.trace("removing cr with id " + id + "from cmdMap #EwQp");
                 this.cmdMap.remove(id, cr);
             } catch (Exception e) {
                 logException(e, "#ptzb");
@@ -872,7 +883,8 @@ class RobotCommTest {
 
         protected void processCompletedRtCommand(SentCommand cCmd, CommandRecord cr) {
             if (cCmd.status() == COMMAND_STATUS.STATUS_ERROR_TIMEOUT) {
-                hfLog.trace("Command TIMED OUT with CmdId " + cCmd.cmdId());
+                if (hfLog.tracing())
+                    hfLog.trace("Command TIMED OUT with CmdId " + cCmd.cmdId());
                 log.loggedAssert(cCmd.submittedTime() + cr.timeout <= System.currentTimeMillis(), "premature timeout");
                 this.cmdMap.remove(cr.cmdRecord.id, cr); // Should be O(log(n)), so it's ok all in all.
                 return; // ************ EARLY RETURN
@@ -1065,13 +1077,13 @@ class RobotCommTest {
 
     StructuredLogger initStructuredLogger() {
         File logfile = new File("G:\\KUMBH\\Projects\\ihs\\robotics\\temp\\log.txt");
-        StructuredLogger.Filter f1 = (ln, p, cat) -> {
-            return ln.equals("test.TRANS") || ln.equals("test.HFLOG") ? false : true;
+        ToIntFunction<String> f1 = name -> {
+            return name.equals("test.TRANS") || name.equals("test.HFLOG") ? -1 : Integer.MAX_VALUE;
         };
-        StructuredLogger.Filter f2 = (ln, p, cat) -> {
-            return ln.equals("test.TRANS") ? false : true;
+        ToIntFunction<String> f2 = name -> {
+            return name.equals("test.TRANS") ? -1 : Integer.MAX_VALUE;
         };
-        StructuredLogger.Filter f = f1;
+        ToIntFunction<String> f = f1;
 
         StructuredLogger.RawLogger rl = LoggerUtils.createFileRawLogger(logfile, 1000000, f);
         StructuredLogger.RawLogger rl2 = LoggerUtils.createConsoleRawLogger(f);
@@ -1243,7 +1255,7 @@ class RobotCommTest {
     // @Test
     void stressSubmitAndProcessCommandsWorking() {
         final int nThreads = 10;
-        final int nCommands = 2000000;
+        final int nCommands = 1;
         final double rtFrac = 1;
         final int commandRate = 50000;
         final double dropCommandRate = 0.01;

@@ -12,8 +12,8 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.function.ToIntFunction;
 
-import com.rinworks.robotutils.StructuredLogger.Filter;
 import com.rinworks.robotutils.StructuredLogger.RawLogger;
 
 public class LoggerUtils {
@@ -34,16 +34,16 @@ public class LoggerUtils {
      *            - filename suffix
      * @param long
      *            - The maximum size the log file is allowed to grow.
-     * @param filter
-     *            - if null: accept all messages, else this method is call to
-     *            determine whether or not to accept messages with the specified
-     *            attributes.
+     * @param maxPriFunc
+     *            - if null: accept all messages, else this method is called to
+     *            determine the maximum numerical priority of messages excepted for
+     *            this log.
      * @return A StructuredLogger.RawLogger object that may be passed into a
      *         StructuredLogger constructor
      */
     public static RawLogger createFileRawLogger(File logDirectory, String prefix, String suffix, long maxSize,
-            Filter filter) {
-        return new FileRawLogger(logDirectory, prefix, suffix, maxSize, filter);
+            ToIntFunction<String> maxPriFunc) {
+        return new FileRawLogger(logDirectory, prefix, suffix, maxSize, maxPriFunc);
     }
 
     /**
@@ -58,15 +58,15 @@ public class LoggerUtils {
      *            - File object representing log file path.
      * @param long
      *            - The maximum size the log file is allowed to reach.
-     * @param filter
+     * @param maxPriFunc
      *            - if null: accept all messages, else this method is call to
-     *            determine whether or not to accept messages with the specified
-     *            attributes.
+     *            determine the maximum numerical priority of messages to accept
+     *            from a Log.
      * @return A StructuredLogger.Logger object that may be passed into a
      *         StructuredLogger constructor
      */
-    public static RawLogger createFileRawLogger(File logFile, long maxSize, Filter filter) {
-        return new FileRawLogger(logFile, maxSize, filter);
+    public static RawLogger createFileRawLogger(File logFile, long maxSize, ToIntFunction<String> maxPriFunc) {
+        return new FileRawLogger(logFile, maxSize, maxPriFunc);
     }
 
     /**
@@ -77,25 +77,29 @@ public class LoggerUtils {
      *            - Destination host name or IP Address
      * @param port
      *            - Destination port.
+     * @param maxPriFunc
+     *            - if null: accept all messages, else this method is call to
+     *            determine the maximum numerical priority of messages to accept
+     *            from a Log.
      * @return A StructuredLogger.Logger object that may be passed into a
      *         StructuredLogger constructor
      */
-    public static RawLogger createUDPRawLogger(String address, int port, Filter filter) {
-        return new UDPRawLogger(address, port, filter);
+    public static RawLogger createUDPRawLogger(String address, int port, ToIntFunction<String> maxPriFunc) {
+        return new UDPRawLogger(address, port, maxPriFunc);
     }
 
     /**
      * Creates a raw logger that writes log messages to the console (System.out or
      * System.err).
      * 
-     * @param filter
+     * @param maxPriFunc
      *            - Optional filter - if non-null, will be called to decide what to
      *            log.
      * @return A StructuredLogger.Logger object that may be passed into a
      *         StructuredLogger constructor
      */
-    public static RawLogger createConsoleRawLogger(Filter filter) {
-        return new ConsoleRawLogger(filter);
+    public static RawLogger createConsoleRawLogger(ToIntFunction<String> maxPriFunc) {
+        return new ConsoleRawLogger(maxPriFunc);
     }
 
     // This is a static class because it is constructed from within static methods
@@ -110,7 +114,7 @@ public class LoggerUtils {
         final boolean perSessionLog;
         final long maxSize;
         final File logDirectory;
-        final Filter filter;
+        final ToIntFunction<String> maxPriFunc;
         File logFile;
         final String prefix;
         final String suffix;
@@ -122,25 +126,26 @@ public class LoggerUtils {
         int exceptionCount = 0;
 
         // Logger that creates per-session log files
-        public FileRawLogger(File logDirectory, String prefix, String suffix, long maxSize, Filter filter) {
+        public FileRawLogger(File logDirectory, String prefix, String suffix, long maxSize,
+                ToIntFunction<String> maxPriFunc) {
             this.perSessionLog = true;
             this.logDirectory = logDirectory;
             this.prefix = prefix;
             this.suffix = suffix;
             this.maxSize = maxSize;
-            this.filter = filter;
+            this.maxPriFunc = maxPriFunc == null ? (s -> Integer.MAX_VALUE) : maxPriFunc;
 
         }
 
         // Logger that logs to a single log file
-        public FileRawLogger(File logFile, long maxSize, Filter filter) {
+        public FileRawLogger(File logFile, long maxSize, ToIntFunction<String> maxPriFunc) {
             this.perSessionLog = false;
             this.logDirectory = null;
             this.logFile = logFile;
             this.prefix = null;
             this.suffix = null;
             this.maxSize = maxSize;
-            this.filter = filter;
+            this.maxPriFunc = maxPriFunc == null ? (s -> Integer.MAX_VALUE) : maxPriFunc;
         }
 
         @Override
@@ -182,8 +187,8 @@ public class LoggerUtils {
         }
 
         @Override
-        public boolean filter(String logName, int pri, String cat) {
-            return !loggingDisabled && (filter == null || this.filter.filter(logName, pri, cat));
+        public int maxPriority(String logName) {            
+            return this.maxPriFunc.applyAsInt(logName);
         }
 
         @Override
@@ -297,17 +302,17 @@ public class LoggerUtils {
     private static class UDPRawLogger implements RawLogger {
         final String destAddress;
         final int destPort;
-        final Filter filter;
+        final ToIntFunction<String> maxPriFunc;
         boolean logErrorNotified; // we generate one err msg if there is an error message on write..
         DatagramSocket clientSocket;
         InetAddress destIPAddress;
         boolean canLog = false;
 
         // Logger that logs by sending UDP traffic to the specified address and port.
-        public UDPRawLogger(String address, int port, Filter filter) {
+        public UDPRawLogger(String address, int port, ToIntFunction<String> maxPriFunc) {
             this.destAddress = address;
             this.destPort = port;
-            this.filter = filter;
+            this.maxPriFunc = maxPriFunc == null ? (s -> Integer.MAX_VALUE) : maxPriFunc;
         }
 
         @Override
@@ -327,8 +332,9 @@ public class LoggerUtils {
         }
 
         @Override
-        public boolean filter(String logName, int pri, String cat) {
-            return canLog && (filter == null || this.filter.filter(logName, pri, cat));
+        public int maxPriority(String logName) {
+
+            return this.maxPriFunc.applyAsInt(logName);
         }
 
         @Override
@@ -363,11 +369,11 @@ public class LoggerUtils {
     }
 
     private static class ConsoleRawLogger implements RawLogger {
-        final Filter filter;
+        final ToIntFunction<String> maxPriFunc;
 
         // Logger that logs by sending UDP traffic to the specified address and port.
-        public ConsoleRawLogger(Filter filter) {
-            this.filter = filter;
+        public ConsoleRawLogger(ToIntFunction<String> maxPriFunc) {
+            this.maxPriFunc = maxPriFunc == null ? (s -> Integer.MAX_VALUE) : maxPriFunc;
         }
 
         @Override
@@ -376,8 +382,8 @@ public class LoggerUtils {
         }
 
         @Override
-        public boolean filter(String logName, int pri, String cat) {
-            return filter == null || this.filter.filter(logName, pri, cat);
+        public int maxPriority(String logName) {
+            return this.maxPriFunc.applyAsInt(logName);
         }
 
         @Override

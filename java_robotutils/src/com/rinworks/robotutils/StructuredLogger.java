@@ -15,6 +15,7 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Map.Entry;
@@ -140,22 +141,23 @@ public class StructuredLogger {
         void beginSession(String sessionId);
 
         /**
-         * Optionally control which messages are written to this sink. It is more
-         * efficient to reject messages by returning false here rather than ignoring it
-         * in the call to write because of the overhead of generating and buffering
-         * messages.
+         * Optionally control which messages are written to this sink by returning the
+         * maximum numerical priority value that will be logged (a high numerical value
+         * is a semantically a lower priority). It is far more efficient to reject
+         * messages by specifying a max priority here rather than ignoring it in the
+         * call to write because of the overhead of generating and buffering messages.
+         * This call is typically called only only once per logging session and the
+         * return value is cached for the remainder of the session.
          * 
          * @param logName
          *            - name of the StructuredLogger.Log object that submitted the
          *            message.
-         * @param pri
-         *            - priority
-         * @param cat
-         *            - category
-         * @return
+         * @return - the maximum numerical priority value for which log messages for the
+         *         log with name {logName} will be accepted. Specify -1 to accept
+         *         nothing, and Integer.MAX_VALUE to accept everything.
          */
-        default boolean filter(String logName, int pri, String cat) {
-            return true;
+        default int maxPriority(String logName) {
+            return Integer.MAX_VALUE;
         }
 
         /**
@@ -252,6 +254,12 @@ public class StructuredLogger {
          * Resumes tracing. See pauseTracing() for more context.
          */
         void resumeTracing();
+
+        /**
+         * Returns whether or not tracing is enabled for this log. Use it to avoid
+         * unnecessarily setting up a trace message.
+         */
+        boolean tracing();
 
         /**
          * Starts adding a relative time stamp (RTS). Subsequent logging will include a
@@ -529,20 +537,6 @@ public class StructuredLogger {
         return this.totalDiscardedMessageCount.get();
     }
 
-    /**
-     * Utility raw log constructors takes this filter object to provide the caller
-     * control of filtering messages.
-     */
-    public interface Filter {
-        /**
-         * Return true to accept messages from the StructuredLogger.Log instance with
-         * name {logName}, and with priority {pri} and category {cat}.
-         */
-        boolean filter(String logName, int pri, String cat);
-    }
-
-
-
     // **********************************************************************************
     // End of public methods
     // ********************************************************************************
@@ -552,7 +546,16 @@ public class StructuredLogger {
     // like keep a list of logs. At present we don't keep a global list of allocated
     // log objects.
     private LogImplementation commonNewLog(String name) {
-        return new LogImplementation(name);
+        int[] maxPris = getMaxRawLoggerPriorities(name);
+        return new LogImplementation(name, maxPris);
+    }
+
+    private int[] getMaxRawLoggerPriorities(String name) {
+        int[] maxPris = new int[bufferedLoggers.length];
+        for (int i = 0; i < bufferedLoggers.length; i++) {
+            maxPris[i] = bufferedLoggers[i].rawLogger.maxPriority(name);
+        }
+        return maxPris;
     }
 
     // Launch a special one-time timer task to write out all buffered messages
@@ -639,6 +642,8 @@ public class StructuredLogger {
     // This private class implements a Log object
     private class LogImplementation implements Log {
         final String logName;
+        final int[] maxPriorities;
+        final int maxMaxPriority; // 'max-of-the-max' of raw logger priorities.
         boolean tracingEnabled = true;
         boolean rtsEnabled = false; // rts = relatie timestamp
         long rtsStartTime = 0; // if rtsEnabled, gettimemillis value when startRTS was called.
@@ -648,8 +653,14 @@ public class StructuredLogger {
         // The component hierarchy is represented using dotted notation, e.g.:
         // root.a.b.c
 
-        LogImplementation(String logName) {
+        LogImplementation(String logName, int[] maxPris) {
             this.logName = scrubName(logName); // Replace ':' etc (these shouldn't be there) by '#'
+            int maxmax = -1;
+            for (int pri : maxPris) {
+                maxmax = Math.max(maxmax, pri);
+            }
+            this.maxPriorities = maxPris;
+            this.maxMaxPriority = maxmax;
         }
 
         // See the Logger interface definition for documentation on
@@ -724,6 +735,11 @@ public class StructuredLogger {
             tracingEnabled = true;
 
         }
+        
+        @Override
+        public boolean tracing() {
+            return this.maxMaxPriority >= PRI2 && tracingEnabled;
+        }
 
         @Override
         public void loggedAssert(boolean cond, String s) {
@@ -766,17 +782,20 @@ public class StructuredLogger {
 
             // Note that sessionStarted is defined in the containing class -
             // StructuredLogger!
-            if (!sessionStarted) {
+            if (!sessionStarted || pri > this.maxMaxPriority) {
                 return; // ******************** EARLY RETURN ******************
             }
 
             // Push it into each logger's buffer if they want it.
-            // Note that if no logger wants it the raw message is not
-            // even generated.
+            // We would expect that at least one will accept it..
             boolean triggerTask = false;
             String rawMsg = null;
-            for (BufferedRawLogger brl : bufferedLoggers) {
-                if (brl.rawLogger.filter(logName, pri, cat)) {
+            for (int i = 0; i < bufferedLoggers.length; i++) {
+                BufferedRawLogger brl = bufferedLoggers[i];
+                // maxPriorities contains the max priority accepted by each raw logger, in
+                // order. This
+                // was previously obtained and cached.
+                if (pri <= this.maxPriorities[i]) {
                     int queueLength = brl.approxQueueLength.get();
                     if (queueLength < ABSOLUTE_BUFFERED_MESSAGE_LIMIT) {
                         if (rawMsg == null) {
