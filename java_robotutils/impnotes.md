@@ -25,6 +25,43 @@ int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat a
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#March 22B, 2018 StructuredLogger Design Note - Introducing HistoLogger class
+Proposal to add a new class LogUtils.HistoLogger to periodically report histograms, min, max, avg and count of some integer value. The immediate use cases are to report on the following:
+1. Periodic loop calls for robotics -  the interval between calls and also how long it took in the call. For example, in FRC, we expect the call to come every 50ms and it should complete well within a few milliseconds. Any deviation from this norm is a signal of an overloaded system or misbehaving software.
+2. RobotComm commands and RT commands - time to complete each type of command.
+
+Skeleton of Histo Logger:
+
+```
+public static class HistoLogger {
+	public HistoLogger(Logger log, String logMsgType, int periodMs) {}
+	public HistoLogger setWindow(int min, int max) {}
+	public void update(int data);
+	public void process(){}
+}
+```
+Suggested trace message (only generated if there are non-zero counts within the specified data window):
+```
+... period: 10000  count:  120 min: 0  max: 15299  avg: 120.5  histo: [120,2,13,0,0,0,135,1]
+```
+The histogram reports powers-of-two bins: 0-1, 2, 3-4, 5-8, 9-16, etc., and is reset after each trace message is generated.
+
+##Implementation Possibilities
+Keep a fixed-size (32-element) array of integer bins. Method `update`: find the bin by floor(log2(dataPoint)) and increment that, and also update min, max, (long) sum and count. All this is done synchronizing on the array of bins.
+
+When `process` is called, check if the period has expired, and if tracing enabled, check if there are non-zero counts within the specified window, and if so generate and trace the message. Do all of this without holding
+any locks - it's an approximate report anyways. Also reset the counts and stats (with bin-lock held).
+
+[FUTURE] Possibly report warnings and/or errors if certain thresholds are crossed.
+
+Motivation: it is useful to get these stats (see use cases above) but at the same time somewhat tedious write the code that actually maintains and report on these histograms.
+
+Overheads: 
+1. The fixed memory overhead is chiefly the array of 32 ints per histogram. This seems reasonable.
+2. The execution overhead in the `update` method - it grabs a lock and does an increment, plus updates the stats. No objects are created in this process. All this seems reasonable. Grabbing a lock may be an issue in super-high frequency applications. That will become clear in use, and the options are either (a) to do sampled updates or (b) not log at all or (c) think of more efficient 'lock free' implementations.
+3. The execution over in the `process` method - only periodically (under client control) AND if tracing enabled is anything done, and that is not much - most of the overhead will be the actual act of logging the generated message.
+4. The histogram itself could be quite long - upto 32 integers. Typically this is consumed by some analysis program, and since the counts are reset every period, and tail zeros are not reported, and the tracing is only done if the data falls in a window (which can be chosen to only log when the information is "interesting"), this is likely ok, though it needs to be verified in actual use.
+
 #March 22A, 2018 StructuredLogger Design Note - "root name" becomes "system name" logged to _sys
 Presently, the root name is logged to the _co field, and any new logs created have this root prefixed with a '.' separator to the log name.
 The proposed changes are:
