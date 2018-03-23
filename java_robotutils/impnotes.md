@@ -36,15 +36,17 @@ Skeleton of Histo Logger:
 public static class HistoLogger {
 	public HistoLogger(Logger log, String logMsgType, int periodMs) {}
 	public HistoLogger setWindow(int min, int max) {}
+	public HistoLogger setUnits(String units);
 	public void update(int data);
 	public void process(){}
 }
 ```
 Suggested trace message (only generated if there are non-zero counts within the specified data window):
+
 ```
-... period: 10000  count:  120 min: 0  max: 15299  avg: 120.5  histo: [120,2,13,0,0,0,135,1]
+... period: 10000  count:  120 units: ns   min: 0  max: 15299  avg: 120.5  histo: [120,2,13,0,0,0,135,1]
 ```
-The histogram reports powers-of-two bins: 0-1, 2, 3-4, 5-8, 9-16, etc., and is reset after each trace message is generated.
+The period will be the actual period - time since the stats were reset, not the nominal period specified in the constructor. The difference between these two depends on how frequently `process` is called. In the FIRST robotics context, `process` should be called on every loop invocation as the overhead is negligible. The histogram reports powers-of-two bins: 0,1,2-3,4-7,8-15, etc., and is reset after each trace message is generated. The unit defines the unit of measure ('ns' being nanosecond.). There is no policing of units. The default is `_nr` for 'not recorded'. With respect to the use cases above, the interval between the calls to the loop method should probably be report in milliseconds, while the time _in_ the loop method reported in nanoseconds. It would be up to the client to do this and report the right units.
 
 ##Implementation Possibilities
 Keep a fixed-size (32-element) array of integer bins. Method `update`: find the bin by floor(log2(dataPoint)) and increment that, and also update min, max, (long) sum and count. All this is done synchronizing on the array of bins.
