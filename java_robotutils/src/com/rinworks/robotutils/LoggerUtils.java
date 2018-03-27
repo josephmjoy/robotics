@@ -5,6 +5,8 @@ package com.rinworks.robotutils;
 
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -12,11 +14,85 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.function.ToIntFunction;
 
 import com.rinworks.robotutils.StructuredLogger.RawLogger;
 
 public class LoggerUtils {
+
+    /**
+     * Default log directory is under the current user's home directory.
+     */
+    public static final String DEFAULT_LOGDIR = "robotlogs";
+
+    /**
+     * Default value for the maximum total capacity for files under the log
+     * directory, in megabytes. This value can be overridden by specifying a value
+     * for {maxdirsize_mb} in the configuration file.
+     */
+    public static final int DEFAULT_MAXDIRSIZE_MB = 10;
+
+    // Names of sections/fields of config file
+    private static final String configSection = "logging";
+    private static final String configSysname = "sysname";
+    private static final String configlogdir = "logdir";
+    private static final String configTrace = "trace";
+    private static final String configMaxdirsize_mb = "maxdirsize_mb";
+
+    // Other strings used to create file names.
+    private static final String sessionsLogSuffix = "sessions.txt";
+    private static final String perSessionSuffix = ".txt";
+
+    /**
+     * Make a logger that logs to two files: a sessions log file that is appended
+     * to, and a per-session file that is created for each session. The session log
+     * file is called "{sysName}_sessions.txt", and logs only session starts and
+     * stops. The per-session file is called "{sysName}_<I>sessionID</I>.txt" and
+     * records all INFO, WARN and ERROR log messages for the current session. It
+     * will conditionally log TRACE messages based on information in the optional
+     * configuration file.
+     * 
+     * @param sysName
+     *            - Name of the system being logged. This is used to prefix the log
+     *            files and also appears as the value of the "_sys" tag in each log
+     *            entry.
+     * @param configFile
+     *            - Optional configuration file, expected to be in a subset of YAML.
+     *            The logging configuration is expected to be under top-level
+     *            section "logging: ". Sample below.
+     *            <p>
+     *            <code>
+     * logging:<br>
+     * &nbsp sysname: rioTARS # system name<br>
+     * &nbsp logdir: /dev/sda1/logs # Path to log dir<br>
+     * &nbsp maxdirsize_mb: 100 # Max total size in MB the files under the dir can reach<br>
+     * &nbsp trace: transport robotcomm # Tracing will be enabled for logs with these names
+     * <p>
+     *</code>
+     *            <p>
+     *            The log directory MUST contain the substring "log" in some
+     *            combination of upper and lower case characters, and will be
+     *            created if it does not exist.
+     *            <p>
+     *            <em>Default values for configuration parameters: </em>
+     *            <ul>
+     *            <li><code>logdir:</code> the value of LoggerUtils.DEFAULT_LOGDIR,
+     *            under the current users' home directory
+     *            <li><code>maxdirsize_mb:</code>the value of constant
+     *            LoggerUtils.DEFAULT_MAXDIRSIZE_MB</code>
+     *            <li><code>trace:</code>tracing is disabled by default
+     *            </ul>
+     */
+    public static StructuredLogger makeStandardLogger(String sysName, File configFile) {
+        StringmapHelper sm = loadConfig(configFile);
+        sysName = sm.getAsString(configSysname, sysName);
+        RawLogger[] rawLoggers = createRawLoggers(sysName, sm); // could be an empty list if the log directory is
+                                                                // invalid.
+        return new StructuredLogger(rawLoggers, sysName);
+    }
 
     /**
      * Creates a raw logger that generates per-session log files of the form
@@ -100,6 +176,124 @@ public class LoggerUtils {
      */
     public static RawLogger createConsoleRawLogger(ToIntFunction<String> maxPriFunc) {
         return new ConsoleRawLogger(maxPriFunc);
+    }
+
+    // ConfigFile could be null.
+    // Return an empty stringmap helper if the file is missing or there is any
+    // error.
+    private static StringmapHelper loadConfig(File configFile) {
+        Map<String, String> sm = new HashMap<>();
+        if (configFile != null && configFile.exists()) {
+            try {
+                FileReader reader = new FileReader(configFile);
+                sm = ConfigurationHelper.readSection(reader, configSection);
+            } catch (FileNotFoundException e) {
+                errPrint("Exception attempting to read file: " + configFile.getAbsolutePath());
+                e.printStackTrace();
+            }
+        }
+        return new StringmapHelper(sm);
+    }
+
+    private static void errPrint(String s) {
+        System.err.println(s);
+    }
+
+    // Create the two file-based rawLoggers - one to log all sessions and one
+    // per-session log.
+    // {sm} contains optional configuration information.
+    // Will return an empty array on error.
+    private static RawLogger[] createRawLoggers(String sysName, StringmapHelper sm) {
+        String defaultLogDir = (new File(System.getProperty("user.home"), DEFAULT_LOGDIR)).getAbsolutePath();
+        String dirName = sm.getAsString(configlogdir, defaultLogDir);
+        File dirFile = new File(dirName);
+        RawLogger[] rlArray = {};
+        if (!dirFile.isAbsolute()) {
+            errPrint("Log directory path is not absolute: " + dirFile.getAbsolutePath());
+            return rlArray; // ******* EARLY RETURN
+        }
+        if (!dirFile.exists()) {
+            if (!dirFile.mkdirs()) {
+                errPrint("Could not create log directory: " + dirFile.getAbsolutePath());
+                return rlArray; // ******* EARLY RETURN
+            }
+        }
+        if (!dirFile.isDirectory()) {
+            errPrint("Specified logdir is not a directory: " + dirFile.getAbsolutePath());
+            return rlArray; // ******* EARLY RETURN
+        }
+
+        // At this point it looks like we have a log directory. Let's check if there is
+        // enough space to log.
+        final int MILLION = 1000 * 1000;
+        int size_mb = (int) Math.round(computeDirSize(dirFile) / (double) MILLION);
+        int max_size_mb = sm.getAsInt(configMaxdirsize_mb, 0, Integer.MAX_VALUE, DEFAULT_MAXDIRSIZE_MB);
+        int capacity_mb = max_size_mb - size_mb;
+        if (capacity_mb < 1) {
+            errPrint("Not enough space to log. Existing size of log dir: " + size_mb);
+            return rlArray;
+        }
+
+        // At this point we have at least 1 mb (rounded) of capacity.
+        double sessionsFrac = 0.1; // 10 % of capacity allocated to sessions dir.
+        long sessionsLogCapacity = (long) (sessionsFrac * capacity_mb * MILLION);
+        long perSessionLogCapacity = capacity_mb * MILLION - sessionsLogCapacity;
+
+        String sessionsLogName = sysName + "_" + sessionsLogSuffix;
+        String perSessionPrefix = sysName + "_";
+
+        // Let's calculate total max size of the sessionsLogger, taking into account
+        // it's current size if it already exists.
+        File sessionsLogFile = new File(dirName, sessionsLogName);
+        long sessionsLogMaxSize = sessionsLogCapacity;
+        if (sessionsLogFile.exists()) {
+            long curLen = sessionsLogFile.length();
+            sessionsLogMaxSize += curLen;
+        }
+
+        // Find if any StructuredLogger.Log names are being traced.
+        final HashSet<String> tracedLogs = getTracedLogNames(sm); // could be null
+
+        rlArray = new RawLogger[] {
+
+                // Sessions log - appended to. Only PRI0 messages are logged.
+                createFileRawLogger(sessionsLogFile, sessionsLogMaxSize, s -> StructuredLogger.PRI0),
+
+                // Per-session log - created anew each time. PRI0,1 and optionally PRI2 messages are logged.
+                createFileRawLogger(dirFile, perSessionPrefix, perSessionSuffix, perSessionLogCapacity,
+                        s -> tracedLogs != null && tracedLogs.contains(s) ? StructuredLogger.TRACEPRI
+                                : StructuredLogger.PRI1) };
+        return rlArray;
+    }
+
+    private static HashSet<String> getTracedLogNames(StringmapHelper sm) {
+        HashSet<String> hs = null;
+        String trace = sm.getAsString(configTrace, "");
+        String[] logs = trace.split("\\s+");
+        if (logs.length > 0) {
+            hs = new HashSet<>();
+            for (String s : logs) {
+                hs.add(s);
+            }
+        }
+        return hs;
+    }
+
+    // Computes total size of files in the directory and its subdirectories.
+    // Returns 0 if directory is empty OR if the {dir} is not a directory.
+    private static long computeDirSize(File dir) {
+        File[] files = dir.listFiles();
+        long size = 0;
+        if (files != null) {
+            for (File f : files) {
+                if (f.isDirectory()) {
+                    size += computeDirSize(f); // RECURSIVE CALL
+                } else {
+                    size += f.length();
+                }
+            }
+        }
+        return size;
     }
 
     // This is a static class because it is constructed from within static methods
@@ -187,7 +381,7 @@ public class LoggerUtils {
         }
 
         @Override
-        public int maxPriority(String logName) {            
+        public int maxPriority(String logName) {
             return this.maxPriFunc.applyAsInt(logName);
         }
 

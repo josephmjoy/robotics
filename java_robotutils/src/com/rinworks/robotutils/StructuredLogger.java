@@ -55,6 +55,7 @@ public class StructuredLogger {
     public static final int PRI0 = 0; // Priority 0
     public static final int PRI1 = 1; // Priority 1
     public static final int PRI2 = 2; // Priority 2
+    public static final int TRACEPRI = 2; // Priority of trace messages.
     public static final String CAT_INFO = "INFO";
     public static final String CAT_TRACE = "TRACE";
     public static final String CAT_ERR = "ERR";
@@ -719,7 +720,7 @@ public class StructuredLogger {
         @Override
         public void trace(String msgType, String s) {
             if (tracingEnabled) {
-                rawLog(PRI2, CAT_TRACE, scrubName(msgType), s);
+                rawLog(TRACEPRI, CAT_TRACE, scrubName(msgType), s);
             }
         }
 
@@ -738,7 +739,7 @@ public class StructuredLogger {
 
         @Override
         public boolean tracing() {
-            return this.maxMaxPriority >= PRI2 && tracingEnabled;
+            return this.maxMaxPriority >= TRACEPRI && tracingEnabled;
         }
 
         @Override

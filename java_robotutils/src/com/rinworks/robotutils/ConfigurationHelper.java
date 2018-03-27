@@ -29,7 +29,20 @@ public class ConfigurationHelper {
      * 
      * @return map of keys to values for that specified section.
      */
-    public static Map<String, String> readSection(String sectionName, Reader r, List<String> keys) {
+    public static Map<String, String> readSection(Reader r, String sectionName) {
+        return readSection(r, sectionName, null);
+    }
+    
+    /**
+     * Loads the specified section from the specified reader. It will not throw an
+     * exception. On error (IO exception or not being able to find the section) it
+     * will return an empty map.
+     * If {keys} is non-null it will clear it and fill it with the keys in the order that they were found
+     * in the input.
+     * 
+     * @return map of keys to values for that specified section.
+     */
+    public static Map<String, String> readSection(Reader r, String sectionName, List<String> keys) {
         HashMap<String, String> hm = new HashMap<>();
         if (keys != null) {
             keys.clear();

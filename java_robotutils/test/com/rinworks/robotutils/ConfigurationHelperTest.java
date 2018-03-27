@@ -20,7 +20,7 @@ class ConfigurationHelperTest {
 
         Reader r = new StringReader(input);
         ArrayList<String> keys = new ArrayList<>();
-        Map<String, String> map = ConfigurationHelper.readSection("mySection", r, keys);
+        Map<String, String> map = ConfigurationHelper.readSection(r, "mySection", keys);
         Writer w = new StringWriter();
         boolean b = ConfigurationHelper.writeSection("mySection", map, keys, w);
         assertEquals(true, b);
@@ -112,7 +112,7 @@ class ConfigurationHelperTest {
         for (int i = 1; i <= 4; i++) {
             Reader r = new StringReader(input);
             String section = "section" + i;
-            Map<String, String> map = ConfigurationHelper.readSection(section, r, keys);
+            Map<String, String> map = ConfigurationHelper.readSection(r, section, keys);
             boolean b = ConfigurationHelper.writeSection(section, map, keys, w);
             assertEquals(true, b);
             
@@ -141,7 +141,7 @@ class ConfigurationHelperTest {
         for (int i = 1; i <= 4; i++) {
             Reader r = new StringReader(input2);
             String section = "section" + i;
-            Map<String, String> map = ConfigurationHelper.readSection(section, r, keys);
+            Map<String, String> map = ConfigurationHelper.readSection(r, section, keys);
             boolean b = ConfigurationHelper.writeSection(section, map, keys, w2);
             assertEquals(true, b);
          }

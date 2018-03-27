@@ -39,6 +39,8 @@ public static class HistoLogger {
 	public HistoLogger setUnits(String units);
 	public void update(int data);
 	public void process(){}
+	public void start();
+	public void stop();
 }
 ```
 Suggested trace message (only generated if there are non-zero counts within the specified data window):
@@ -46,7 +48,7 @@ Suggested trace message (only generated if there are non-zero counts within the 
 ```
 ... period: 10000  count:  120 units: ns   min: 0  max: 15299  avg: 120.5  histo: [120,2,13,0,0,0,135,1]
 ```
-The period will be the actual period - time since the stats were reset, not the nominal period specified in the constructor. The difference between these two depends on how frequently `process` is called. In the FIRST robotics context, `process` should be called on every loop invocation as the overhead is negligible. The histogram reports powers-of-two bins: 0,1,2-3,4-7,8-15, etc., and is reset after each trace message is generated. The unit defines the unit of measure ('ns' being nanosecond.). There is no policing of units. The default is `_nr` for 'not recorded'. With respect to the use cases above, the interval between the calls to the loop method should probably be report in milliseconds, while the time _in_ the loop method reported in nanoseconds. It would be up to the client to do this and report the right units.
+The period will be the actual period - time since the stats were reset, not the nominal period specified in the constructor. The difference between these two depends on how frequently `process` is called. In the FIRST robotics context, `process` should be called on every loop invocation as the overhead is negligible. The histogram reports powers-of-two bins: 0,1,2-3,4-7,8-15, etc., and is reset after each trace message is generated. The unit defines the unit of measure ('ns' being nanosecond.). There is no policing of units. The default is `_nr` for 'not recorded'. With respect to the use cases above, the interval between the calls to the loop method should probably be reported in milliseconds, while the time _in_ the loop method reported in nanoseconds. It would be up to the client to do this and report the right units.
 
 ##Implementation Possibilities
 Keep a fixed-size (32-element) array of integer bins. Method `update`: find the bin by floor(log2(dataPoint)) and increment that, and also update min, max, (long) sum and count. All this is done synchronizing on the array of bins.
@@ -95,7 +97,11 @@ Note on finding device paths in Unix: https://askubuntu.com/questions/311772/how
 
 The turnkey logging static method has signature `StructuredLogger makeStandardLogger(String sysName, FILE configDir)`.
 The 2nd parameter (configDir) is optional - an overloaded method can take just the 1st parameter. The utility method does the following:
-1. Creates the log directory if not present.
+1. Creates the log directory if not present.[UPDATE] The directory must have the substring 'log' somewhere in it. This is to mitigating accidentally creating wrong directories. Requiring the 
+directory to always be created in advance was considered, but I [JMJ] felt that it was too
+easy to forget this step when swapping out thumb-drives for logging (the main use case), and
+in the default case, where logging is to ~/robotlogs, the max default is a modest 10mb, OK for
+the roboRIO.
 2. Calculates the existing size of the files under the log directory.
 3. It creates two file raw loggers. One will be called <sysName>_sessions.txt and one will be <sysname>_<sessionID>.txt. Example: `rioTARS_sessions.txt` and `rioTARS_130989098909.txt` The first
   one is appended to - and will contain just log entries of session starts and stops. The 2nd is created afresh for each new session.
