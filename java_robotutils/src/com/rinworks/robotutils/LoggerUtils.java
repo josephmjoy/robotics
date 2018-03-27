@@ -51,13 +51,13 @@ public class LoggerUtils {
      * to, and a per-session file that is created for each session. The session log
      * file is called "{sysName}_sessions.txt", and logs only session starts and
      * stops. The per-session file is called "{sysName}_<I>sessionID</I>.txt" and
-     * records all INFO, WARN and ERROR log messages for the current session.
-     * It does not log tracing messages. See the other overloaded method for how to
-     * log trace messages.
+     * records all INFO, WARN and ERROR log messages for the current session. It
+     * does not log tracing messages. See the other overloaded method for how to log
+     * trace messages.
      * <p>
-     * Logs will be logged under the sub-directory LoggerUtils.DEFAULT_LOGDIR
-     *            of current users' home directory. Logging will stop if the files under the 
-     *            log directory exceed <code>LoggerUtils.DEFAULT_MAXDIRSIZE_MB</code>.
+     * Logs will be logged under the sub-directory LoggerUtils.DEFAULT_LOGDIR of
+     * current users' home directory. Logging will stop if the files under the log
+     * directory exceed <code>LoggerUtils.DEFAULT_MAXDIRSIZE_MB</code>.
      * 
      * @param sysName
      *            - Name of the system being logged. This is used to prefix the log
@@ -68,7 +68,7 @@ public class LoggerUtils {
     public static StructuredLogger makeStandardLogger(String sysName) {
         return makeStandardLogger(sysName, null);
     }
-    
+
     /**
      * Make a logger that logs to two files: a sessions log file that is appended
      * to, and a per-session file that is created for each session. The session log
@@ -208,7 +208,6 @@ public class LoggerUtils {
         Map<String, String> sm = new HashMap<>();
         if (configFile != null && configFile.exists()) {
             try (FileReader reader = new FileReader(configFile);) {
-                
                 sm = ConfigurationHelper.readSection(reader, configSection);
             } catch (IOException e) {
                 errPrint("Exception attempting to read file: " + configFile.getAbsolutePath());
@@ -282,7 +281,8 @@ public class LoggerUtils {
                 // Sessions log - appended to. Only PRI0 messages are logged.
                 createFileRawLogger(sessionsLogFile, sessionsLogMaxSize, s -> StructuredLogger.PRI0),
 
-                // Per-session log - created anew each time. PRI0,1 and optionally PRI2 messages are logged.
+                // Per-session log - created anew each time. PRI0,1 and optionally PRI2 messages
+                // are logged.
                 createFileRawLogger(dirFile, perSessionPrefix, perSessionSuffix, perSessionLogCapacity,
                         s -> tracedLogs != null && tracedLogs.contains(s) ? StructuredLogger.TRACEPRI
                                 : StructuredLogger.PRI1) };
