@@ -44,7 +44,7 @@ class LoggerUtilsTest {
     @Test
     void testBasicTest() {
         clearLogdir(null);
-        StructuredLogger logger = LoggerUtils.makeStandardLogger(SYSNAME, null);
+        StructuredLogger logger = LoggerUtils.makeStandardLogger(SYSNAME);
         logger.beginLogging();
         logger.info("This is a test INFO log message");
         logger.endLogging();

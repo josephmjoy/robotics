@@ -51,6 +51,29 @@ public class LoggerUtils {
      * to, and a per-session file that is created for each session. The session log
      * file is called "{sysName}_sessions.txt", and logs only session starts and
      * stops. The per-session file is called "{sysName}_<I>sessionID</I>.txt" and
+     * records all INFO, WARN and ERROR log messages for the current session.
+     * It does not log tracing messages. See the other overloaded method for how to
+     * log trace messages.
+     * <p>
+     * Logs will be logged under the sub-directory LoggerUtils.DEFAULT_LOGDIR
+     *            of current users' home directory. Logging will stop if the files under the 
+     *            log directory exceed <code>LoggerUtils.DEFAULT_MAXDIRSIZE_MB</code>.
+     * 
+     * @param sysName
+     *            - Name of the system being logged. This is used to prefix the log
+     *            files and also appears as the value of the "_sys" tag in each log
+     *            entry.
+     * 
+     */
+    public static StructuredLogger makeStandardLogger(String sysName) {
+        return makeStandardLogger(sysName, null);
+    }
+    
+    /**
+     * Make a logger that logs to two files: a sessions log file that is appended
+     * to, and a per-session file that is created for each session. The session log
+     * file is called "{sysName}_sessions.txt", and logs only session starts and
+     * stops. The per-session file is called "{sysName}_<I>sessionID</I>.txt" and
      * records all INFO, WARN and ERROR log messages for the current session. It
      * will conditionally log TRACE messages based on information in the optional
      * configuration file.
@@ -82,7 +105,7 @@ public class LoggerUtils {
      *            <li><code>logdir:</code> the value of LoggerUtils.DEFAULT_LOGDIR,
      *            under the current users' home directory
      *            <li><code>maxdirsize_mb:</code>the value of constant
-     *            LoggerUtils.DEFAULT_MAXDIRSIZE_MB</code>
+     *            <code>LoggerUtils.DEFAULT_MAXDIRSIZE_MB</code>
      *            <li><code>trace:</code>tracing is disabled by default
      *            </ul>
      */
@@ -184,10 +207,10 @@ public class LoggerUtils {
     private static StringmapHelper loadConfig(File configFile) {
         Map<String, String> sm = new HashMap<>();
         if (configFile != null && configFile.exists()) {
-            try {
-                FileReader reader = new FileReader(configFile);
+            try (FileReader reader = new FileReader(configFile);) {
+                
                 sm = ConfigurationHelper.readSection(reader, configSection);
-            } catch (FileNotFoundException e) {
+            } catch (IOException e) {
                 errPrint("Exception attempting to read file: " + configFile.getAbsolutePath());
                 e.printStackTrace();
             }
