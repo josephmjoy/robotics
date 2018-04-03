@@ -1076,7 +1076,9 @@ class RobotCommTest {
     }
 
     StructuredLogger initStructuredLogger() {
-        File logfile = new File("G:\\KUMBH\\Projects\\ihs\\robotics\\temp\\log.txt");
+        final String DEFAULT_LOGDIR = "robotutils\\testlogs";
+        String logDir = (new File(System.getProperty("user.home"), DEFAULT_LOGDIR)).getAbsolutePath();
+        File logfile = new File(logDir, "commtestlog.txt");
         ToIntFunction<String> f1 = name -> {
             return name.equals("TRANS") || name.equals("HFLOG") ? -1 : Integer.MAX_VALUE;
         };
