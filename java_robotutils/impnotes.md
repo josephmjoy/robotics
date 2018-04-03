@@ -25,6 +25,44 @@ int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat a
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
 
+#April 1A, 2018 General Design Note - Potential Future Diagnostic Support
+Mike, Titan Robotics mentor, mentioned that they now run diagnostics in the background during the match, checking things like relationship between motor power settings and encoder output. Benefit is that it doesn't require the 
+drivers or technicians to remember to run diagnostics, it runs anyway. Obviously this would have different operation parameters than stand-alone diagnostics and is complementary with the latter.
+Some benefits of always-running-diagnostics:
+1. Diagnosis is on real-world scenarios.
+2. Can provide timely information that can be acted on right after the match. Imagine the situation that there is some problem, and we run stand-alone diagnostics, but the latter doesn't find anything, possibly because it does not produce
+the situation that happened on the match.
+3. Is not optional so will always run. One side benefit that it is a chance to capture logs that are a representation of both valid and invalid runs on the field.
+
+Benefits of stand-alone diagnostics:
+1. Can carefully control what happens, so can be easier to detect what is going wrong. For example can run a known amount of power to motors, one at a time and verify results. Likewise, verify the state of individual limit switches.
+2. Can run through a set of scenarios that will be likely be more broad-based, as in they may not be encountered in any particular match.
+3. Can take up  more overhead because it's not in an actual match.
+4. Probably easier to implement with no chance of messing up the matches (unless it causes damage to the robot!)
+
+So it seems that both kinds of diagnostics have a place. The question for RobotUtils, is what kind of general support can we add (if any) that will help diagnosing systems. StructuredLogger, HistoLogger are examples of this already,
+but what more can be done?
+
+Some ideas:
+- Extend HistoLogger (or something like it) to keep moving averages and moving standard deviations.
+- Triggered on some event, can query a largish amount of data based on the situation, and discard after determining the result of the diagnosis. This is a benefit over logging and analysis of logs, and should be leveraged.
+- Rule-based versus statistical/machine-learned approaches. These can live side by side.
+- Need to understand the kinds of failures seen in practice - based on talking to mentors, and looking at chief-delphi.
+- To keep things real, define a realistic scenario and have that drive things. See below.
+
+## Scenario: robot diagnostics
+These 'invariants' apply to run-time as well as purpose-built diagnostics:
+- If software sets power to motor N, then we expect that that motor will consume some power and it's encoder (if any) will move in the expected direction. Probably need moving averages. How to define mappings? How to schedule when particular inputs are received and which component is responsible for updating values?
+- Variant: - Accelerometer, gyro and encoder input and motor software power settings have certain expected relationships. Some of these relationships could be learned over time, or they could be programmed in given parameters like robot weight, motor torques and gear ratios.
+- If a particular operator input (like a button press or a joystick move) is received, then it is expected to trigger a series of events, such as particular motors or servos programmed in particular ways. Probably need moving averages and moving counts of particular events. Open issue is how this expected behavior is programmed without the process become cumbersome and error-prone. Motors, gear boxes, etc can have pre-defined characteristics as there are not many of them. 
+- Coupled limit switches and motors behave as expected.
+
+Perhaps we could extensively log the states of operator inputs and sensors and PDB and actuator (e.g. motor) settings and create ML classifiers off-line that act as triggers for flagging something unusual. Whether or not this is 
+practical, it would be a good exercise.
+
+
+Aside: how to test robot under heavy load in a static place: place it on a sheet of plywood and strap it down with bungees - starting can be without any tension, but the tension should kick in pretty quickly (and/or we need a larger sheet so it can move more). This is much better than having it run into a padded wall as it allows other movements such as turning and strafing).
+
 #March 22B, 2018 StructuredLogger Design Note - Introducing HistoLogger class
 Proposal to add a new class LogUtils.HistoLogger to periodically report histograms, min, max, avg and count of some integer value. The immediate use cases are to report on the following:
 1. Periodic loop calls for robotics -  the interval between calls and also how long it took in the call. For example, in FRC, we expect the call to come every 50ms and it should complete well within a few milliseconds. Any deviation from this norm is a signal of an overloaded system or misbehaving software.
