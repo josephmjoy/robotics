@@ -387,7 +387,7 @@ public class LoggerUtils {
                 } catch (IOException e) {
                     printErr(String.format(
                             "FileRawLogger: Cannot log. Could not create/open log file {%s}. Exception: %s",
-                            logDirectory.getAbsolutePath(), e));
+                            logFile.getAbsolutePath(), e));
                     out = null;
                     loggingDisabled = true;
                 }
