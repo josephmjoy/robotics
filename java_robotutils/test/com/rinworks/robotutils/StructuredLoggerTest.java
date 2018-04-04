@@ -237,6 +237,33 @@ class StructuredLoggerTest {
         assertEquals(mType, expectedType);
     }
 
+    // Simple test of using a 'null' structured logger.
+    @Test
+    void testNullLogger() {
+        final String MSG = "Will never be logged";
+        StructuredLogger nullLogger = new StructuredLogger();
+        nullLogger.beginLogging();
+        nullLogger.info(MSG);
+        nullLogger.warn(MSG);
+        nullLogger.err(MSG);
+        StructuredLogger.Log log1 = nullLogger.defaultLog();
+        log1.info("init", MSG);
+        log1.flush();
+        log1.addTag("mode", "auton");
+        StructuredLogger.Log log2 = log1.newLog("LOG2");
+        assertEquals("LOG2", log2.logName());
+        log2.startRTS();
+        log2.trace(MSG);
+        log2.trace(MSG);
+        log2.pauseTracing();
+        log2.trace(MSG);
+        log1.trace(MSG);
+        log2.resumeTracing();
+        log2.trace(MSG);
+        assertFalse(log2.tracing());
+        nullLogger.endLogging();
+    }
+
     // Simple self-contained example that goes into README.md introductory text.
     @Test
     void testIntroductoryExample1() throws IOException {

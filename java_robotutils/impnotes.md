@@ -25,6 +25,11 @@ int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat a
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
    
+#April 4B, 2018 StructuredLogger Design Note: Adding a Null Logger
+There could be times when a client simply doesn't care to log, but needs to provider `StructuredLogger.Log` objects to other classes (such as RobotComm). The client can always create a `StructuredLogger` with an empty list of loggers, but even that has some overhead, and is kind of cumbersome to do. So the proposal is to add a new `StructuredLogger` constructor that takes no arguments. If invoked it instantiates a gutted out implementation, and it's `newLog` and `defaultLog` methods return a "null" implementation of the `StructuredLogger.Log` interface (class `NullLogImplementation`). We do create a new instance of `NullLogImplementation` because the client code may be relying on the fact that there
+are different log instances with specific names (which they can retrieve by calling
+logName.)
+   
 #April 4A, 2018 CommUtils Design Note - Echo client and server
 `CommUtils.EchoClient` and `CommUtils.EchoServer` implement an echo server and an echo client that use the `RobotComm` and other `RobotUtils` classes to send and receive messages, commands and realtime commands.
 These are used only for testing, and the justification for putting this in `RobotUtils` is that these are small classes that are also exemplary uses for pretty much all of `RobotComm`'s APIs, and will

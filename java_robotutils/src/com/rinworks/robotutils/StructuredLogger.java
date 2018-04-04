@@ -102,8 +102,9 @@ public class StructuredLogger {
     public static final String TYPE_DEINIT_START = "DEINIT_START";
     public static final String TYPE_DEINIT_END = "DEINIT_END";
 
+    private final boolean nullLogger; // true iff this is a null/vestigial logger.
     private final String systemName;
-    private final LogImplementation defaultLog;
+    private final Log defaultLog;
     private String sessionId;
     private long sessionStart;
     private boolean sessionStarted = false;
@@ -361,6 +362,18 @@ public class StructuredLogger {
     }
 
     /**
+     * Creates a 'null' or vestigial logger. It works like any other logger but
+     * doesn't actually log. Overhead of using it is minimal, though each call to
+     * `newLog` does create a vestigial object that implements the `Log` interface.
+     */
+    public StructuredLogger() {
+        this.nullLogger = true;
+        this.systemName = "null";
+        this.defaultLog = new NullLogImplementation(this.systemName);
+        this.bufferedLoggers = null;
+    }
+
+    /**
      * Creates the main structured logging object, typically one per system.
      * {_rawLogger} is a low-level consumer of generated log messages. {rootName} is
      * the top-level name. Any StructuredLogger.Log object created have {rootName} +
@@ -378,6 +391,7 @@ public class StructuredLogger {
      * logged.
      */
     public StructuredLogger(RawLogger[] rawLoggers, String sysName) {
+        this.nullLogger = false;
         this.bufferedLoggers = new BufferedRawLogger[rawLoggers.length];
         for (int i = 0; i < rawLoggers.length; i++) {
             this.bufferedLoggers[i] = new BufferedRawLogger(rawLoggers[i]);
@@ -424,6 +438,10 @@ public class StructuredLogger {
      */
     public synchronized void beginLogging() {
 
+        if (nullLogger) {
+            return; // EARLY RETURN
+        }
+
         if (this.sessionStarted || this.sessionEnded) {
             printErr("Ignoring attempt to begin structured logger " + systemName + ":invalid state");
         } else {
@@ -449,7 +467,7 @@ public class StructuredLogger {
             // Log very first message...
             String msg = String.format(" dateTime: %s  maxBuffered: %s  autoFlushPeriod: %s", LocalDateTime.now(),
                     this.maxBufferedMessageCount, this.periodicFlushMillis);
-            defaultLog.pri0(TYPE_LOG_SESSION_START, msg);
+            ((LogImplementation) defaultLog).pri0(TYPE_LOG_SESSION_START, msg);
         }
 
     }
@@ -462,10 +480,14 @@ public class StructuredLogger {
      */
     public void endLogging() {
 
+        if (nullLogger) {
+            return; // EARLY RETURN
+        }
+
         boolean deinit = true;
 
         logDiscardedMessageCount();
-        defaultLog.pri0(TYPE_LOG_SESSION_END, LocalDateTime.now().toString());
+        ((LogImplementation) defaultLog).pri0(TYPE_LOG_SESSION_END, LocalDateTime.now().toString());
 
         synchronized (this) {
             if (!this.sessionStarted) {
@@ -638,6 +660,121 @@ public class StructuredLogger {
                 }
             }
         };
+    }
+
+    // This private class implements a 'null' Log object that does nothing.
+    private class NullLogImplementation implements Log {
+
+        final String logName;
+
+        NullLogImplementation(String logName) {
+            this.logName = logName;
+        }
+
+        @Override
+        public void err(String s) {
+            // Do nothing
+        }
+
+        @Override
+        public void warn(String s) {
+            // Do nothing
+        }
+
+        @Override
+        public void info(String s) {
+            // Do nothing
+        }
+
+        @Override
+        public void err(String msgType, String s) {
+            // Do nothing
+        }
+
+        @Override
+        public void warn(String msgType, String s) {
+            // Do nothing
+        }
+
+        @Override
+        public void info(String msgType, String s) {
+            // Do nothing
+        }
+
+        @Override
+        public void trace(String s) {
+            // Do nothing
+        }
+
+        @Override
+        public void trace(String msgType, String s) {
+            // Do nothing
+        }
+
+        @Override
+        public void loggedAssert(boolean cond, String s) {
+            // Do nothing
+        }
+
+        @Override
+        public void pauseTracing() {
+            // Do nothing
+        }
+
+        @Override
+        public void resumeTracing() {
+            // Do nothing
+        }
+
+        @Override
+        public boolean tracing() {
+            return false;
+        }
+
+        @Override
+        public void startRTS() {
+            // Do nothing
+        }
+
+        @Override
+        public void stopRTS() {
+            // Do nothing
+        }
+
+        @Override
+        public void addTag(String tag) {
+            // Do nothing
+        }
+
+        @Override
+        public void addTag(String tag, String value) {
+            // Do nothing
+        }
+
+        @Override
+        public void removeTag(String tag) {
+            // Do nothing
+        }
+
+        @Override
+        public void flush() {
+            // Do nothing
+        }
+
+        @Override
+        public Log newLog(String name) {
+            // We do create a new instance because client code may be relying on the fact
+            // that there
+            // are different log instances with specific names (which they can retrieve by
+            // calling
+            // logName.
+            return new NullLogImplementation(name);
+        }
+
+        @Override
+        public String logName() {
+            return this.logName;
+        }
     }
 
     // This private class implements a Log object
