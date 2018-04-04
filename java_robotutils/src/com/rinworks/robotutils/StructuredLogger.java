@@ -339,11 +339,7 @@ public class StructuredLogger {
          */
         Log newLog(String name);
 
-        /**
-         * Returns the log name (the name passed in newLog call that created this log or
-         * (for the default log) the root log name.
-         */
-        String logName();
+
 
         // FUTURE
         // Hidden tags whose existence can be checked (or rather asserted to be present
@@ -363,13 +359,12 @@ public class StructuredLogger {
 
     /**
      * Creates a 'null' or vestigial logger. It works like any other logger but
-     * doesn't actually log. Overhead of using it is minimal, though each call to
-     * `newLog` does create a vestigial object that implements the `Log` interface.
+     * doesn't actually log. Overhead of using it is minimal.
      */
     public StructuredLogger() {
         this.nullLogger = true;
         this.systemName = "null";
-        this.defaultLog = new NullLogImplementation(this.systemName);
+        this.defaultLog = new NullLogImplementation();
         this.bufferedLoggers = null;
     }
 
@@ -665,12 +660,6 @@ public class StructuredLogger {
     // This private class implements a 'null' Log object that does nothing.
     private class NullLogImplementation implements Log {
 
-        final String logName;
-
-        NullLogImplementation(String logName) {
-            this.logName = logName;
-        }
-
         @Override
         public void err(String s) {
             // Do nothing
@@ -763,18 +752,9 @@ public class StructuredLogger {
 
         @Override
         public Log newLog(String name) {
-            // We do create a new instance because client code may be relying on the fact
-            // that there
-            // are different log instances with specific names (which they can retrieve by
-            // calling
-            // logName.
-            return new NullLogImplementation(name);
+            return this; // We don't create a new instance!
         }
 
-        @Override
-        public String logName() {
-            return this.logName;
-        }
     }
 
     // This private class implements a Log object
@@ -903,10 +883,6 @@ public class StructuredLogger {
             }
         }
 
-        @Override
-        public String logName() {
-            return this.logName;
-        }
 
         // Not for use outside the containing class.
         void pri0(String msgType, String s) {

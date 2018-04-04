@@ -251,7 +251,6 @@ class StructuredLoggerTest {
         log1.flush();
         log1.addTag("mode", "auton");
         StructuredLogger.Log log2 = log1.newLog("LOG2");
-        assertEquals("LOG2", log2.logName());
         log2.startRTS();
         log2.trace(MSG);
         log2.trace(MSG);
