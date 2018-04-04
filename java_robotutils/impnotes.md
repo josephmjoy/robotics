@@ -24,6 +24,19 @@ int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat a
    chance of failed transmission] LOG_SESSION_STARTStructuredLogger: UDP rawlogger should bundle multiple log messages into
    a single UDP packet - as much as can fit. Given the overhead of sending and
    receiving a UDP packet, we should pack as much in there as we can.
+   
+#April 4A, 2018 CommUtils Design Note - Echo client and server
+`CommUtils.EchoClient` and `CommUtils.EchoServer` implement an echo server and an echo client that use the `RobotComm` and other `RobotUtils` classes to send and receive messages, commands and realtime commands.
+These are used only for testing, and the justification for putting this in `RobotUtils` is that these are small classes that are also exemplary uses for pretty much all of `RobotComm`'s APIs, and will
+always be handy to test various real configurations, such as communication between a robot and a driver station or Raspberry Pi.
+
+`EchoServer` is a blocking server that listens on a specified IP address and port and handles communication over a list of channels specified in its constructor. Its `run` method blocks while executing.
+
+`EchoClient` is a client that can send messages, commands and realtime commands to the server specified in its constructor. It has blocking methods to send each type of thing (message, command, realtime command) a specified number of times, at a specified rate and with a specified payload. While each method is blocking, multiple methods could be invoked concurrently from different threads.
+
+The various methods are blocking to keep things simple, both from the point of clients using them and from the point of being simple sample code.
+
+
 
 #April 1A, 2018 General Design Note - Potential Future Diagnostic Support
 Mike, Titan Robotics mentor, mentioned that they now run diagnostics in the background during the match, checking things like relationship between motor power settings and encoder output. Benefit is that it doesn't require the 
