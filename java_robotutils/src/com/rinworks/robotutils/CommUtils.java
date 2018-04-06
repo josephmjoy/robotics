@@ -4,6 +4,7 @@
 package com.rinworks.robotutils;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -36,6 +37,9 @@ public class CommUtils {
          * Creates an echo server. Logging goes to the default logging directory (see
          * <code>LoggerUtils</code>), with sysName {serverName}.
          * 
+         * @param configFile
+         *            - File containing configuration information, including
+         *            logging-related configuration.
          * @param address
          *            - IP address
          * @param port
@@ -48,10 +52,12 @@ public class CommUtils {
          * @param channelNames
          *            - array of channel names.
          */
-        public EchoServer(String address, int port, int recvBufSize, String serverName, String[] channelNames) {
-            this.logger = LoggerUtils.makeStandardLogger(serverName);
+        public EchoServer(File configFile, String address, int port, int recvBufSize, String serverName,
+                String[] channelNames) {
+            this.logger = LoggerUtils.makeStandardLogger(serverName, configFile);
+            this.logger.beginLogging();
             this.log = logger.defaultLog();
-            this.transport = CommUtils.createUdpTransport(address, port, recvBufSize, log);
+            this.transport = CommUtils.createUdpTransport(address, port, recvBufSize, this.log.newLog("UDP"));
             this.rc = new RobotComm(transport, this.log.newLog("RCOMM"));
             this.channels = new Channel[channelNames.length];
             for (int i = 0; i < channelNames.length; i++) {
@@ -131,13 +137,14 @@ public class CommUtils {
             if (await) {
                 this.latch.await();
             }
-            this.rc.close();
+            this.close();
         }
 
         @Override
         public void close() {
             this.rc.close();
             this.transport.close();
+            this.logger.endLogging();
         }
     }
 
@@ -153,6 +160,9 @@ public class CommUtils {
          * Creates a RobotComm echo client. Logging goes to the default logging
          * directory (see <code>LoggerUtils</code>), with sysName {serverName}.
          * 
+         * @param configFile
+         *            - File containing configuration information, including
+         *            logging-related configuration.
          * @param serverAddress
          *            - server IP address
          * @param serverPort
@@ -160,10 +170,11 @@ public class CommUtils {
          * @param clientName
          *            - used for logging
          */
-        public EchoClient(String serverAddress, int serverPort, int recvBufSize, String clientName) {
-            this.logger = LoggerUtils.makeStandardLogger(clientName);
+        public EchoClient(File configFile, String serverAddress, int serverPort, int recvBufSize, String clientName) {
+            this.logger = LoggerUtils.makeStandardLogger(clientName, configFile);
+            this.logger.beginLogging();
             this.log = logger.defaultLog();
-            this.transport = CommUtils.createUdpTransport(recvBufSize, log);
+            this.transport = CommUtils.createUdpTransport(recvBufSize, this.log.newLog("UDP"));
             this.remoteAddress = CommUtils.resolveUdpAddress(serverAddress, serverPort);
             this.rc = new RobotComm(transport, this.log.newLog("RCOMM"));
         }
@@ -235,6 +246,7 @@ public class CommUtils {
             this.log.info("in EchoClient.close");
             this.rc.close();
             this.transport.close();
+            this.logger.endLogging();
         }
     }
 
@@ -292,7 +304,7 @@ public class CommUtils {
             int i = address.lastIndexOf(':');
             if (i >= 0) {
                 String nameOrIP = address.substring(0, i);
-                String candidatePort = address.substring(i+1);
+                String candidatePort = address.substring(i + 1);
                 try {
                     int port = Integer.parseInt(candidatePort);
                     return resolveUdpAddress(nameOrIP, port); // *** EARLY RETURN ***
@@ -325,7 +337,6 @@ public class CommUtils {
 
         @Override
         public void startListening(BiConsumer<String, RemoteNode> handler) {
-            
 
             if (!this.active) {
                 // We never initialized properly. So bail.
@@ -343,12 +354,12 @@ public class CommUtils {
                 final int MAX_MAP_SIZE = 100;
                 HashMap<String, RemoteNode> map = new HashMap<>();
                 byte[] receiveData = new byte[recvBufSize];
-                
+
                 try {
                     DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
 
                     while (true) {
-                        
+
                         // Wipe out the map if it gets too large - it will be built up again.
                         if (map.size() > MAX_MAP_SIZE) {
                             map.clear();
@@ -389,8 +400,9 @@ public class CommUtils {
                             this.socket = new DatagramSocket(this.localPort, this.localAddress);
                         }
                     } catch (SocketException e) {
-                        this.log.err("SocketException attempting to open socket local port: " + this.localPort + "  local addr: " + this.localAddress);
-                        //e.printStackTrace();
+                        this.log.err("SocketException attempting to open socket local port: " + this.localPort
+                                + "  local addr: " + this.localAddress);
+                        // e.printStackTrace();
                         this.socket = null;
                     }
                 }
@@ -426,7 +438,7 @@ public class CommUtils {
 
         private class UdpRemoteNode implements DatagramTransport.RemoteNode {
             final UdpAddress udpAddr;
- 
+
             UdpRemoteNode(UdpAddress udpAddr) {
                 this.udpAddr = udpAddr;
             }

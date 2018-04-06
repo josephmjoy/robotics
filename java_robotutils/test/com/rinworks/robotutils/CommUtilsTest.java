@@ -80,26 +80,34 @@ class CommUtilsTest {
 
     @Test
     void testSimpleEchoClientServer() {
-        startEchoServer();
-        try (EchoClient client = new EchoClient(SERVER_IP_ADDRESS, SERVER_PORT, MAX_PACKET_SIZE, "testEchoClient")) {
+        String[] channelNames = { ECHO_CHANNEL_A };
+        File rootDir = new File(System.getProperty("user.home"), "robotutils");
+        File serverConfig = new File(rootDir.getAbsoluteFile(), "echo_server.yaml");
+        File clientConfig = new File(rootDir.getAbsoluteFile(), "echo_client.yaml");;
+       EchoServer server = new EchoServer(serverConfig, SERVER_IP_ADDRESS, SERVER_PORT, MAX_PACKET_SIZE,
+                "testEchoServer", channelNames);
+        runEchoServer(server);
+        try (EchoClient client = new EchoClient(clientConfig, SERVER_IP_ADDRESS, SERVER_PORT, MAX_PACKET_SIZE, "testEchoClient")) {
             client.sendMessages(1, 1000, 1000, ECHO_CHANNEL_A);
             client.sendCommands(1, 1000, 1000, ECHO_CHANNEL_A);
             client.sendRtCommands(1, 1000, 1000, ECHO_CHANNEL_A);
+            Thread.sleep(1000);
+            server.stop();
+            server.close();
         } catch (Exception e) {
             e.printStackTrace();
             fail("Exception thrown");
         }
     }
 
-    private void startEchoServer() {
+    private void runEchoServer(EchoServer server) {
         Thread bgThread = new Thread(null, new Runnable() {
 
             @Override
             public void run() {
 
                 String[] channelNames = { ECHO_CHANNEL_A };
-                try (EchoServer server = new EchoServer(SERVER_IP_ADDRESS, SERVER_PORT, MAX_PACKET_SIZE,
-                        "tesetEchoServer", channelNames)) {
+                try {
                     server.run();
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -107,7 +115,7 @@ class CommUtilsTest {
                 }
             }
         });
-        bgThread.run();
+        bgThread.start();
     }
 
     private void print(String s) {
