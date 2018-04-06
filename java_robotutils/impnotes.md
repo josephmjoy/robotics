@@ -11,6 +11,29 @@ These are informal notes and TODO lists for the project.
 1. StructuredLogger: Make sure that it can never throw an exception or assertion
    failure
    
+#April 6A, 2018 CommUtils implementation note: Config files for EchoClient and EchoServer
+The constructors for EchoClient and EchoServer now take a config file. Here is a sample config file:
+(file `~/robotutils/echo_client.yaml`).
+
+```
+logging:
+        sysname: echoclient
+        trace: echoclient RCOMM UDP
+```
+Note that we're overriding the system name used for logging, and tracing the base log, plus sub-logs
+RCOMM and UDP, which are what we name the logs given to RobotComm and UdpTransport, respectively. It can be a bit
+cumbersome to keep track of log names - it needs to be part of the documentation.
+
+Since the log directory is not specified, CommUtils.makeStructuredLogger defaults to `~/robotlogs`, and will
+make log files like the following:
+
+```
+echoclient_1523032588419.txt
+echoserver_1523032588388.txt
+echoclient_sessions.txt
+echoserver_sessions.txt
+```
+
 #April 5A, 2018 CommUtils.UdpTransport Design Note: Managing sockets
 It looks like sockes are heavyweight - creating one opens a port, even if it's only intended for sending. 
 Plan: keep just a single socket. It is created either when startListening is called or the first send, whichever is first. It stays open until transport.close() is called. This is the simplest strategy that
