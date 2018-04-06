@@ -2,29 +2,20 @@
 These are informal notes and TODO lists for the project.
 
 #TODO
-1. RobotComm: Investigate and fix bug in RT stress. If the timeout is set to small enough values to trigger, it produces
-various exceptions. So the client-side timeout of RT commands is broken:
-
-```
-int timeout = 2000; // TODO BUG! (int) (rand.nextDouble() * 1000); // Somewhat arbitrary RT timeout                
-```
-1. UDP Transport: Implement caching of RemoteNodes so we don't create a new one for each incoming message! In our expected use, we have very few of these.
-1. For roboRIO config file, under "logging": add "trace: [logname1, logname2, loname3]", and 
-  set these up during init - basically disable tracing on all logs except the list above. This is
-  a pragmatic thing to do. For example RobotComm has tracing, but it should obviously not be enabled
-  by default. But adding "trace: [robotcomm]" would enable it in the config file as required.
-1. StructuredLogger AND StructuredMessageMapper: YAML REQUIRES a spaces after ':' and ','. We should
-   strongly consider adopting this same guideline for parsing!
+1. Consider log.err(.., Exception) that logs an exception including its stack trace. Need to think about
+ is that an err and/or trace, because some exceptions are recoverable.
+1. StructuredMessageMapper: YAML REQUIRES a spaces after ':' and ','. We should
+   strongly consider adopting this same guideline for parsing! (Structured logger *does* insert space after :).
 1. SUGGESTION: MessageMapper: strip commas at end of tags and values,
    to allow for optional commas to be added.
-1. StructuredLogger: Keep track of % of timer period taken up by processing of periodic and one-shot tasks
 1. StructuredLogger: Make sure that it can never throw an exception or assertion
    failure
-1. [POSTPONED-unclear if this is a benefit as bigger packets may have higher
-   chance of failed transmission] LOG_SESSION_STARTStructuredLogger: UDP rawlogger should bundle multiple log messages into
-   a single UDP packet - as much as can fit. Given the overhead of sending and
-   receiving a UDP packet, we should pack as much in there as we can.
    
+#April 5A, 2018 CommUtils.UdpTransport Design Note: Managing sockets
+It looks like sockes are heavyweight - creating one opens a port, even if it's only intended for sending. 
+Plan: keep just a single socket. It is created either when startListening is called or the first send, whichever is first. It stays open until transport.close() is called. This is the simplest strategy that
+delays the opening of the socket as far as possible.
+
 #April 4B, 2018 StructuredLogger Design Note: Adding a Null Logger, removing Log.getName.
 There could be times when a client simply doesn't care to log, but needs to provider `StructuredLogger.Log` objects to other classes (such as RobotComm). The client can always create a `StructuredLogger` with an empty list of loggers, but even that has some overhead, and is kind of cumbersome to do. So the proposal is to add a new `StructuredLogger` constructor that takes no arguments. If invoked it instantiates a gutted out implementation, and it's `newLog` and `defaultLog` methods return a "null" implementation of the `StructuredLogger.Log` interface (class `NullLogImplementation`). 
 

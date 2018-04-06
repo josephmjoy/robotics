@@ -302,7 +302,7 @@ class RobotCommTest {
             StructuredLogger.Log rcLog = log.newLog("RCOMM");
             rcLog.pauseTracing();
             this.rc = new RobotComm(transport, rcLog);
-            RobotComm.DatagramTransport.Address addr = rc.resolveAddress("localhost");
+            RobotComm.DatagramTransport.Address addr = transport.resolveAddress("localhost");
             this.ch = rc.newChannel("testChannel");
             this.ch.bindToRemoteNode(addr);
             this.rc.startListening();
@@ -312,7 +312,7 @@ class RobotCommTest {
          * Stress test sending, receiving and processing of commands.
          * 
          * @param nMessages
-         *            - number of messagegs to submit
+         *            - number of messages to submit
          * @param submissionRate
          *            - rate of submission per second
          * @param alwaysDropRate
@@ -986,7 +986,7 @@ class RobotCommTest {
         RobotComm.DatagramTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
 
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
-        RobotComm.DatagramTransport.Address addr = rc.resolveAddress("localhost");
+        RobotComm.DatagramTransport.Address addr = transport.resolveAddress("localhost");
         RobotComm.Channel ch = rc.newChannel("testChannel");
         ch.bindToRemoteNode(addr);
         rc.startListening();
@@ -1021,7 +1021,7 @@ class RobotCommTest {
         RobotComm.DatagramTransport transport = new TestTransport(baseLogger.defaultLog().newLog("TRANS"));
 
         RobotComm rc = new RobotComm(transport, baseLogger.defaultLog());
-        RobotComm.DatagramTransport.Address addr = rc.resolveAddress("localhost");
+        RobotComm.DatagramTransport.Address addr = transport.resolveAddress("localhost");
         RobotComm.Channel ch = rc.newChannel("testChannel");
         ch.bindToRemoteNode(addr);
         rc.startListening();

@@ -181,10 +181,6 @@ public class RobotComm implements Closeable {
 
     }
 
-    public Address resolveAddress(String address) {
-        return this.transport.resolveAddress(address);
-    }
-
     /*
      * Channels must be unique. An attempt to create a channel that already exists
      * produces a DuplicateKey exception
