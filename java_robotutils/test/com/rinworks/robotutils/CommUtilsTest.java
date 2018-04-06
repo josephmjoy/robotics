@@ -40,7 +40,7 @@ import com.rinworks.robotutils.StructuredMessageMapper;
 class CommUtilsTest {
 
     final String SERVER_IP_ADDRESS = "127.0.0.1";
-    final int SERVER_PORT = 41899 + 2;
+    final int SERVER_PORT = 41899 + 3;
     final int MAX_PACKET_SIZE = 1024;
 
     // Echo client-server tests use these channel names.

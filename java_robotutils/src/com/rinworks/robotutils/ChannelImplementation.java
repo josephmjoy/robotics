@@ -123,20 +123,21 @@ class ChannelImplementation implements Channel {
 
     @Override
     public void sendMessage(String msgType, String message) {
-        DatagramTransport.RemoteNode rn = this.remoteNode; // can be null
+        internalSendMessage(msgType, message, this.remoteNode); // rn can be null
+    }
 
-        if (!this.closed && validSendParams(msgType, message, rn, "DISCARDING_SEND_MESSAGE")) {
+    @Override
+    public void sendMessage(String msgType, String message, Address addr) {
+        internalSendMessage(msgType, message, transport.newRemoteNode(addr));
+    }
+
+    private void internalSendMessage(String msgType, String message, RemoteNode rn) {
+        if (!this.closed && validSendParams(msgType, rn, "DISCARDING_SEND_MESSAGE")) {
             MessageHeader hdr = new MessageHeader(MessageHeader.DgType.DG_MSG, name, msgType, 0,
                     MessageHeader.CmdStatus.STATUS_NOVALUE);
             this.approxSentMessages++;
             rn.send(hdr.serialize(message));
         }
-
-    }
-
-    @Override
-    public void sendMessage(String msgType, String message, Address addr) {
-        log.err("UNIMPLEMENTED", "sendMessage #QwWV");
     }
 
     @Override
@@ -157,7 +158,8 @@ class ChannelImplementation implements Channel {
     }
 
     @Override
-    public SentCommand submitCommand(String cmdType, String command, Object clientContext, boolean addToCompletionQueue) {
+    public SentCommand submitCommand(String cmdType, String command, Object clientContext,
+            boolean addToCompletionQueue) {
         return this.client.submitCommand(cmdType, command, clientContext, addToCompletionQueue);
     }
 
@@ -222,7 +224,7 @@ class ChannelImplementation implements Channel {
         return server.pollReceivedCommand();
     }
 
-    private boolean validSendParams(String msgType, String message, RemoteNode rn, String logMsgType) {
+    private boolean validSendParams(String msgType, RemoteNode rn, String logMsgType) {
         final String BAD_MSGTYPE_CHARS = ", \t\f\n\r";
         boolean ret = false;
 

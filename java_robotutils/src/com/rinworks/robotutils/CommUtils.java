@@ -13,6 +13,7 @@ import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BiConsumer;
 
@@ -81,10 +82,8 @@ public class CommUtils {
             for (Channel ch : this.channels) {
                 ch.startReceivingCommands();
                 ch.startReceivingMessages();
-                ch.startReceivingRtCommands(cmd -> {
-                    // Echo received real time command.
-                    cmd.respond(cmd.msgType(), cmd.message());
-                });
+                // Echo received real time command.
+                ch.startReceivingRtCommands(cmd -> cmd.respond(cmd.msgType(), cmd.message()));
             }
             this.rc.startListening();
             try {
@@ -196,7 +195,8 @@ public class CommUtils {
                 for (int i = 0; i < count; i++) {
                     rc.periodicWork();
                     String msgType = "MSG" + count;
-                    String msgBody = "Message body " + count;
+                    String msgBody = makeMessageBody("body" + count + ", ", msgSize);
+                    log.trace("ECHO_SEND_MSG", "msgtype: " + msgType + "  msgBody: " + msgBody);
                     ch.sendMessage(msgType, msgBody, this.remoteAddress);
                     ReceivedMessage msg = ch.pollReceivedMessage();
                     if (msg != null) {
@@ -216,6 +216,20 @@ public class CommUtils {
             log.info("Done sending messages ");
             this.rc.stopListening();
 
+        }
+
+        // Make dummy message content up to msgSize.
+        // Filler MUST not be empty.
+        private String makeMessageBody(String filler, int msgSize) {
+            assert filler.length() > 0;
+            int nBlahs = msgSize / filler.length();
+            String[] allBlahs = new String[nBlahs + 1];
+            for (int i = 0; i < allBlahs.length - 1; i++) {
+                allBlahs[i] = filler;
+            }
+            int extra = msgSize - nBlahs * filler.length();
+            allBlahs[nBlahs] = filler.substring(0, extra);
+            return String.join("", allBlahs);
         }
 
         /**
@@ -265,6 +279,10 @@ public class CommUtils {
         return UdpTransport.resolveUdpAddress(hostname, port);
     }
 
+    // To prevent public invocation of default constructor.
+    private CommUtils() {
+    }
+
     private static class UdpTransport implements DatagramTransport {
         public static final String WILDCARD_IP_ADDRESS = "0.0.0.0";
         public static final int EPHEMERAL_PORT = -1;
@@ -277,6 +295,7 @@ public class CommUtils {
         boolean active;
         boolean stoppingListening;
         DatagramSocket socket;
+        private final ConcurrentHashMap<String, UdpRemoteNode> remoteNodeMap = new ConcurrentHashMap<>();
 
         // For listening on an ephemeral port.
         public UdpTransport(int recvBufSize, StructuredLogger.Log log) {
@@ -326,8 +345,8 @@ public class CommUtils {
 
         @Override
         public RemoteNode newRemoteNode(Address remoteAddress) {
-            UdpAddress udpAddr = (UdpAddress) remoteAddress;
-            return new UdpRemoteNode(udpAddr);
+            String key = remoteAddress.stringRepresentation();
+            return this.remoteNodeMap.computeIfAbsent(key, s -> new UdpRemoteNode((UdpAddress) remoteAddress));
         }
 
         @Override
@@ -366,14 +385,10 @@ public class CommUtils {
                         }
                         log.trace("Waiting to receive UDP packet...");
                         sock.receive(receivePacket);
-                        int rport = receivePacket.getPort();
-                        InetAddress ra = receivePacket.getAddress();
-                        String key = ra.getHostAddress() + ":" + rport;
-                        RemoteNode rn = map.computeIfAbsent(key, s -> {
-                            return new UdpRemoteNode(ra, rport);
-                        });
-                        log.trace("Received packet.");
+                        UdpAddress addr = new UdpAddress(receivePacket.getAddress(), receivePacket.getPort());
+                        RemoteNode rn = newRemoteNode(addr);
                         String msg = new String(receivePacket.getData(), 0, receivePacket.getLength());
+                        log.trace("RECV_PKT_DATA", msg);
                         handler.accept(msg, rn);
                         // Reset packet for next use
                         receivePacket.setData(receiveData);
@@ -402,7 +417,6 @@ public class CommUtils {
                     } catch (SocketException e) {
                         this.log.err("SocketException attempting to open socket local port: " + this.localPort
                                 + "  local addr: " + this.localAddress);
-                        // e.printStackTrace();
                         this.socket = null;
                     }
                 }
@@ -443,10 +457,6 @@ public class CommUtils {
                 this.udpAddr = udpAddr;
             }
 
-            UdpRemoteNode(InetAddress addr, int port) {
-                this.udpAddr = new UdpAddress(addr, port);
-            }
-
             @Override
             public Address remoteAddress() {
                 return udpAddr;
@@ -460,6 +470,7 @@ public class CommUtils {
                     byte[] sendData = msg.getBytes();
                     DatagramPacket pkt = new DatagramPacket(sendData, sendData.length, this.udpAddr.saddr);
                     try {
+                        log.trace("SEND_PKT_DATA", msg);
                         sock.send(pkt);
                     } catch (IOException e) {
                         log.trace("SEND_ERROR", "reason: IOException e: " + e);
