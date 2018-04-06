@@ -111,7 +111,7 @@ class ChannelImplementation implements Channel {
 
     @Override
     public void bindToRemoteNode(Address remoteAddress) {
-        DatagramTransport.RemoteNode node = transport.newRemoteNode(remoteAddress());
+        DatagramTransport.RemoteNode node = transport.newRemoteNode(remoteAddress);
         this.remoteNode = node; // Could override an existing one. That's ok
         client.bindToRemoteNode(node);
     }
