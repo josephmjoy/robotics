@@ -22,6 +22,7 @@ import com.rinworks.robotutils.RobotComm.DatagramTransport;
 import com.rinworks.robotutils.RobotComm.DatagramTransport.Address;
 import com.rinworks.robotutils.RobotComm.ReceivedCommand;
 import com.rinworks.robotutils.RobotComm.ReceivedMessage;
+import com.rinworks.robotutils.RobotComm.SentCommand;
 
 public class CommUtils {
 
@@ -195,7 +196,7 @@ public class CommUtils {
                 for (int i = 0; i < count; i++) {
                     rc.periodicWork();
                     String msgType = "MSG" + count;
-                    String msgBody = makeMessageBody("body" + count + ", ", msgSize);
+                    String msgBody = makeMessageBody("msgbody" + count + ", ", msgSize);
                     log.trace("ECHO_SEND_MSG", "msgtype: " + msgType + "  msgBody: " + msgBody);
                     ch.sendMessage(msgType, msgBody, this.remoteAddress);
                     ReceivedMessage msg = ch.pollReceivedMessage();
@@ -240,7 +241,35 @@ public class CommUtils {
          * must be called after all invocations of <code>send*</code> are called.
          */
         public void sendCommands(long count, int periodMs, int msgSize, String channelName) {
-            this.log.info("Pretending to send commands");
+            this.log.info("Starting to submit " + count + " commands");
+            this.rc.startListening();
+            try (Channel ch = rc.newChannel(channelName)) {
+                ch.bindToRemoteNode(this.remoteAddress);
+                ch.startReceivingCommands();
+
+                for (int i = 0; i < count; i++) {
+                    rc.periodicWork();
+                    String cmdType = "CMD" + count;
+                    String command = makeMessageBody("cmdbody" + count + ", ", msgSize);
+                    log.trace("ECHO_SEND_CMD", "cmdtype: " + cmdType + "  command: " + command);
+                    SentCommand sc = ch.submitCommand(cmdType, command, null, true);
+                    ReceivedCommand cmd = ch.pollReceivedCommand();
+                    if (cmd != null) {
+                        log.trace("ECHO_RECV_CMD_RESP", "respType: " + cmd.msgType() + "  respBody: " + cmd.message()
+                                + "  from: " + cmd.remoteAddress());
+                    }
+                    Thread.sleep(periodMs);
+                }
+
+                ch.stopReceivingCommands();
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                // We fall through...
+            }
+
+            log.info("Done submitting " + count + "commands.");
+            this.rc.stopListening();
         }
 
         /**

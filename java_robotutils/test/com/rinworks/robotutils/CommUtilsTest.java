@@ -88,9 +88,9 @@ class CommUtilsTest {
                 "testEchoServer", channelNames);
         runEchoServer(server);
         try (EchoClient client = new EchoClient(clientConfig, SERVER_IP_ADDRESS, SERVER_PORT, MAX_PACKET_SIZE, "testEchoClient")) {
-            client.sendMessages(1, 1000, 1000, ECHO_CHANNEL_A);
-            client.sendCommands(1, 1000, 1000, ECHO_CHANNEL_A);
-            client.sendRtCommands(1, 1000, 1000, ECHO_CHANNEL_A);
+            client.sendMessages(1, 1000, 100, ECHO_CHANNEL_A);
+            client.sendCommands(1, 1000, 100, ECHO_CHANNEL_A);
+            client.sendRtCommands(1, 1000, 100, ECHO_CHANNEL_A);
             Thread.sleep(1000);
             server.stop();
             server.close();
