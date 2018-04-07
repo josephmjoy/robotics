@@ -20,9 +20,11 @@ import java.util.function.BiConsumer;
 import com.rinworks.robotutils.RobotComm.Channel;
 import com.rinworks.robotutils.RobotComm.DatagramTransport;
 import com.rinworks.robotutils.RobotComm.DatagramTransport.Address;
+import com.rinworks.robotutils.RobotCommTest.StressTester;
 import com.rinworks.robotutils.RobotComm.ReceivedCommand;
 import com.rinworks.robotutils.RobotComm.ReceivedMessage;
 import com.rinworks.robotutils.RobotComm.SentCommand;
+import com.rinworks.robotutils.RobotComm.SentCommand.COMMAND_STATUS;
 
 public class CommUtils {
 
@@ -245,23 +247,28 @@ public class CommUtils {
             this.rc.startListening();
             try (Channel ch = rc.newChannel(channelName)) {
                 ch.bindToRemoteNode(this.remoteAddress);
-                ch.startReceivingCommands();
-
+ 
                 for (int i = 0; i < count; i++) {
                     rc.periodicWork();
                     String cmdType = "CMD" + count;
                     String command = makeMessageBody("cmdbody" + count + ", ", msgSize);
                     log.trace("ECHO_SEND_CMD", "cmdtype: " + cmdType + "  command: " + command);
                     SentCommand sc = ch.submitCommand(cmdType, command, null, true);
-                    ReceivedCommand cmd = ch.pollReceivedCommand();
-                    if (cmd != null) {
-                        log.trace("ECHO_RECV_CMD_RESP", "respType: " + cmd.msgType() + "  respBody: " + cmd.message()
-                                + "  from: " + cmd.remoteAddress());
+                    Thread.sleep(100);
+                    // Let's pick up all command responses received so far and verify them...
+                    RobotComm.SentCommand sc1 = ch.pollCompletedCommand();
+                    while (sc1 != null) {
+                        String logmsg;
+                        if (sc1.status() == COMMAND_STATUS.STATUS_COMPLETED) {
+                            logmsg = "result: SUCCESS respType: " + sc1.respType() + "  respBody: " + sc1.response();
+                        } else {
+                            logmsg = "result: " + sc1.status();
+                        }
+                        log.trace("ECHO_RECV_CMD_RESP", logmsg);
+                        sc1 = ch.pollCompletedCommand();
                     }
                     Thread.sleep(periodMs);
                 }
-
-                ch.stopReceivingCommands();
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -281,7 +288,41 @@ public class CommUtils {
          * are called.
          */
         public void sendRtCommands(long count, int periodMs, int msgSize, String channelName) {
-            this.log.info("Pretending to send realtime commands");
+            this.log.info("Starting to submit " + count + " RT commands");
+            this.rc.startListening();
+            try (Channel ch = rc.newChannel(channelName)) {
+                ch.bindToRemoteNode(this.remoteAddress);
+ 
+                for (int i = 0; i < count; i++) {
+                    rc.periodicWork();
+                    String cmdType = "RTCMD" + count;
+                    String command = makeMessageBody("rtcmdbody" + count + ", ", msgSize);
+                    log.trace("ECHO_SEND_RTCMD", "cmdtype: " + cmdType + "  command: " + command);
+                    ch.submitRtCommand(cmdType, command, 100, sc1 -> {
+                        String logmsg;
+                        if (sc1.status() == COMMAND_STATUS.STATUS_COMPLETED) {
+                            logmsg = "result: SUCCESS respType: " + sc1.respType() + "  respBody: " + sc1.response();
+                        } else {
+                            logmsg = "result: " + sc1.status();
+                        }
+                        log.trace("ECHO_RECV_RTCMD_RESP", logmsg);
+                    });
+
+                    ReceivedCommand cmd = ch.pollReceivedCommand();
+                    if (cmd != null) {
+                        log.trace("ECHO_RECV_CMD_RESP", "respType: " + cmd.msgType() + "  respBody: " + cmd.message()
+                                + "  from: " + cmd.remoteAddress());
+                    }
+                    Thread.sleep(periodMs);
+                }
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                // We fall through...
+            }
+
+            log.info("Done submitting " + count + "RT commands.");
+            this.rc.stopListening();
         }
 
         @Override

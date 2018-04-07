@@ -10,7 +10,11 @@ These are informal notes and TODO lists for the project.
    to allow for optional commas to be added.
 1. StructuredLogger: Make sure that it can never throw an exception or assertion
    failure
-   
+
+#April 6B, 2018 CommUtils implementation milestone: Echo Client and Server work!
+Sent and received 1 message, command and RT command using the UDP transport (loopback address)!
+
+
 #April 6A, 2018 CommUtils implementation note: Config files for EchoClient and EchoServer
 The constructors for EchoClient and EchoServer now take a config file. Here is a sample config file:
 (file `~/robotutils/echo_client.yaml`).
