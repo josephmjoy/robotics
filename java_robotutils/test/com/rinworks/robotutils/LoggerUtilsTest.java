@@ -42,7 +42,7 @@ class LoggerUtilsTest {
 
 
     @Test
-    void testBasicTest() {
+    void testMakeStandardLoggerTrivial() {
         clearLogdir(null);
         StructuredLogger logger = LoggerUtils.makeStandardLogger(SYSNAME);
         logger.beginLogging();
@@ -50,6 +50,17 @@ class LoggerUtilsTest {
         logger.endLogging();
         verifyLogdirContents(null);
         clearLogdir(null);
+    }
+    
+    @Test
+    void testConsoleLogger() throws InterruptedException {
+        StructuredLogger.RawLogger cl = LoggerUtils.createConsoleRawLogger(null);
+        StructuredLogger logger = new StructuredLogger(cl, "CONSOLE_TEST");
+        logger.setAutoFlushParameters(100, 5000);
+        logger.beginLogging();
+        logger.info("test message 1");
+        Thread.sleep(20000);
+        logger.endLogging();
     }
     
     // Wipe out any files in the specified log dir, if it exists. Sub-directories are not deleted,

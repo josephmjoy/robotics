@@ -27,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.rinworks.robotutils.StructuredLogger;
+import com.rinworks.robotutils.StructuredLogger.RawLogger;
 import com.rinworks.robotutils.StructuredMessageMapper;
 
 /**
@@ -128,7 +129,11 @@ class StructuredLoggerTest {
 
     }
 
-    private void setUpBossLogger() {
+    private void setupBossLogger() {
+        setupBossLogger(10000, 1);
+    }
+    
+    private void setupBossLogger(int maxBuffered, int flushMillis) {
         assert (rawLoggers == null);
         rawLoggers = new MyRawLog[] { new MyRawLog("file"), new MyRawLog("network") };
         assert (bossLogger == null);
@@ -137,7 +142,7 @@ class StructuredLoggerTest {
             assertFalse(assertionHandlerCalled);
             assertionHandlerCalled = true;
         });
-        bossLogger.setAutoFlushParameters(10000, 1);
+        bossLogger.setAutoFlushParameters(maxBuffered, flushMillis);
 
         bossLogger.beginLogging();
         verifyBeginSessionState();
@@ -192,6 +197,14 @@ class StructuredLoggerTest {
             verifier.accept(tagValue);
         }
     }
+    
+    
+    private void verifyRawLoggerState(Consumer<MyRawLog> verifier) {      
+        for (MyRawLog rl : rawLoggers) {
+             verifier.accept(rl);
+        }
+    }
+
 
     // Verify the state of bossLogger after the session has been ended.
     private void verifyEndSessionState() {
@@ -384,14 +397,14 @@ class StructuredLoggerTest {
 
     @Test
     void testBeginEndSession() {
-        setUpBossLogger();
+        setupBossLogger();
         tearDownBossLogger();
 
     }
 
     @Test
     void testSimplestLogUsage() {
-        setUpBossLogger();
+        setupBossLogger();
         bossLogger.info("test logging message");
         bossLogger.err("this is an error");
         bossLogger.flush();
@@ -399,8 +412,21 @@ class StructuredLoggerTest {
     }
 
     @Test
+    void testFlushBehavior1() throws InterruptedException {
+        setupBossLogger(0, 1);
+        bossLogger.info("test logging message");
+        Thread.sleep(500);
+        bossLogger.flush();
+        verifyRawLoggerState(rl -> {
+            assertTrue(rl.flushCalled);
+        });
+        tearDownBossLogger();
+    }
+    
+    
+    @Test
     void testSimpleLogUsage() {
-        setUpBossLogger();
+        setupBossLogger();
         StructuredLogger.Log log1 = bossLogger.defaultLog();
 
         // Basic logging
@@ -428,7 +454,7 @@ class StructuredLoggerTest {
     @Test
     // RTS == relative timestamps
     void testRTS() {
-        setUpBossLogger();
+        setupBossLogger();
         StructuredLogger.Log log1 = bossLogger.defaultLog();
 
         // Log without RTS and verify that the _rts tag is not inserted.
@@ -459,7 +485,7 @@ class StructuredLoggerTest {
     @Test
     // Tags - Dynamic tags that are inserted into every logged message.
     void testTags() {
-        setUpBossLogger();
+        setupBossLogger();
         StructuredLogger.Log log = bossLogger.defaultLog();
         String[] tags = { "TAG1", "TAG2", "TAG3" };
         String[] values = { "", "hello", "a=b c=d" };
