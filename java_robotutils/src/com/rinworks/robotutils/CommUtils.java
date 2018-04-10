@@ -13,11 +13,13 @@ import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BiConsumer;
 
 import com.rinworks.robotutils.RobotComm.Channel;
+import com.rinworks.robotutils.RobotComm.ChannelStatistics;
 import com.rinworks.robotutils.RobotComm.DatagramTransport;
 import com.rinworks.robotutils.RobotComm.DatagramTransport.Address;
 import com.rinworks.robotutils.RobotCommTest.StressTester;
@@ -144,6 +146,11 @@ public class CommUtils {
 
         @Override
         public void close() {
+            this.log.info("CLOSING EchoServer");
+            List<ChannelStatistics> stats = rc.getChannelStatistics();
+            for (ChannelStatistics s : stats) {
+                log.info("CHANNEL_STATS", s.toString());
+            }
             this.rc.close();
             this.transport.close();
             this.logger.endLogging();
@@ -189,7 +196,7 @@ public class CommUtils {
          * must be called after all invocations of <code>send*</code> are called.
          */
         public void sendMessages(long count, int periodMs, int msgSize, String channelName) {
-            this.log.info("Starting to send messages");
+            this.log.info("Starting to send " + count + " messages");
             this.rc.startListening();
             try (Channel ch = rc.newChannel(channelName)) {
 
@@ -198,7 +205,7 @@ public class CommUtils {
                 for (int i = 0; i < count; i++) {
                     rc.periodicWork();
                     String msgType = "MSG" + count;
-                    String msgBody = makeMessageBody("msgbody" + count + ", ", msgSize);
+                    String msgBody = makeMessageBody("msgbody" + i + ", ", msgSize);
                     log.trace("ECHO_SEND_MSG", "msgtype: " + msgType + "  msgBody: " + msgBody);
                     ch.sendMessage(msgType, msgBody, this.remoteAddress);
                     ReceivedMessage msg = ch.pollReceivedMessage();
@@ -216,7 +223,7 @@ public class CommUtils {
                 // We fall through...
             }
 
-            log.info("Done sending messages ");
+            log.info("Done sending " + count + " messages ");
             this.rc.stopListening();
 
         }
@@ -247,11 +254,11 @@ public class CommUtils {
             this.rc.startListening();
             try (Channel ch = rc.newChannel(channelName)) {
                 ch.bindToRemoteNode(this.remoteAddress);
- 
+
                 for (int i = 0; i < count; i++) {
                     rc.periodicWork();
                     String cmdType = "CMD" + count;
-                    String command = makeMessageBody("cmdbody" + count + ", ", msgSize);
+                    String command = makeMessageBody("cmdbody" + i + ", ", msgSize);
                     log.trace("ECHO_SEND_CMD", "cmdtype: " + cmdType + "  command: " + command);
                     SentCommand sc = ch.submitCommand(cmdType, command, null, true);
                     Thread.sleep(100);
@@ -275,7 +282,7 @@ public class CommUtils {
                 // We fall through...
             }
 
-            log.info("Done submitting " + count + "commands.");
+            log.info("Done submitting " + count + " commands.");
             this.rc.stopListening();
         }
 
@@ -292,11 +299,11 @@ public class CommUtils {
             this.rc.startListening();
             try (Channel ch = rc.newChannel(channelName)) {
                 ch.bindToRemoteNode(this.remoteAddress);
- 
+
                 for (int i = 0; i < count; i++) {
                     rc.periodicWork();
                     String cmdType = "RTCMD" + count;
-                    String command = makeMessageBody("rtcmdbody" + count + ", ", msgSize);
+                    String command = makeMessageBody("rtcmdbody" + i + ", ", msgSize);
                     log.trace("ECHO_SEND_RTCMD", "cmdtype: " + cmdType + "  command: " + command);
                     ch.submitRtCommand(cmdType, command, 100, sc1 -> {
                         String logmsg;
@@ -327,7 +334,11 @@ public class CommUtils {
 
         @Override
         public void close() {
-            this.log.info("in EchoClient.close");
+            this.log.info("CLOSING EchoClient");
+            List<ChannelStatistics> stats = rc.getChannelStatistics();
+            for (ChannelStatistics s : stats) {
+                log.info("CHANNEL_STATS", s.toString());
+            }
             this.rc.close();
             this.transport.close();
             this.logger.endLogging();
@@ -516,6 +527,11 @@ public class CommUtils {
             @Override
             public String stringRepresentation() {
                 return this.saddr.toString();
+            }
+
+            @Override
+            public String toString() {
+                return stringRepresentation();
             }
 
         }

@@ -65,13 +65,13 @@ class CommUtilsTest {
             String msg = "Test message #" + i;
             rn.send(msg);
             log.trace("Sent message: " + msg);
-            //Thread.sleep(100);
+            // Thread.sleep(100);
         }
-        print("Waiting for all messages to arrive...");
+        println("Waiting for all messages to arrive...");
         if (latch.await(1, TimeUnit.SECONDS)) {
-            print("Done waiting for all " + N + " messages to arrive.");
+            println("Done waiting for all " + N + " messages to arrive.");
         } else {
-            print("TIMED OUT waiting for all " + N + " messages to arrive.");
+            println("TIMED OUT waiting for all " + N + " messages to arrive.");
         }
         client.close();
         server.close();
@@ -83,15 +83,18 @@ class CommUtilsTest {
         String[] channelNames = { ECHO_CHANNEL_A };
         File rootDir = new File(System.getProperty("user.home"), "robotutils");
         File serverConfig = new File(rootDir.getAbsoluteFile(), "echo_server.yaml");
-        File clientConfig = new File(rootDir.getAbsoluteFile(), "echo_client.yaml");;
-       EchoServer server = new EchoServer(serverConfig, SERVER_IP_ADDRESS, SERVER_PORT, MAX_PACKET_SIZE,
+        File clientConfig = new File(rootDir.getAbsoluteFile(), "echo_client.yaml");
+        ;
+        EchoServer server = new EchoServer(serverConfig, SERVER_IP_ADDRESS, SERVER_PORT, MAX_PACKET_SIZE,
                 "testEchoServer", channelNames);
         runEchoServer(server);
-        try (EchoClient client = new EchoClient(clientConfig, SERVER_IP_ADDRESS, SERVER_PORT, MAX_PACKET_SIZE, "testEchoClient")) {
-            client.sendMessages(1, 1000, 100, ECHO_CHANNEL_A);
-            client.sendCommands(1, 1000, 100, ECHO_CHANNEL_A);
-            client.sendRtCommands(1, 1000, 100, ECHO_CHANNEL_A);
+        try (EchoClient client = new EchoClient(clientConfig, SERVER_IP_ADDRESS, SERVER_PORT, MAX_PACKET_SIZE,
+                "testEchoClient")) {
+            client.sendMessages(10, 100, 100, ECHO_CHANNEL_A);
+            //client.sendCommands(0, 100, 100, ECHO_CHANNEL_A);
+            //client.sendRtCommands(0, 100, 100, ECHO_CHANNEL_A);
             Thread.sleep(1000);
+            client.close();
             server.stop();
             server.close();
         } catch (Exception e) {
@@ -118,7 +121,7 @@ class CommUtilsTest {
         bgThread.start();
     }
 
-    private void print(String s) {
+    private void println(String s) {
         System.out.println(s);
 
     }
@@ -134,7 +137,7 @@ class CommUtilsTest {
         ToIntFunction<String> f2 = name -> {
             return name.equals("TRANS") ? -1 : Integer.MAX_VALUE;
         };
-        ToIntFunction<String> f = null; //f1;
+        ToIntFunction<String> f = null; // f1;
 
         // StructuredLogger.RawLogger rl = LoggerUtils.createFileRawLogger(logfile,
         // 1000000, f);
