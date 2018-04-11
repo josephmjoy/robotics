@@ -11,6 +11,12 @@ These are informal notes and TODO lists for the project.
 1. StructuredLogger: Make sure that it can never throw an exception or assertion
    failure
 
+#April 11A, 2018 StructuredLogger: Fixes to log flushing behavior
+The periodic flush task was being initialized in beginLogging to NOT flush - so it would run, and write messages to disk, but would not
+flush. The on-demand flush task, which is triggered if buffered messages exceed a limit, was flushing.
+Fix is to set the periodic flush task to also flush. HOWEVER, as an optimization, we also added a tweak to check if there any messages waiting to be written, and if they non, we don't call flush.
+Added unit tests to test various corner cases involving flushing behavior: look for the various test methods that begining with `testFlushBehavior_`. All these tests  pass.
+
 #April 6B, 2018 CommUtils implementation milestone: Echo Client and Server work!
 Sent and received 1 message, command and RT command using the UDP transport (loopback address)!
 

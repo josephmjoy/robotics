@@ -443,7 +443,7 @@ public class StructuredLogger {
             long startTime = System.currentTimeMillis();
             String sessionID = "" + startTime;
             this.timer = new Timer("Structured Logger (" + systemName + ")", true);// true == daemon task.
-            TimerTask periodicFlushTask = newBackgroundProcessor(false, null); // false, null== don't flush immediately,
+            TimerTask periodicFlushTask = newBackgroundProcessor(true, null); // true == flush , null == null rundown latch
 
             // no
             // latch
@@ -636,7 +636,10 @@ public class StructuredLogger {
                     if (finalRundown) {
                         break;
                     }
-                    if (flushNow || brl.msgsSinceLastFlush.get() > maxBufferedMessageCount) {
+                    boolean bufExceeded = brl.msgsSinceLastFlush.get() > maxBufferedMessageCount;
+                    int unflushedMessages = brl.msgsSinceLastFlush.get();
+                    boolean reallyFlushNow = flushNow && unflushedMessages > 0;
+                    if (reallyFlushNow || unflushedMessages > maxBufferedMessageCount) {
                         brl.rawLogger.flush(); // can potentially take some time.
                         brl.msgsSinceLastFlush.set(0);
                     }

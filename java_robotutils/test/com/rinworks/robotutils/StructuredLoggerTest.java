@@ -45,8 +45,9 @@ class StructuredLoggerTest {
         final String logName;
         boolean newSessionCalled;
         boolean logCalled;
-        boolean flushCalled;
+        int flushCount;
         boolean closeCalled;
+        boolean supressConsoleOutput;
 
         String sessionId;
 
@@ -77,7 +78,7 @@ class StructuredLoggerTest {
             assertFalse(closeCalled);
             logCalled = true;
             msgMsg = msg;
-            if (logName.equals("file")) {
+            if (!supressConsoleOutput && logName.equals("file")) {
                 String prefix = "[" + Thread.currentThread().getName() + "]";
                 System.out.println(prefix + "raw message:" + msg);
             }
@@ -85,16 +86,16 @@ class StructuredLoggerTest {
 
         @Override
         public void flush() {
-            System.out.println("RL " + this.logName + ": flush called");
+            // System.out.println("RL " + this.logName + ": flush called");
             assertTrue(newSessionCalled);
-            flushCalled = true;
+            flushCount++;
         }
 
         @Override
         public void close() {
             assertTrue(newSessionCalled);
             assertFalse(closeCalled);
-            assertTrue(flushCalled);
+            assertTrue(flushCount > 0);
             closeCalled = true;
         }
 
@@ -210,14 +211,14 @@ class StructuredLoggerTest {
     private void verifyEndSessionState() {
         StructuredLogger.Log rootLog = bossLogger.defaultLog();
         for (MyRawLog rl : rawLoggers) {
-            assertTrue(rl.flushCalled);
+            assertTrue(rl.flushCount > 0);
             assertTrue(rl.closeCalled);
 
             // Check that the endSession message has been logged.
             assertTrue(rl.logCalled);
             verifySessionMessage(rl.msgMsg, false); // false == stop
 
-            rl.flushCalled = false;
+            rl.flushCount = 0;
             rl.closeCalled = false;
             rl.clearLoggedMsg();
         }
@@ -231,7 +232,7 @@ class StructuredLoggerTest {
         rootLog.loggedAssert(false, "Foo");
         assertTrue(assertionHandlerCalled); // even after session closing, handler should be called.
         for (MyRawLog rl : rawLoggers) {
-            assertFalse(rl.flushCalled);
+            assertFalse(rl.flushCount > 0);
             assertFalse(rl.closeCalled);
             assertFalse(rl.logCalled);
         }
@@ -415,54 +416,58 @@ class StructuredLoggerTest {
     void testFlushBehavior_explicitFlush() throws InterruptedException {
         setupBossLogger(10000, 10000);
 
-        applyToRawLoggers(rl -> rl.flushCalled = false);
+        applyToRawLoggers(rl -> rl.flushCount = 0);
         bossLogger.info("test logging message");
         Thread.sleep(500);
         // Flush should NOT yet have been called.
-        applyToRawLoggers(rl -> assertFalse(rl.flushCalled));
+        applyToRawLoggers(rl -> assertFalse(rl.flushCount > 0));
         bossLogger.flush();
         Thread.sleep(500);
         // By now, flush SHOULD have been called.
-        applyToRawLoggers(rl -> assertTrue(rl.flushCalled));
+        applyToRawLoggers(rl -> assertTrue(rl.flushCount > 0));
         tearDownBossLogger();
     }
 
     @Test
     void testFlushBehavior_zeroMaxBuffer() throws InterruptedException {
         setupBossLogger(0, 10000);
-        applyToRawLoggers(rl -> rl.flushCalled = false);
+        applyToRawLoggers(rl -> rl.flushCount = 0);
         bossLogger.info("test logging message");
         Thread.sleep(500);
         // Flush should have been called because max buffered messages (0) have been
         // exceeded.
-        applyToRawLoggers(rl -> assertTrue(rl.flushCalled));
+        applyToRawLoggers(rl -> assertTrue(rl.flushCount > 0));
         tearDownBossLogger();
     }
 
-    // FAILS @Test
+    @Test
     void testFlushBehavior_zeroFlushTimeout() throws InterruptedException {
         setupBossLogger(10000, 0);
-        applyToRawLoggers(rl -> rl.flushCalled = false);
+        applyToRawLoggers(rl -> rl.flushCount = 0);
         bossLogger.info("test logging message");
         Thread.sleep(500);
         // Flush should have been called because max flush wait time(0) has been
         // exceeded.
         // Note that wait time is approx, so we wait 500 ms instead of 0.
-        applyToRawLoggers(rl -> assertTrue(rl.flushCalled));
+        applyToRawLoggers(rl -> assertTrue(rl.flushCount > 0));
         tearDownBossLogger();
     }
 
-    // FAILS @Test
+    @Test
     void testFlushBehavior_specificFlushTimeout() throws InterruptedException {
-        setupBossLogger(10000, 1000); // Flush every 1000ms
-        applyToRawLoggers(rl -> rl.flushCalled = false);
-        bossLogger.info("test logging message");
-        Thread.sleep(500);
-        // Flush should NOT yet be called because it's not yet 1000ms.
-        applyToRawLoggers(rl -> assertFalse(rl.flushCalled));
-        Thread.sleep(1500);
+        final int FLUSH_PERIOD = 200;
+        final int N_PERIODS = 10;
+        setupBossLogger(10000, FLUSH_PERIOD); // Flush every 200ms
+        applyToRawLoggers(rl -> { rl.flushCount = 0; rl.supressConsoleOutput = true;});
+
+        for (int i = 0; i < N_PERIODS*2; i++) {
+            bossLogger.info("test logging message");
+            Thread.sleep(FLUSH_PERIOD/2);
+        }
+
         // Flush SHOULD have been called because by now it's 2000ms.
-        applyToRawLoggers(rl -> assertTrue(rl.flushCalled));
+        applyToRawLoggers(rl -> assertTrue(rl.flushCount >= N_PERIODS-1 && rl.flushCount <= N_PERIODS+1));
+        applyToRawLoggers(rl -> rl.supressConsoleOutput = false);
         tearDownBossLogger();
     }
 
