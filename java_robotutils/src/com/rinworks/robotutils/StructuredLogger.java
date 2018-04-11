@@ -112,7 +112,7 @@ public class StructuredLogger {
     private AtomicLong seqNo = new AtomicLong(0);
     private AtomicLong totalDiscardedMessageCount = new AtomicLong(0);
     private Consumer<String> assertionFailureHandler = null;
-    private int maxBufferedMessageCount = DEFAULT_MAX_BUFFERED_MESSAGE_COUNT;
+    private int maxBufferedMessageCount = DEFAULT_MAX_BUFFERED_MESSAGE_COUNT; // Logs will flushed when this limit is exceeded.
     private int periodicFlushMillis = DEFAULT_PERIODIC_FLUSH_MILLIS;
 
     // Background processing of logged messages - one object per raw log
@@ -915,7 +915,7 @@ public class StructuredLogger {
                         if (rawMsg == null) {
                             rawMsg = rawMessage(pri, cat, msgType, msg);
                         }
-                        brl.approxQueueLength.incrementAndGet();
+                        queueLength = brl.approxQueueLength.incrementAndGet();
                         brl.buffer.add(rawMsg);
                     } else {
                         // Not a good situation - we have exceeded the limit.
