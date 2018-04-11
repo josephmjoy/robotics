@@ -486,7 +486,6 @@ public class StructuredLogger {
 
         synchronized (this) {
             if (!this.sessionStarted) {
-                printErr("Ignoring attempt to end structured logger " + systemName + ":invalid state");
                 deinit = false;
             }
             this.sessionStarted = false; // no more messages will be logged.
