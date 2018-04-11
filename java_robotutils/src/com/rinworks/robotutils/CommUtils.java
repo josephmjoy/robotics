@@ -96,14 +96,16 @@ public class CommUtils {
                     rc.periodicWork();
                     for (Channel ch : channels) {
                         ReceivedCommand cmd = ch.pollReceivedCommand();
-                        if (cmd != null) {
+                        while (cmd != null) {
                             // Echo received command.
                             cmd.respond(cmd.msgType(), cmd.message());
+                            cmd = ch.pollReceivedCommand();
                         }
                         ReceivedMessage msg = ch.pollReceivedMessage();
-                        if (msg != null) {
+                        while (msg != null) {
                             // Echo received message.
                             ch.sendMessage(msg.msgType(), msg.message(), msg.remoteAddress());
+                            msg = ch.pollReceivedMessage();
                         }
                     }
                     Thread.sleep(100);
@@ -217,6 +219,7 @@ public class CommUtils {
                 }
 
                 ch.stopReceivingMessages();
+                logStats();
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -261,7 +264,10 @@ public class CommUtils {
                     String command = makeMessageBody("cmdbody" + i + ", ", msgSize);
                     log.trace("ECHO_SEND_CMD", "cmdtype: " + cmdType + "  command: " + command);
                     SentCommand sc = ch.submitCommand(cmdType, command, null, true);
-                    Thread.sleep(100);
+                    // Let's wait some time before the very last check to pick up any remaining command responses.
+                    if (i == count-1) {
+                        Thread.sleep(500);
+                    }
                     // Let's pick up all command responses received so far and verify them...
                     RobotComm.SentCommand sc1 = ch.pollCompletedCommand();
                     while (sc1 != null) {
@@ -276,6 +282,8 @@ public class CommUtils {
                     }
                     Thread.sleep(periodMs);
                 }
+                
+                logStats();
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -322,26 +330,30 @@ public class CommUtils {
                     }
                     Thread.sleep(periodMs);
                 }
+                logStats();
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 // We fall through...
             }
 
-            log.info("Done submitting " + count + "RT commands.");
+            log.info("Done submitting " + count + " RT commands.");
             this.rc.stopListening();
         }
 
         @Override
         public void close() {
             this.log.info("CLOSING EchoClient");
+            this.rc.close();
+            this.transport.close();
+            this.logger.endLogging();
+        }
+        
+        void logStats() {
             List<ChannelStatistics> stats = rc.getChannelStatistics();
             for (ChannelStatistics s : stats) {
                 log.info("CHANNEL_STATS", s.toString());
             }
-            this.rc.close();
-            this.transport.close();
-            this.logger.endLogging();
         }
     }
 

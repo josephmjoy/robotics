@@ -80,6 +80,9 @@ class CommUtilsTest {
 
     @Test
     void testSimpleEchoClientServer() {
+        int nMessages = 100;
+        int nCommands = 100;
+        int nRTCommands = 100;
         String[] channelNames = { ECHO_CHANNEL_A };
         File rootDir = new File(System.getProperty("user.home"), "robotutils");
         File serverConfig = new File(rootDir.getAbsoluteFile(), "echo_server.yaml");
@@ -90,9 +93,13 @@ class CommUtilsTest {
         runEchoServer(server);
         try (EchoClient client = new EchoClient(clientConfig, SERVER_IP_ADDRESS, SERVER_PORT, MAX_PACKET_SIZE,
                 "testEchoClient")) {
-            client.sendMessages(10, 100, 100, ECHO_CHANNEL_A);
-            //client.sendCommands(0, 100, 100, ECHO_CHANNEL_A);
-            //client.sendRtCommands(0, 100, 100, ECHO_CHANNEL_A);
+            println("Sending " + nMessages + " messages");
+            client.sendMessages(nMessages, 10, 100, ECHO_CHANNEL_A);
+            println("    Done\nSending " + nCommands + " commands");            
+            client.sendCommands(nCommands, 10, 100, ECHO_CHANNEL_A);
+            println("    Done\nSending " + nRTCommands + " RT commands");            
+            client.sendRtCommands(nRTCommands, 10, 100, ECHO_CHANNEL_A);
+            println("    Done");
             Thread.sleep(1000);
             client.close();
             server.stop();
