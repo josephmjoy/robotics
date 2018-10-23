@@ -114,11 +114,34 @@ static class RoundRobinScheduler {
     private Semaphore doStep = new Semaphore(1);
     private Semaphore stepDone = new Semaphore(1);
     private final Task clientTask;
+    private final Thread taskThread;
 
 
-    TaskImplementation(Task clientTask, String name) {
+    TaskImplementation(final Task clientTask, String name) {
       this.name = name;
       this.clientTask = clientTask;
+      final TaskContext context = this;
+      this.taskThread = new Thread(new Runnable() {
+        void run() {
+          try {
+            doStep.acquire();
+            clientTask.run(context);
+          }
+          catch (InterruptedException e) {
+            //
+          }
+          catch (Exception e) {
+          }
+          finally {
+            stepDone.release();
+          }
+        }
+      }
+      );
+      if (!stepDone.tryAcquire()) {
+        // We should not get here as we have only just created the semaphore.
+        throw new RuntimeException("Unexpected internal state!");
+      }
     }
 
 

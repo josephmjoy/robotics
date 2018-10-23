@@ -3,9 +3,9 @@ void setup() {
   RoundRobinScheduler.Task myTask = new RoundRobinScheduler.Task() {
     public  void run(RoundRobinScheduler.TaskContext context) {
       try {
-        println("Starting task");
+        println("Finished Step 1. Waiting to do Step 2...");
         context.waitForNextStep();
-        println("Done task");
+        println("Finished Step 2. Task is complete.");
       }
       catch (InterruptedException e) {
         println("Task canceled! Bailing");
@@ -15,7 +15,9 @@ void setup() {
   rrs.addTask(myTask, "myTask");
   try {
     rrs.stepAll();
-    rrs.rundownAll(0);
+    rrs.cancelAll();
+    boolean ret = rrs.rundownAll(0);
+    println("rundown all returns : " + ret);
   }
   catch (InterruptedException e) {
     println("Oops - exception while blocked");
