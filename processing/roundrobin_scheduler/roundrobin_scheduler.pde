@@ -14,11 +14,11 @@ void setup() {
   };
   rrs.addTask(myTask, "myTask");
   try {
-  rrs.stepAll();
-  rrs.waitForAllDone(0);
+    rrs.stepAll();
+    rrs.rundownAll(0);
   }
   catch (InterruptedException e) {
-    println("Oopps - exception while blocked");
+    println("Oops - exception while blocked");
   }
 }
 
