@@ -18,6 +18,7 @@ void setup() {
     rrs.cancelAll();
     boolean ret = rrs.rundownAll(0);
     println("rundown all returns : " + ret);
+    println("ALL DONE!");
   }
   catch (InterruptedException e) {
     println("Oops - exception while blocked");

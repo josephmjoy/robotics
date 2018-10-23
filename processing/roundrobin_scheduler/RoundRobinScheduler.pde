@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 //
 static class RoundRobinScheduler {
 
-  private List<TaskImplementation> tasks;
+  private List<TaskImplementation> tasks = new ArrayList<TaskImplementation>();
   private final Thread mainThread;
   private CountDownLatch rundownLatch; // if NON null, implies rundown has begun.
 
@@ -50,6 +50,7 @@ static class RoundRobinScheduler {
     verifyNotRunningDown();
     TaskImplementation t = new TaskImplementation(task, name);
     tasks.add(t);
+    t.start();
   }
 
   // Steps once through all tasks. This is a blocking
@@ -59,11 +60,13 @@ static class RoundRobinScheduler {
   // MUST NOT be called after task rundown has started (via
   // call to rundownAll)
   public void stepAll() throws InterruptedException {
+    println("in stepAll");
     verifyMainThread();
     verifyNotRunningDown();
     for (TaskImplementation t : tasks) {
       t.step();
     }
+    println("exiting stepAll");
   }
 
 
@@ -73,6 +76,8 @@ static class RoundRobinScheduler {
   // MUST NOT be called after task rundown has started (via
   // call to rundownAll)
   public void cancelAll() {
+        println("in cancelAll");
+
     verifyMainThread();
     verifyNotRunningDown();
 
@@ -91,6 +96,8 @@ static class RoundRobinScheduler {
   //   false if an InterruptedException was thrown, typically
   // indicating the timeout has expired.
   public boolean rundownAll(int waitMs) {
+        println("in rundownAll");
+
     verifyMainThread();
     verifyNotRunningDown();
     boolean ret = true;
@@ -124,6 +131,7 @@ static class RoundRobinScheduler {
       this.taskThread = new Thread(new Runnable() {
         void run() {
           try {
+            println("about to acquire doStep...");
             doStep.acquire();
             clientTask.run(context);
           }
@@ -134,6 +142,9 @@ static class RoundRobinScheduler {
           }
           finally {
             stepDone.release();
+            if (rundownLatch != null) {
+              rundownLatch.countDown();
+            }
           }
         }
       }
@@ -155,6 +166,10 @@ static class RoundRobinScheduler {
       doStep.acquire();
     }
 
+    void start() {
+      taskThread.start();
+    }
+    
     void step() throws InterruptedException {
       doStep.release();
       stepDone.acquire();
@@ -165,7 +180,7 @@ static class RoundRobinScheduler {
   }
 
   private void verifyMainThread() {
-    if (Thread.currentThread() == mainThread) {
+    if (Thread.currentThread() != mainThread) {
       throw new IllegalStateException("Attempt to make call from non-main thread.");
     }
   }
