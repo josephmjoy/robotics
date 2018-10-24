@@ -214,10 +214,17 @@ static class RoundRobinScheduler {
   }
 
   private void log(TaskImplementation ti, String s) {
-    println("TASK [" + ti.name() + "]: " + s);
+    log0(String.format("TASK [%s]: ", ti.name), s);
   }
-
+  
+  
   private void log(String s) {
-    println("SCHEDULER: " + s);
+    log0("SCHEDULER: ", s);
   }
+  
+  private long startTime = System.currentTimeMillis();
+  private void log0(String prefix, String s) {
+       println(String.format("%05d %s %s", System.currentTimeMillis() - startTime, prefix, s));
+  }
+  
 }
