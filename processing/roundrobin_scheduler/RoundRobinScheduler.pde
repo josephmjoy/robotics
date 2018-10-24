@@ -1,5 +1,4 @@
 import java.util.List;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -8,11 +7,11 @@ import java.util.concurrent.TimeUnit;
 // tasks and steps through each one in turn.
 // Each task runs in it's own thread, but only
 // one task runs at a time, and all tasks
-// run only when the caller is blocked on
+// run only when the client is blocked on
 // the stepAll method.
 // All method calls to RoundRobinScheduler
-// MUST be called from the same main thread.
-// This precondition is asserted.
+// MUST be called from the same thread
+// that called its constructor.
 //
 static class RoundRobinScheduler {
 
@@ -20,11 +19,13 @@ static class RoundRobinScheduler {
   private final Thread mainThread;
   private CountDownLatch rundownLatch; // if NON null, implies rundown has begun.
 
+
   // Supplies context to a running task
   public interface TaskContext {
     public String name();
     public void waitForNextStep() throws InterruptedException;
   }
+
 
   // Interface to client-provided task
   public interface  Task {
@@ -32,6 +33,8 @@ static class RoundRobinScheduler {
   }
 
   public RoundRobinScheduler() {
+    // Remember the main thread to verify subsequent calls are
+    // from this thread.
     mainThread = Thread.currentThread();
   }
 
@@ -48,10 +51,11 @@ static class RoundRobinScheduler {
   public void addTask(Task task, String name) {
     verifyMainThread();
     verifyNotRunningDown();
-    TaskImplementation t = new TaskImplementation(task, name);
-    tasks.add(t);
-    t.start();
+    TaskImplementation ti = new TaskImplementation(task, name);
+    tasks.add(ti);
+    ti.start();
   }
+
 
   // Steps once through all tasks. This is a blocking
   // call as it will wait until each task goes through 
@@ -59,14 +63,15 @@ static class RoundRobinScheduler {
   // MUST be called from the (single) main thread.
   // MUST NOT be called after task rundown has started (via
   // call to rundownAll)
-  public void stepAll() throws InterruptedException {
-    println("in stepAll");
+  public void stepAll() {
+    log("entering stepAll");
     verifyMainThread();
     verifyNotRunningDown();
-    for (TaskImplementation t : tasks) {
-      t.step();
+    for (TaskImplementation ti : tasks) {
+      log("stepping task " + ti.name());
+      ti.step();
     }
-    println("exiting stepAll");
+    log("exiting stepAll");
   }
 
 
@@ -76,14 +81,13 @@ static class RoundRobinScheduler {
   // MUST NOT be called after task rundown has started (via
   // call to rundownAll)
   public void cancelAll() {
-        println("in cancelAll");
-
+    log("entering cancelAll");
     verifyMainThread();
     verifyNotRunningDown();
-
-    for (TaskImplementation t : tasks) {
-      t.cancel();
+    for (TaskImplementation ti : tasks) {
+      ti.cancel();
     }
+    log("exiting cancelAll");
   }
 
 
@@ -96,8 +100,7 @@ static class RoundRobinScheduler {
   //   false if an InterruptedException was thrown, typically
   // indicating the timeout has expired.
   public boolean rundownAll(int waitMs) {
-        println("in rundownAll");
-
+    log("entering rundownAll");
     verifyMainThread();
     verifyNotRunningDown();
     boolean ret = true;
@@ -110,18 +113,39 @@ static class RoundRobinScheduler {
       // timeout we also return false.
       ret = false;
     }
+    log("exiting rundownAll");
     return ret;
   } 
 
   //
   // PRIVATE METHODS
   //
+
+  // Class WorkTicket synchronizes a "supervisor" and a "worker". The
+  // supervisor assigns blocking work, and the worker blocks until work
+  // is available.
+  private class WorkTicket {
+
+    // Supervisor side: assigns work and blocks until the worker has
+    // completed the work.
+    void doWork() {
+    }
+
+    // Worker side: blocks until work is available.
+    void waitForWork() throws InterruptedException {
+    }
+
+    // Worker side: notify supervisor that work is complete.
+    // This unblocks the supervisor waiting in doWork.
+    void workComplete() {
+    }
+  }
+
   private class TaskImplementation implements TaskContext {
     private final String name;
-    private Semaphore doStep = new Semaphore(1);
-    private Semaphore stepDone = new Semaphore(1);
     private final Task clientTask;
     private final Thread taskThread;
+    private final WorkTicket ticket = new WorkTicket(); // used to synchronize work
 
 
     TaskImplementation(final Task clientTask, String name) {
@@ -131,9 +155,9 @@ static class RoundRobinScheduler {
       this.taskThread = new Thread(new Runnable() {
         void run() {
           try {
-            println("about to acquire doStep...");
-            doStep.acquire();
-            clientTask.run(context);
+            log(TaskImplementation.this, "waiting for work...");
+            ticket.waitForWork();
+            clientTask.run(context); // it will call back zero or more times to wait for more work.
           }
           catch (InterruptedException e) {
             //
@@ -141,7 +165,7 @@ static class RoundRobinScheduler {
           catch (Exception e) {
           }
           finally {
-            stepDone.release();
+            ticket.workComplete();
             if (rundownLatch != null) {
               rundownLatch.countDown();
             }
@@ -149,10 +173,6 @@ static class RoundRobinScheduler {
         }
       }
       );
-      if (!stepDone.tryAcquire()) {
-        // We should not get here as we have only just created the semaphore.
-        throw new RuntimeException("Unexpected internal state!");
-      }
     }
 
 
@@ -162,17 +182,18 @@ static class RoundRobinScheduler {
 
 
     public void waitForNextStep() throws InterruptedException {
-      stepDone.release();
-      doStep.acquire();
+      log(this, "entering waitForNextStep");
+      ticket.workComplete();
+      ticket.waitForWork();
+      log(this, "exiting waitForNextStep");
     }
 
     void start() {
       taskThread.start();
     }
-    
-    void step() throws InterruptedException {
-      doStep.release();
-      stepDone.acquire();
+
+    void step() {
+      ticket.doWork();
     }
 
     void cancel() {
@@ -190,5 +211,13 @@ static class RoundRobinScheduler {
       // This method should not be called during rundown.
       throw new IllegalStateException("Cannot perform operation during run down");
     }
+  }
+
+  private void log(TaskImplementation ti, String s) {
+    println("TASK [" + ti.name() + "]: " + s);
+  }
+
+  private void log(String s) {
+    println("SCHEDULER: " + s);
   }
 }
