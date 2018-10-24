@@ -26,6 +26,7 @@ void runTest() {
   println("MAIN: adding task " + taskName);
   rrs.addTask(myTask, taskName);
   rrs.stepAll();
+  rrs.stepAll();
   //rrs.cancelAll();
   boolean ret = rrs.rundownAll(100000);
   println("MAIN: rundown all returns : " + ret);

@@ -125,14 +125,69 @@ static class RoundRobinScheduler {
   // supervisor assigns blocking work, and the worker blocks until work
   // is available.
   private class WorkTicket {
+    boolean workAvailable = false;
+    boolean workDone = false;
+    boolean canceled = false; // once canceled, always canceled.
+
 
     // Supervisor side: assigns work and blocks until the worker has
     // completed the work.
     void doWork() {
+
+      if (canceled) {
+        return; // ********* EARLY RETURN *****************
+      }
+
+      // Notify worker that work is available
+      synchronized(this) {
+        assert(!workAvailable);
+        assert(!workDone);
+        workAvailable = true;
+        this.notify();
+      }
+
+      // Wait for work to complete
+      try {
+        synchronized(this) {
+          while (!canceled && !workDone) {
+            assert(workAvailable);
+            this.wait();
+          }
+          workAvailable = workDone = false;
+        }
+      }
+      catch (InterruptedException e) {
+        // For now, we cancel this and future work items.
+        canceled = true;
+        System.err.println("WorkItem.doWork caught execption " + e);
+      }
     }
 
     // Worker side: blocks until work is available.
     void waitForWork() throws InterruptedException {
+
+      // Wait for work
+      try {
+        synchronized(this) {
+          while (!canceled && !workAvailable) {
+            assert(!workDone);
+            this.wait();
+          }
+        }
+      }
+      catch (InterruptedException e) {
+        // For now, we cancel this and future work items, and re-throw the exception
+        canceled = true;
+        throw(e);
+      }    
+
+      // Notify supervisor that work is complete
+      synchronized(this) {
+        assert(canceled || workAvailable);
+        assert(canceled || !workDone);
+        workDone = true;
+        this.notify();
+      }
     }
 
     // Worker side: notify supervisor that work is complete.
@@ -216,15 +271,14 @@ static class RoundRobinScheduler {
   private void log(TaskImplementation ti, String s) {
     log0(String.format("TASK [%s]: ", ti.name), s);
   }
-  
-  
+
+
   private void log(String s) {
     log0("SCHEDULER: ", s);
   }
-  
+
   private long startTime = System.currentTimeMillis();
   private void log0(String prefix, String s) {
-       println(String.format("%05d %s %s", System.currentTimeMillis() - startTime, prefix, s));
+    println(String.format("%05d %s %s", System.currentTimeMillis() - startTime, prefix, s));
   }
-  
 }
