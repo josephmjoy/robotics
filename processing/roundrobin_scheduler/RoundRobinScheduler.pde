@@ -1,3 +1,7 @@
+// A round robin scheduler that may be used to implement
+// concurrent blocking tasks with serialized execution.
+// Author: Joseph M. Joy FTC 12598 and FRC 1899 mentor
+//
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -5,27 +9,25 @@ import java.util.concurrent.TimeUnit;
 //
 // Class RoundRobinScheduler maintains a list of 
 // tasks and steps through each one in turn.
-// Each task runs in it's own thread, but only
+// Each task runs in it's own system thread, but only
 // one task runs at a time, and all tasks
 // run only when the client is blocked on
 // the stepAll method.
 // All method calls to RoundRobinScheduler
 // MUST be called from the same thread
 // that called its constructor.
-//
 static class RoundRobinScheduler {
 
   private List<TaskImplementation> tasks = new ArrayList<TaskImplementation>();
-  private final Thread mainThread;
-  private CountDownLatch rundownLatch; // if NON null, implies rundown has begun.
+  private final Thread mainThread; // The tread that called the constructor
+  private CountDownLatch rundownLatch; // If NON null, implies rundown has begun.
+  private int doneTaskCount = 0; // Tasks that were done before rundown.
 
-
-  // Supplies context to a running task
+  // Supplies context to a client-provided  task
   public interface TaskContext {
     public String name();
     public void waitForNextStep() throws InterruptedException;
   }
-
 
   // Interface to client-provided task
   public interface  Task {
@@ -33,7 +35,7 @@ static class RoundRobinScheduler {
   }
 
   public RoundRobinScheduler() {
-    // Remember the main thread to verify subsequent calls are
+    // Remember the main thread just to verify subsequent calls are
     // from this thread.
     mainThread = Thread.currentThread();
   }
@@ -85,7 +87,7 @@ static class RoundRobinScheduler {
     verifyMainThread();
     verifyNotRunningDown();
     for (TaskImplementation ti : tasks) {
-      ti.cancel();
+      ti.notifyStop();
     }
     log("exiting cancelAll");
   }
@@ -104,13 +106,13 @@ static class RoundRobinScheduler {
     verifyMainThread();
     verifyNotRunningDown();
     boolean ret = true;
-    rundownLatch = new CountDownLatch(tasks.size());
+    rundownLatch = new CountDownLatch(tasks.size() - doneTaskCount);
     try {    
       ret = rundownLatch.await(waitMs, TimeUnit.MILLISECONDS);
     }
     catch (InterruptedException e) {
       // If this thread was interrupted for other reasons besides 
-      // timeout we also return false.
+      // timeout (can't think of any) we also return false.
       ret = false;
     }
     log("exiting rundownAll");
@@ -118,112 +120,135 @@ static class RoundRobinScheduler {
   } 
 
   //
-  // PRIVATE METHODS
+  // PRIVATE CLASSES AND METHODS
   //
 
-  // Class WorkTicket synchronizes a "supervisor" and a "worker". The
-  // supervisor assigns blocking work, and the worker blocks until work
-  // is available.
-  private class WorkTicket {
-    boolean workAvailable = false;
-    boolean workDone = false;
-    boolean canceled = false; // once canceled, always canceled.
+  // Class Stepper synchronizes a "supervisor" and a "worker". The
+  // supervisor blocks while the worker performs a quanta (step) of work.
+  private class Stepper {
 
+    private boolean canStep = false;
+    private boolean stepDone = false;
+    private boolean quit = false; // once quit, stay quit.
 
-    // Supervisor side: assigns work and blocks until the worker has
-    // completed the work.
-    void doWork() {
+    // Supervisor side: make worker progress by one step. Blocks until the worker has
+    // completed the step.
+    void step() {
 
-      if (canceled) {
+      if (quit) {
         return; // ********* EARLY RETURN *****************
       }
 
       // Notify worker that work is available
       synchronized(this) {
-        assert(!workAvailable);
-        assert(!workDone);
-        workAvailable = true;
+        assert(!canStep);
+        assert(!stepDone);
+        canStep = true;
         this.notify();
       }
 
-      // Wait for work to complete
+      // Wait for step to complete
       try {
         synchronized(this) {
-          while (!canceled && !workDone) {
-            assert(workAvailable);
+          // This while loop may not be necessary, but some web reports talk about
+          // spurious wakes.
+          while (!quit && !stepDone) {
+            assert(canStep);
             this.wait();
           }
-          workAvailable = workDone = false;
+          canStep = stepDone = false;
         }
       }
       catch (InterruptedException e) {
-        // For now, we cancel this and future work items.
-        canceled = true;
-        System.err.println("WorkItem.doWork caught execption " + e);
+        // We do not expect the thread to be interrupted.
+        // Neverthless, if it does, we cancel further stepping.
+        quit = true;
+        System.err.println("WorkItem.step caught execption " + e);
       }
     }
 
-    // Worker side: blocks until work is available.
-    void waitForWork() throws InterruptedException {
 
-      // Wait for work
-      try {
-        synchronized(this) {
-          while (!canceled && !workAvailable) {
-            assert(!workDone);
-            this.wait();
-          }
-        }
-      }
-      catch (InterruptedException e) {
-        // For now, we cancel this and future work items, and re-throw the exception
-        canceled = true;
-        throw(e);
-      }    
+    // Worker side: blocks until nest step can be done.
+    // If the exception is thrown, the caller MUST NOT attempt to
+    // await any more steps. It does not 
+    // need to (but can) call stopAwaitingSteps();
+    void awaitStep() throws InterruptedException {
 
-      // Notify supervisor that work is complete
+      // Optionally notify superviser that previous step was complete
       synchronized(this) {
-        assert(canceled || workAvailable);
-        assert(canceled || !workDone);
-        workDone = true;
-        this.notify();
+        if (canStep) {
+          assert(!stepDone);
+          stepDone = true;
+          this.notify();
+        }
+      }
+
+      try {
+        // Wait for next step
+        synchronized(this) {
+          // This while loop may not be necessary, but some web reports talk about
+          // spurious wakes.
+          while (!quit && !canStep) {
+            assert(!stepDone);
+            this.wait();
+          }
+        }
+      }
+      catch (InterruptedException e) {
+        // We do not expect an interrupt exception,
+        // but if we do get one, we quit this task
+        // 
+        stopAwaitingSteps();
+        throw (e);
       }
     }
 
-    // Worker side: notify supervisor that work is complete.
-    // This unblocks the supervisor waiting in doWork.
-    void workComplete() {
+
+    // Worker: notify supervisor that worker will no longer
+    // be waiting to do steps.
+    void stopAwaitingSteps() {
+      synchronized(this) {
+        assert(canStep);
+        assert(!stepDone);
+        quit = true; // quit may already be true - in exception case
+        this.notify();
+      }
     }
   }
 
+
   private class TaskImplementation implements TaskContext {
     private final String name;
-    private final Task clientTask;
     private final Thread taskThread;
-    private final WorkTicket ticket = new WorkTicket(); // used to synchronize work
+    private final Stepper stepper = new Stepper(); // used to synchronize work
 
 
     TaskImplementation(final Task clientTask, String name) {
       this.name = name;
-      this.clientTask = clientTask;
       final TaskContext context = this;
       this.taskThread = new Thread(new Runnable() {
         void run() {
           try {
             log(TaskImplementation.this, "waiting for work...");
-            ticket.waitForWork();
+            stepper.awaitStep(); // Initial step
             clientTask.run(context); // it will call back zero or more times to wait for more work.
           }
-          catch (InterruptedException e) {
-            //
-          }
           catch (Exception e) {
+            // This is a catch-all for any exception thrown by the stepper or the client code.
+            // There is not much we can do to recover, so we re-throw the exception, but
+            // also notify the client below.
           }
           finally {
-            ticket.workComplete();
             if (rundownLatch != null) {
               rundownLatch.countDown();
+            } else {
+              log("NULL rundown Latch!");
+              doneTaskCount++;
             }
+            // The following must be AFTER counting down
+            // the latch, else we have a race condition between the main thread
+            // initializing rundownLatch and this thread counting it down.  
+            stepper.stopAwaitingSteps();
           }
         }
       }
@@ -238,9 +263,8 @@ static class RoundRobinScheduler {
 
     public void waitForNextStep() throws InterruptedException {
       log(this, "entering waitForNextStep");
-      ticket.workComplete();
-      ticket.waitForWork();
-      log(this, "exiting waitForNextStep");
+      stepper.awaitStep();
+       log(this, "exiting waitForNextStep");
     }
 
     void start() {
@@ -248,10 +272,14 @@ static class RoundRobinScheduler {
     }
 
     void step() {
-      ticket.doWork();
+      stepper.step();
     }
 
-    void cancel() {
+    // Stop simply notifies task that it needs to quit. However
+    // it waits for the tasks to quit themselves.
+    void notifyStop() {
+      log(this, "in notifyStop");
+      assert false; // UNIMPLEMENTED
     }
   }
 
