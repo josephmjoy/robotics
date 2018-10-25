@@ -208,8 +208,9 @@ static class RoundRobinScheduler {
 
 
     private void internalStep(boolean finalStep) {
-
+      log0("STEPPER: ", "entering internalStep");
       if (workerDone) {
+        log0("STEPPER: ", "entering internalStep EARLY because worker done.");
         return; // ********* EARLY RETURN *****************
       }
 
@@ -246,8 +247,9 @@ static class RoundRobinScheduler {
         last = true;
         System.err.println("WorkItem.step caught execption " + e);
       }
+      log0("STEPPER: ", "Exiting internalStep");
     }
-  }
+   }
 
 
   private class TaskImplementation implements TaskContext {
@@ -262,8 +264,9 @@ static class RoundRobinScheduler {
       this.taskThread = new Thread(new Runnable() {
         void run() {
           try {
-            log(TaskImplementation.this, "waiting for work...");
+            println("THREAD: BEGIN Task " + TaskImplementation.this.name);
             stepper.awaitStep(); // Initial step
+            log(TaskImplementation.this, "Abount to call client's run method");
             clientTask.run(context); // it will call back zero or more times to wait for more work.
           }
           catch (Exception e) {
@@ -282,6 +285,8 @@ static class RoundRobinScheduler {
             // the latch, else we have a race condition between the main thread
             // initializing rundownLatch and this thread counting it down.  
             stepper.done();
+            println("THREAD: END Task " + TaskImplementation.this.name);
+
           }
         }
       }
@@ -338,8 +343,10 @@ static class RoundRobinScheduler {
     log0("SCHEDULER: ", s);
   }
 
-  private long startTime = System.currentTimeMillis();
-  private void log0(String prefix, String s) {
-    println(String.format("%05d %s %s", System.currentTimeMillis() - startTime, prefix, s));
+  private volatile long startTime = System.currentTimeMillis();
+  private volatile int counter = 0;
+  void log0(String prefix, String s) {
+    println(String.format("%02d:%05d %s %s", counter, System.currentTimeMillis() - startTime, prefix, s));
+    counter++;
   }
 }
