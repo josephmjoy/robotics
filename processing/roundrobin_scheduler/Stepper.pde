@@ -1,6 +1,6 @@
 // Class Stepper synchronizes a "supervisor" and a "worker". The
 // supervisor blocks while the worker performs a quanta (step) of work.
-static class Stepper {
+static class StepCoordinator {
   
   private enum OwnerID {
     SUPERVISOR, 
@@ -35,11 +35,11 @@ static class Stepper {
 
 
   // Worker side: blocks until next step can be done.
+  // Return:  true if there will be more steps, false
+  //     if this is the final step (so cleanup may be performed).
   // If the exception is thrown, the caller MUST NOT attempt to
   // await any more steps. It does not 
   // need to (but can) call stopAwaitingSteps();
-  // {return} is true if there will be more steps. {false}
-  // if this is the final step (so cleanup may be performed).
   // Once false is returned, a subsequent call to awaitStep
   // WILL result in an InterruptedException being thrown.
   boolean awaitStep() throws InterruptedException {
@@ -58,7 +58,8 @@ static class Stepper {
         }
         awaitOwnershipLK(OwnerID.WORKER);
         stepCount++;
-        ret = inLastStep = last; // Record if worker is in final step
+        inLastStep = last; // Record if worker is in final step
+        ret = !last;
       }
     }
     catch (InterruptedException e) {
@@ -119,15 +120,16 @@ static class Stepper {
   // MUST be called with lock held.
   // Throws InterruptedException if wait interrupted
   void awaitOwnershipLK(OwnerID newOwner) throws InterruptedException {
-    log(newOwner + " WAITING FOR NEXT STEP");
+    log(newOwner + " waiting for ownership");
     while (owner != newOwner) {
       lock.wait();
     }
-    log(newOwner + " DONE WAITING FOR NEXT STEP");
+    log(newOwner + " claimed ownership");
   }
   // MUST be called with lock held.
   // Throws IllegalStateException if current owner is not {from}.
   private void transferOwnershipLK(OwnerID from, OwnerID to) {
+    log("transferring ownership from " + from + " to " + to);
     verifyOwnershipLK(from);
     owner = to;
     lock.notify();

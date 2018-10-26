@@ -126,7 +126,7 @@ static class RoundRobinScheduler {
   private class TaskImplementation implements TaskContext {
     private final String name;
     private final Thread taskThread;
-    private final Stepper stepper = new Stepper(); // used to synchronize work
+    private final StepCoordinator stepper = new StepCoordinator(); // used to synchronize work
 
 
     TaskImplementation(final Task clientTask, String name) {
@@ -136,10 +136,11 @@ static class RoundRobinScheduler {
         void run() {
           try {
             System.out.println("THREAD: BEGIN Task " + TaskImplementation.this.name);
-            stepper.awaitStep(); // Initial step
-            log(TaskImplementation.this, "About to call client's run method");
-            clientTask.run(context); // it will call back zero or more times to wait for more work.
-            log(TaskImplementation.this, "Client's run method returns.");
+            if (stepper.awaitStep()) { // Initial step
+              log(TaskImplementation.this, "About to call client's run method");
+              clientTask.run(context); // it will call back zero or more times to wait for more work.
+              log(TaskImplementation.this, "Client's run method returns.");
+            }
           }
           catch (Exception e) {
             // This is a catch-all for any exception thrown by the stepper or the client code.
@@ -215,6 +216,4 @@ static class RoundRobinScheduler {
   private void log(String s) {
     log0("SCHEDULER: ", s);
   }
-
-
 }
