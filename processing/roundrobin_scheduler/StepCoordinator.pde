@@ -1,24 +1,34 @@
-// Class Stepper synchronizes a "supervisor" and a "worker". The
+// Class StepCoordinator synchronizes a "supervisor" and a "worker". The
 // supervisor blocks while the worker performs a quanta (step) of work.
+// All supervisor calls MUST be called in the same thread that
+// created the object. All worker calls MUST be called from a different
+// thread  than the supervisor thread.
 static class StepCoordinator {
+
+  private Object lock = new Object(); // Used for all synchronization of ALL field variables
   
   private enum OwnerID {
     SUPERVISOR, 
       WORKER
   };
-  private Object lock = new Object(); // Used for all synchronization of ALL field variables
-
+  
   // Modified by both owner and supervisor
-  private OwnerID owner = OwnerID.SUPERVISOR; // Who owns the stepper   
+  private volatile OwnerID owner = OwnerID.SUPERVISOR; // Who owns the stepper   
 
   // Modified just by supervisor
   private volatile boolean last = false; // No more steps forthcoming
 
   // Modified just by worker
-  private int stepCount = 0; // Incremented after each step is complete
+  private volatile int stepCount = 0; // Incremented after each step is complete
   private volatile boolean workerDone = false; // Worker has quit
   private volatile boolean inLastStep = false; // Worker performing last step
+  private Thread workerThread; // Initialized on first call to waitForNextStep();
 
+  private final Thread mainThread;
+
+  public StepCoordinator() {
+    mainThread = Thread.currentThread();
+  }
 
   // Supervisor side: make worker progress by one step. Blocks until the worker has
   // completed the step.
@@ -37,26 +47,32 @@ static class StepCoordinator {
   // Worker side: blocks until next step can be done.
   // Return:  true if there will be more steps, false
   //     if this is the final step (so cleanup may be performed).
-  // If the exception is thrown, the caller MUST NOT attempt to
+  // If an exception is thrown, the caller MUST NOT attempt to
   // await any more steps. It does not 
   // need to (but can) call stopAwaitingSteps();
   // Once false is returned, a subsequent call to awaitStep
-  // WILL result in an InterruptedException being thrown.
+  // WILL result in an IllegalStateException being thrown.
   boolean awaitStep() throws InterruptedException {
     boolean ret;
+    verifyThreadContext(OwnerID.WORKER);
+
     try {
       synchronized(lock) {
         if (inLastStep) {
           // Oh oh. Worker has completed a final step. It 
           // SHOULD NOT call awaitStep again.
-          throw new IllegalStateException("Atempt to await step after a final step!");
+          illegalStateError("Atempt to await step after a final step!");
         }
-        if (stepCount > 0) {
-          // Worker has previously done at least 1 step, so it
-          // is owner. Transfer ownership back to supervisor
+        if (stepCount == 0) {
+          assert workerThread == null;
+          workerThread = Thread.currentThread();
+        } else {
+          // Worker has previously done at least one step, so it
+          // is currently owner. Transfer ownership back to supervisor
           transferOwnershipLK(OwnerID.WORKER, OwnerID.SUPERVISOR);
         }
         awaitOwnershipLK(OwnerID.WORKER);
+        // Cleared to start step...
         stepCount++;
         inLastStep = last; // Record if worker is in final step
         ret = !last;
@@ -70,7 +86,7 @@ static class StepCoordinator {
       stopAwaitingSteps();
       throw e;
     }
-    return ret;
+    return ret; // true: more steps coming; false: this is the last step
   }
 
 
@@ -78,6 +94,7 @@ static class StepCoordinator {
   // wait to do steps. Worker must own the stepper to call
   // this.
   void stopAwaitingSteps() {
+     verifyThreadContext(OwnerID.WORKER);
     synchronized(lock) {
       workerDone = true;
       transferOwnershipLK(OwnerID.WORKER, OwnerID.SUPERVISOR);
@@ -85,19 +102,21 @@ static class StepCoordinator {
   }
 
   @Override
-  public String toString() {
-    return "STEPPER [ow:" + owner + " sc:" + stepCount + "]";
+    public String toString() {
+    return String.format("STEPPER [ow:%s sc:%d th:%s]", owner, stepCount, workerThread.getName());
   }
-  
+
   private void internalStep(boolean finalStep) {
     log("entering internalStep");
-    
+    verifyThreadContext(OwnerID.SUPERVISOR);
+
     if (workerDone) {
       log("exiting internalStep EARLY because worker done.");
       return; // ********* EARLY RETURN *****************
     }
 
     synchronized(lock) {
+
       if (finalStep) {
         assert !this.last;
         this.last = true;
@@ -117,6 +136,21 @@ static class StepCoordinator {
     log("Exiting internalStep");
   }
 
+  // Verifies the call is being made in the correct
+  // thread's context. Throws IllegalStateException otherwise.
+  // Can be called with or without lock held.
+  void verifyThreadContext(OwnerID owner) {
+    Thread tCur = Thread.currentThread();
+    if (owner == OwnerID.SUPERVISOR && mainThread != tCur) {
+      illegalStateError("Supervisor method must be called from main thread");
+    } else if (owner == OwnerID.WORKER) {
+      if (tCur == mainThread || (workerThread != null && workerThread != Thread.currentThread())) {
+        illegalStateError("Worker must be called from the correct worker thread");
+      }
+    }
+  }
+
+
   // MUST be called with lock held.
   // Throws InterruptedException if wait interrupted
   void awaitOwnershipLK(OwnerID newOwner) throws InterruptedException {
@@ -126,6 +160,8 @@ static class StepCoordinator {
     }
     log(newOwner + " claimed ownership");
   }
+
+
   // MUST be called with lock held.
   // Throws IllegalStateException if current owner is not {from}.
   private void transferOwnershipLK(OwnerID from, OwnerID to) {
@@ -135,19 +171,27 @@ static class StepCoordinator {
     lock.notify();
   }
 
+
   // MUST be called with lock held
   private void verifyOwnershipLK(OwnerID id) {
     if (owner != id) {
-      String msg = "STEPPER owner is " + owner + "; Expecting " + id;
-      System.err.println(msg);
-      throw new IllegalStateException(msg);
+      illegalStateError("owner is " + owner + "; Expecting " + id);
     }
   }
 
+
   private void fatalError(String s) {
-    System.err.println("STEPPER" + s);
+    System.err.println("STEPPER: FATAL ERROR. " + s);
     throw new RuntimeException("STEPPER: " + s);
   }
+
+
+  private void illegalStateError(String s) {
+    System.err.println("STEPPER: ILLEGAL STATE ERROR. " + s);
+    throw new IllegalStateException("STEPPER: " + s);
+  }
+
+
   private void log(String s) {
     log0(this.toString(), s);
     //log0("STEPPER ", s);
