@@ -21,28 +21,40 @@ static class RoundRobinScheduler {
   private List<TaskImplementation> tasks = new ArrayList<TaskImplementation>();
   private final Thread mainThread; // The tread that called the constructor
   private CountDownLatch rundownLatch; // If NON null, implies rundown has begun.
-  private int doneTaskCount = 0; // Tasks that were done before rundown.
+  private int doneTaskCount = 0; // Tasks that were completed before rundown began.
+
 
   // Supplies context to a client-provided  task
   public interface TaskContext {
     public String name();
-    public void waitForNextStep() throws InterruptedException;
+
+    // Worker side: blocks until next step can be done.
+    // Return:  true if there will be more steps, false
+    //     if this is the final step (so cleanup may be performed).
+    // If an exception is thrown, the caller MUST NOT attempt to
+    // wait for any more steps.
+    // Once false is returned, a subsequent call to this method
+    // WILL result in an InterruptedException being thrown.
+    public boolean waitForNextStep() throws InterruptedException;
   }
 
-  // Interface to client-provided task
+
+  // Interface to client-provided task - similar to java.lang.Runnable,
+  // but with the added context.
   public interface  Task {
     public  abstract void run(TaskContext context);
   }
 
+
   public RoundRobinScheduler() {
-    // Remember the main thread just to verify subsequent calls are
+    // Remember the main thread, just to verify subsequent calls are
     // from this thread.
     mainThread = Thread.currentThread();
   }
 
 
   // Adds a task with the given name to the list of
-  // round-robin tasks. The name is just to help with
+  // round-robin tasks. The name is to help with
   // debugging and logging. The task will be added to
   // the end of the list of tasks.
   // MUST be called from the (single) main 
@@ -173,10 +185,12 @@ static class RoundRobinScheduler {
     }
 
 
-    public void waitForNextStep() throws InterruptedException {
+    public boolean waitForNextStep() throws InterruptedException {
+      boolean ret;
       log(this, "entering waitForNextStep");
-      stepper.awaitStep();
+      ret  =stepper.awaitStep();
       log(this, "exiting waitForNextStep");
+      return ret;     
     }
 
     void start() {

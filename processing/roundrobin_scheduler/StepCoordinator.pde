@@ -3,6 +3,8 @@
 // All supervisor calls MUST be called in the same thread that
 // created the object. All worker calls MUST be called from a different
 // thread  than the supervisor thread.
+// Author: Joseph M. Joy FTC 12598 and FRC 1899 mentor
+
 static class StepCoordinator {
 
   private Object lock = new Object(); // Used for all synchronization of ALL field variables
