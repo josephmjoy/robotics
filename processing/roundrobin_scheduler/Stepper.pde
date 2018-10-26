@@ -57,6 +57,7 @@ static class Stepper {
           transferOwnershipLK(OwnerID.WORKER, OwnerID.SUPERVISOR);
         }
         awaitOwnershipLK(OwnerID.WORKER);
+        stepCount++;
         ret = inLastStep = last; // Record if worker is in final step
       }
     }
@@ -82,6 +83,11 @@ static class Stepper {
     }
   }
 
+  @Override
+  public String toString() {
+    return "STEPPER [ow:" + owner + " sc:" + stepCount + "]";
+  }
+  
   private void internalStep(boolean finalStep) {
     log("entering internalStep");
     
@@ -113,11 +119,11 @@ static class Stepper {
   // MUST be called with lock held.
   // Throws InterruptedException if wait interrupted
   void awaitOwnershipLK(OwnerID newOwner) throws InterruptedException {
-    System.err.println(newOwner + " WAITING FOR NEXT STEP");
+    log(newOwner + " WAITING FOR NEXT STEP");
     while (owner != newOwner) {
       lock.wait();
     }
-    System.err.println(newOwner + " DONE WAITING FOR NEXT STEP");
+    log(newOwner + " DONE WAITING FOR NEXT STEP");
   }
   // MUST be called with lock held.
   // Throws IllegalStateException if current owner is not {from}.
@@ -141,6 +147,7 @@ static class Stepper {
     throw new RuntimeException("STEPPER: " + s);
   }
   private void log(String s) {
-    log0("STEPPER", s);
+    log0(this.toString(), s);
+    //log0("STEPPER ", s);
   }
 }

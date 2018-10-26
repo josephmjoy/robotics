@@ -1,15 +1,19 @@
 void setup() {
   runTest();
+  //noLoop();
 }
 
 private static long startTime = System.currentTimeMillis();
 private static int counter = 0;
+static private Thread g_mainThread ;
 static void log0(String prefix, String s) {
-  System.out.println(String.format("%02d:%05d %s %s", counter, System.currentTimeMillis() - startTime, prefix, s));
+  String tab = Thread.currentThread() == g_mainThread ? "" : "====";
+  System.out.println(String.format("%02d:%05d %s%s %s", counter, System.currentTimeMillis() - startTime, tab, prefix, s));
   counter++;
 }
 
 void runTest() {
+  g_mainThread = Thread.currentThread();
   final String taskName = "myTask";
   final RoundRobinScheduler rrs = new RoundRobinScheduler();
   RoundRobinScheduler.Task myTask = new RoundRobinScheduler.Task() {
@@ -39,7 +43,6 @@ void runTest() {
   //println("MAIN: rundown all returns : " + ret);
   println("MAIN: ALL DONE!");
 }
-
 
 void draw() {
 }
