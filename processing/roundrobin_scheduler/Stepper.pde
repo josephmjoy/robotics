@@ -53,7 +53,7 @@ static class Stepper {
         }
         if (stepCount > 0) {
           // Worker has previously done at least 1 step, so it
-          // is owner. // Notify supevisor of completion of previous step
+          // is owner. Transfer ownership back to supervisor
           transferOwnershipLK(OwnerID.WORKER, OwnerID.SUPERVISOR);
         }
         awaitOwnershipLK(OwnerID.WORKER);
@@ -66,7 +66,7 @@ static class Stepper {
       // 
       System.err.println("Caught interrupt exception in awaitStep");
       stopAwaitingSteps();
-      throw (e);
+      throw e;
     }
     return ret;
   }
@@ -92,7 +92,7 @@ static class Stepper {
 
     synchronized(lock) {
       if (finalStep) {
-        assert(!this.last);
+        assert !this.last;
         this.last = true;
       }
       // Transfer ownership to worker and wait
@@ -113,11 +113,11 @@ static class Stepper {
   // MUST be called with lock held.
   // Throws InterruptedException if wait interrupted
   void awaitOwnershipLK(OwnerID newOwner) throws InterruptedException {
-    //System.err.println(newOwner + " WAITING FOR NEXT STEP");
+    System.err.println(newOwner + " WAITING FOR NEXT STEP");
     while (owner != newOwner) {
-      wait();
+      lock.wait();
     }
-    //System.err.println(newOwner + " DONE WAITING FOR NEXT STEP");
+    System.err.println(newOwner + " DONE WAITING FOR NEXT STEP");
   }
   // MUST be called with lock held.
   // Throws IllegalStateException if current owner is not {from}.
@@ -130,7 +130,7 @@ static class Stepper {
   // MUST be called with lock held
   private void verifyOwnershipLK(OwnerID id) {
     if (owner != id) {
-      String msg = "STEPPER owner is " + owner + "; Expecting %s" + id;
+      String msg = "STEPPER owner is " + owner + "; Expecting " + id;
       System.err.println(msg);
       throw new IllegalStateException(msg);
     }
