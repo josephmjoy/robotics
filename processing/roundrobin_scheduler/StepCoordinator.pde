@@ -105,7 +105,7 @@ static class StepCoordinator {
 
   @Override
     public String toString() {
-    return String.format("STEPPER [ow:%s sc:%d th:%s]", owner, stepCount, workerThread.getName());
+    return String.format("STEPPER [ow:%s sc:%d th:%s]", owner, stepCount, workerThread == null ? "" : workerThread.getName());
   }
 
   private void internalStep(boolean finalStep) {
