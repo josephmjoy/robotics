@@ -11,7 +11,7 @@ interface SimpleLoggingInterface {
   void trace(String prefix, String s);
 }
 
-class SimpleLogger implements SimpleLoggingInterface {
+static class SimpleLogger implements SimpleLoggingInterface {
 
   public boolean trace = true; // set to false to disable logging trace msgs
   public boolean info = true;  // set to false to disable logging info msgs
