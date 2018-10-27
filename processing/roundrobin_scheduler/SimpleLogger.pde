@@ -13,7 +13,7 @@ interface SimpleLoggingInterface {
 
 static class SimpleLogger implements SimpleLoggingInterface {
 
-  public boolean trace = true; // set to false to disable logging trace msgs
+  public boolean trace = false; // set to true to enable logging trace msgs
   public boolean info = true;  // set to false to disable logging info msgs
 
   private final Thread mainThread;

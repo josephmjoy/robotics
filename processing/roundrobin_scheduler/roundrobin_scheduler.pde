@@ -8,6 +8,7 @@ static SimpleLogger g_logger;
 
 void runTest() {
   final String taskName = "myTask";
+  // g_logger.trace = true; // Uncomment to enable full tracing (very verbose!)
   final RoundRobinScheduler rrs = new RoundRobinScheduler();
   RoundRobinScheduler.Task myTask = new RoundRobinScheduler.Task() {
     public  void run(RoundRobinScheduler.TaskContext context) {

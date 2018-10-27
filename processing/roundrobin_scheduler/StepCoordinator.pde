@@ -109,11 +109,11 @@ static class StepCoordinator {
   }
 
   private void internalStep(boolean finalStep) {
-    log("entering internalStep");
+    trace("entering internalStep");
     verifyThreadContext(OwnerID.SUPERVISOR);
 
     if (workerDone) {
-      log("exiting internalStep EARLY because worker done.");
+      trace("exiting internalStep EARLY because worker done.");
       return; // ********* EARLY RETURN *****************
     }
 
@@ -135,7 +135,7 @@ static class StepCoordinator {
         fatalError("Supervisor caught InterruptException waiting for worker. e: " + e);
       }
     }
-    log("Exiting internalStep");
+    trace("Exiting internalStep");
   }
 
   // Verifies the call is being made in the correct
@@ -156,18 +156,18 @@ static class StepCoordinator {
   // MUST be called with lock held.
   // Throws InterruptedException if wait interrupted
   void awaitOwnershipLK(OwnerID newOwner) throws InterruptedException {
-    log(newOwner + " waiting for ownership");
+    trace(newOwner + " waiting for ownership");
     while (owner != newOwner) {
       lock.wait();
     }
-    log(newOwner + " claimed ownership");
+    trace(newOwner + " claimed ownership");
   }
 
 
   // MUST be called with lock held.
   // Throws IllegalStateException if current owner is not {from}.
   private void transferOwnershipLK(OwnerID from, OwnerID to) {
-    log("transferring ownership from " + from + " to " + to);
+    trace("transferring ownership from " + from + " to " + to);
     verifyOwnershipLK(from);
     owner = to;
     lock.notify();
@@ -196,5 +196,10 @@ static class StepCoordinator {
 
   private void log(String s) {
     g_logger.info(this.toString(), s);
+  }
+  
+  
+  private void trace(String s) {
+    g_logger.trace(this.toString(), s);
   }
 }

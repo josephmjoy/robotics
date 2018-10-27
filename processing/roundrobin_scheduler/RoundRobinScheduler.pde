@@ -78,14 +78,12 @@ static class RoundRobinScheduler {
   // MUST NOT be called after task rundown has started (via
   // call to rundownAll)
   public void stepAll() {
-    log("entering stepAll");
     verifyMainThread();
     verifyNotRunningDown();
     for (TaskImplementation ti : tasks) {
-      log("stepping task " + ti.name());
+      trace("stepping task " + ti.name());
       ti.step();
     }
-    log("exiting stepAll");
   }
 
 
@@ -165,7 +163,7 @@ static class RoundRobinScheduler {
             if (rundownLatch != null) {
               rundownLatch.countDown();
             } else {
-              log("NULL rundown Latch!");
+              trace("NULL rundown Latch!");
               doneTaskCount++;
             }
             // The following must be AFTER counting down
@@ -181,20 +179,20 @@ static class RoundRobinScheduler {
 
 
     @Override() 
-    public String name() {
+      public String name() {
       return name;
     }
 
 
     @Override()
-    public boolean waitForNextStep() throws InterruptedException {
-      log(this, "entering waitForNextStep");
+      public boolean waitForNextStep() throws InterruptedException {
+      trace(this, "entering waitForNextStep");
       if (finalStepComplete) {
         throw new InterruptedException("Final step has already completed!");
       }
       boolean keepGoing = stepper.awaitStep();
       finalStepComplete = !keepGoing;
-      log(this, "exiting waitForNextStep");
+      trace(this, "exiting waitForNextStep");
       return keepGoing;
     }
 
@@ -213,9 +211,9 @@ static class RoundRobinScheduler {
     // Performs the last step.
     // Called by scheduler main thread.
     void lastStep() {
-      log(this, "entering lastStep");
+      trace(this, "entering lastStep");
       stepper.lastStep();
-      log(this, "exiting lastStep");
+      trace(this, "exiting lastStep");
     }
   }
 
@@ -242,5 +240,15 @@ static class RoundRobinScheduler {
 
   private void log(String s) {
     g_logger.info("SCHEDULER: ", s);
+  }
+
+
+  private void trace(TaskImplementation ti, String s) {
+    g_logger.trace(String.format("TASK [%s]: ", ti.name), s);
+  }
+
+
+  private void trace(String s) {
+    g_logger.trace("SCHEDULER: ", s);
   }
 }
