@@ -192,9 +192,10 @@ static class RoundRobinScheduler {
       if (finalStepComplete) {
         throw new InterruptedException("Final step has already completed!");
       }
-      finalStepComplete = stepper.awaitStep();
+      boolean keepGoing = stepper.awaitStep();
+      finalStepComplete = !keepGoing;
       log(this, "exiting waitForNextStep");
-      return finalStepComplete;
+      return keepGoing;
     }
 
     // Called by scheduler main thread
