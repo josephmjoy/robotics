@@ -183,19 +183,18 @@ static class StepCoordinator {
 
 
   private void fatalError(String s) {
-    System.err.println("STEPPER: FATAL ERROR. " + s);
+    g_logger.err("STEPPER", "FATAL ERROR. " + s);
     throw new RuntimeException("STEPPER: " + s);
   }
 
 
   private void illegalStateError(String s) {
-    System.err.println("STEPPER: ILLEGAL STATE ERROR. " + s);
+    g_logger.err("STEPPER", "ILLEGAL STATE ERROR. " + s);
     throw new IllegalStateException("STEPPER: " + s);
   }
 
 
   private void log(String s) {
-    log0(this.toString(), s);
-    //log0("STEPPER ", s);
+    g_logger.info(this.toString(), s);
   }
 }

@@ -139,7 +139,7 @@ static class RoundRobinScheduler {
     private final String name;
     private final Thread taskThread;
     private final StepCoordinator stepper = new StepCoordinator(); // used to synchronize work
-
+    private boolean finalStepComplete; // true when the scheduler has already stepped for the last time.
 
     TaskImplementation(final Task clientTask, String name) {
       this.name = name;
@@ -180,28 +180,37 @@ static class RoundRobinScheduler {
     }
 
 
+    @Override() 
     public String name() {
       return name;
     }
 
 
+    @Override()
     public boolean waitForNextStep() throws InterruptedException {
-      boolean ret;
       log(this, "entering waitForNextStep");
-      ret  =stepper.awaitStep();
+      if (finalStepComplete) {
+        throw new InterruptedException("Final step has already completed!");
+      }
+      finalStepComplete = stepper.awaitStep();
       log(this, "exiting waitForNextStep");
-      return ret;     
+      return finalStepComplete;
     }
 
+    // Called by scheduler main thread
+    // to start the dedicated thread assigned
+    // to this task.
     void start() {
       taskThread.start();
     }
 
+    // Called by scheduler main thread
     void step() {
       stepper.step();
     }
 
     // Performs the last step.
+    // Called by scheduler main thread.
     void lastStep() {
       log(this, "entering lastStep");
       stepper.lastStep();
@@ -209,11 +218,13 @@ static class RoundRobinScheduler {
     }
   }
 
+
   private void verifyMainThread() {
     if (Thread.currentThread() != mainThread) {
       throw new IllegalStateException("Attempt to make call from non-main thread.");
     }
   }
+
 
   private void verifyNotRunningDown() {
     if (rundownLatch != null) {
@@ -222,12 +233,13 @@ static class RoundRobinScheduler {
     }
   }
 
+
   private void log(TaskImplementation ti, String s) {
-    log0(String.format("TASK [%s]: ", ti.name), s);
+    g_logger.info(String.format("TASK [%s]: ", ti.name), s);
   }
 
 
   private void log(String s) {
-    log0("SCHEDULER: ", s);
+    g_logger.info("SCHEDULER: ", s);
   }
 }
