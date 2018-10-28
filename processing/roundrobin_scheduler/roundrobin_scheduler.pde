@@ -1,6 +1,8 @@
 void setup() {
   g_logger = new SimpleLogger();
-  runTest();
+  //g_logger.trace = true;
+  //runTest();
+  runStressTest();
   //noLoop();
 }
 
@@ -54,4 +56,5 @@ void workerLog(String s) {
 }
 
 void draw() {
+  stressLoop();
 }
