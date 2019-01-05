@@ -74,7 +74,7 @@ class TestStringMethods(unittest.TestCase):
         #values = ['1', '2', '3']
 
         assert len(keys) == len(values)
-        kv_dirty = [] # includes randome whitespace
+        kv_dirty = [] # includes random whitespace
         kv_clean = []  # does not include any whitespace
         pre = ''
         for (k, v) in zip(keys, values):
@@ -107,7 +107,7 @@ class TestStringMethods(unittest.TestCase):
         msg_dirty = ''.join(kv_dirty)
         msg_clean = ''.join(kv_clean)
 
-        # create a dictionary usig the 'dirty' meessage - which has random
+        # create a dictionary using the 'dirty' message - which has random
         # whitespace inserted -- and verify that all the k:v mappings are there
         d = msgmap.str_to_dict(msg_dirty)
         for (k, v) in zip(keys, values):
