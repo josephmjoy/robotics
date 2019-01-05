@@ -29,7 +29,7 @@ class StringDictHelper:
         """
         ret = str(self._dct.get(key, default))
         if pattern:
-            return ret if pattern.search(ret) else default
+            return ret if pattern.fullmatch(ret) else default
         return ret
 
     def get_as_bool(self, key, default):
