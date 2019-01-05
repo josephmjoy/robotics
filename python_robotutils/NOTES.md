@@ -1,5 +1,8 @@
 # Design and Development Notes for Python port of robututils.
 
+## January 4, 2019C JMJ: Started implementing misc/strmap_helper,py
+So far so good. Very basic test at the bottom of the file. Code so far is 100% PEP 8 compliant.
+
 ## January 4, 2019B JMJ: New code structure
 With relative module addressing in `test_msgmap.py`: `from . import msgmap`, 
 I can run the unit tests there as long as I start `unittests` from either one or two
