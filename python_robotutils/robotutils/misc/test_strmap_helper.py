@@ -46,63 +46,63 @@ class TestStringmapHelper(unittest.TestCase):
 
 
     @staticmethod
-    def buildRandomInput(count):
+    def build_random_input(count):
         """Construct and return {count} random test inputs in an iterable"""
-        randomInput = [] # contains (k, v) tuples
+        inputs = [] # contains (k, v) tuples
         for i in range(count):
-            key = "key" + str(i);
+            key = "key" + str(i)
             k = random.randint(0, 3)
             if k == 0:
                 # String. The following can't have any embedded digits, so substrings can never
                 # be valid ints, longs or doubles. Also the two can't have overlapping
                 # character sets,
-                # and only goodS must pass the string validity test.
-                goodS = "jfAGsrhGGhAhafHaahwHghqgQghqh"
-                badS = "!@#$%^&*)&^#**%&%*@(*&*&*&*&!#%^*"
-                s = goodS if random.randint(0,1) else badS
-                assert _REGEX_VALIDNAME.fullmatch(goodS)
-                assert not _REGEX_VALIDNAME.match(badS)
+                # and only good must pass the string validity test.
+                good = "jfAGsrhGGhAhafHaahwHghqgQghqh"
+                bad = "!@#$%^&*)&^#**%&%*@(*&*&*&*&!#%^*"
+                s = good if random.randint(0, 1) else bad
+                assert _REGEX_VALIDNAME.fullmatch(good)
+                assert not _REGEX_VALIDNAME.match(bad)
                 rs = s[:random.randint(0, len(s))]
-                kvi = (key, rs);
-                randomInput.append(kvi)
+                kvi = (key, rs)
+                inputs.append(kvi)
             elif k == 1:
                 # int
                 ri = int(2 * (_INT_MIN + random.random() * (_INT_MAX - _INT_MIN)))
                 kvi = (key, ri)
-                randomInput.append(kvi)
+                inputs.append(kvi)
             elif k == 2:
                 # float
                 df = 2 * (_FLOAT_MIN + random.random() * (_FLOAT_MAX - _FLOAT_MIN))
                 kvi = (key, df)
-                randomInput.append(kvi)
+                inputs.append(kvi)
             else:
                 # bool
-                rb = True if random.randint(0,1) else False
+                rb = bool(random.randint(0, 1))
                 kvi = (key, rb)
-                randomInput.append(kvi)
-        return randomInput
+                inputs.append(kvi)
+        return inputs
 
     @staticmethod
-    def buildRandomDict(kv_infos):
+    def build_random_dict(kv_infos):
         """Build a random dictionary of (k,v) pairs"""
         return {k: str(v) for k, v in kv_infos}
 
-    def run_gauntlet(self, smg, kvi): 
+    def run_gauntlet(self, smg, kvi):
         """Run tests using all the (key, value) pairs in kv_infos"""
         key, expected_val = kvi
 
         # Test get_as_str...
         got_val = smg.get_as_str(key, _STRING_DEFAULT, _REGEX_VALIDNAME)
-        isValid = _REGEX_VALIDNAME.fullmatch(str(expected_val))
-        if isValid:
+        valid = _REGEX_VALIDNAME.fullmatch(str(expected_val))
+        if valid:
             self.assertEqual(got_val, str(expected_val))
         else:
             self.assertEqual(got_val, _STRING_DEFAULT)
 
         # Test get_as_bool...
         got_val = smg.get_as_bool(key, _BOOL_DEFAULT)
-        isValid = isinstance(expected_val, bool)
-        if isValid:
+        valid = isinstance(expected_val, bool)
+        if valid:
             self.assertEqual(got_val, expected_val)
         else:
             self.assertEqual(got_val, _BOOL_DEFAULT)
@@ -114,16 +114,16 @@ class TestStringmapHelper(unittest.TestCase):
         # Test get_as_num: float with min, max
 
 
-    def test_bigTest(self):
+    def test_complex_cases(self):
         """Create many (k,v) pairs and run the gauntlet test on them."""
-        kv_infos =  self.buildRandomInput(20)
-        smap =   self.buildRandomDict(kv_infos)
+        kv_infos = self.build_random_input(20)
+        smap = self.build_random_dict(kv_infos)
         smh = strmap_helper.StringDictHelper(smap)
         for kv in kv_infos:
             self.run_gauntlet(smh, kv)
 
 if __name__ == '__main__':
-    L = TestStringmapHelper.buildRandomInput(5)
+    L = TestStringmapHelper.build_random_input(5)
     print(L)
-    D = TestStringmapHelper.buildRandomDict(L)
+    D = TestStringmapHelper.build_random_dict(L)
     print(D)
