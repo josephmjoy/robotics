@@ -9,7 +9,7 @@ Author: JMJ
 import unittest
 import random
 
-import robotutils.msgmap as msgmap
+from . import msgmap
 
 class TestStringMethods(unittest.TestCase):
 
