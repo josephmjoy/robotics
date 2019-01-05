@@ -90,5 +90,5 @@ if __name__ == '__main__':
     D = str_to_dict(S)
     print('str_to_dict maps "' + S + '" to ' + str(D))
     S2 = dict_to_str(D)
-    print('dict_to_str maps ' + str(D) + 'to "'+ str(S) + '"')
+    print('dict_to_str maps ' + str(D) + ' to "'+ str(S) + '"')
     assert S == S2 # we should get back to the original string.
