@@ -1,5 +1,9 @@
 # Design and Development Notes for Python port of robututils.
 
+## January 4, 2019C JMJ: Started adding unit tests for misc/strmap_helper.py
+Unit tests are in `misc/test_strmap_helper.py`. The one test that's in there,
+that tests (partially) the empty-dictionary case, runs successfully.
+
 ## January 4, 2019C JMJ: Started implementing misc/strmap_helper,py
 So far so good. Very basic test at the bottom of the file. Code so far is 100% PEP 8 compliant.
 
