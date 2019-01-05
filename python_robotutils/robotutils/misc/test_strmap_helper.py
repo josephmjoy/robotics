@@ -15,6 +15,7 @@ from . import strmap_helper
 
 _REGEX_VALIDNAME = re.compile(r"\w+")
 _STRING_DEFAULT = 'WOAH!!!'
+_BOOL_DEFAULT = True
 
 _INT_MIN = -10
 _INT_MAX = 10
@@ -89,12 +90,29 @@ class TestStringmapHelper(unittest.TestCase):
     def run_gauntlet(self, smg, kvi): 
         """Run tests using all the (key, value) pairs in kv_infos"""
         key, expected_val = kvi
+
+        # Test get_as_str...
         got_val = smg.get_as_str(key, _STRING_DEFAULT, _REGEX_VALIDNAME)
         isValid = _REGEX_VALIDNAME.fullmatch(str(expected_val))
         if isValid:
             self.assertEqual(got_val, str(expected_val))
         else:
             self.assertEqual(got_val, _STRING_DEFAULT)
+
+        # Test get_as_bool...
+        got_val = smg.get_as_bool(key, _BOOL_DEFAULT)
+        isValid = isinstance(expected_val, bool)
+        if isValid:
+            self.assertEqual(got_val, expected_val)
+        else:
+            self.assertEqual(got_val, _BOOL_DEFAULT)
+
+        # TODO
+        # Test get_as_num: int without min, max
+        # Test get_as_num: int with min, max
+        # Test get_as_num: float without min, max
+        # Test get_as_num: float with min, max
+
 
     def test_bigTest(self):
         """Create many (k,v) pairs and run the gauntlet test on them."""
