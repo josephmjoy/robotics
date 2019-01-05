@@ -1,5 +1,13 @@
 # Design and Development Notes for Python port of robututils.
 
+## January 4, 2019D JMJ: misc/strmap_helper.get_as_num method
+This single method implements 4 methods from the Java version: two that get-as-ints and two
+that get-as-doubles. The '2' are the versions with and without min and max values. The method
+uses the type of the default value to determine what type of value to return. So
+use `helper.get_as_num(key, 10, ...)` to get an integer, and
+`helper.get_as_num(key, 10.0, ...)` to get a float value. The docstring reports this, but 
+it may be a bit too clever.
+
 ## January 4, 2019C JMJ: Started adding unit tests for misc/strmap_helper.py
 Unit tests are in `misc/test_strmap_helper.py`. The one test that's in there,
 that tests (partially) the empty-dictionary case, runs successfully.
