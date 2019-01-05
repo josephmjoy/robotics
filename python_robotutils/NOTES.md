@@ -1,5 +1,28 @@
 # Design and Development Notes for Python port of robututils.
 
+## January 4, 2019B JMJ: New code structure
+With relative module addressing in `test_msgmap.py`: `from . import msgmap`, 
+I can run the unit tests there as long as I start `unittests` from either one or two
+levels up - under `python_robotutils\robotutils` or `robotutils`. Also, for the firs time,
+I can discover and run these test from Visual Studio Code!
+Nothing special for Visual Studio Code configuration:
+
+```
+	"python.unitTest.unittestArgs": [
+		"-v",
+		"-s",
+		"",    #<--- this is the test directory, set to empty
+		"-p",
+		"test*.py"
+	    ],
+	    "python.unitTest.pyTestEnabled": false,
+	    "python.unitTest.nosetestsEnabled": false,
+	    "python.unitTest.unittestEnabled": true
+```
+I earlier had the test directory set to "test" because the test code used to live under 
+a test directory. This somehow prompted VS code to include a whole bunch of python system tests. 
+I never got to the bottom of that. But for now things work well.
+
 ## January 4, 2019A JMJ: New code structure
 Looked at various suggestions for structuring python projects, including...
 - https://docs.python-guide.org/writing/structure/
