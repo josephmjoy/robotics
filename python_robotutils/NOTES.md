@@ -1,5 +1,11 @@
 # Design and Development Notes for Python port of robututils.
 
+## January 6, 2019B JMJ: Begun port of Java ConfigurationHelper to misc/config_helper
+- Class `ConfigurationHelper` becomes module `config_helper`. The class only has static methods.
+- JUnit test `ConfigurationHelperTest` becomes class `TestConfigHelper` in module
+`test_config_helper`.
+- Java `BufferedReader` and `BufferedWriter` map to `io.TextIoWrapper`.
+
 ## January 6, 2019A JMJ: Completed implementation and tests for misc/strmap_helper
 All tests pass. Unit tests did catch a bug - see the delta to `misc/strmap_helper.py` in the
 accompanying checkin. Otherwise, debugging was chiefly type handling in the unit tests themselves.
