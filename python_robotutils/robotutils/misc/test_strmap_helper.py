@@ -10,7 +10,6 @@ import unittest
 import re
 import random
 
-#import strmap_helper
 from . import strmap_helper
 
 _REGEX_VALIDNAME = re.compile(r"\w+")
@@ -153,8 +152,3 @@ class TestStringmapHelper(unittest.TestCase):
         for kv in kv_infos:
             self.run_gauntlet(smh, kv)
 
-if __name__ == '__main__':
-    L = TestStringmapHelper.build_random_input(5)
-    print(L)
-    D = TestStringmapHelper.build_random_dict(L)
-    print(D)
