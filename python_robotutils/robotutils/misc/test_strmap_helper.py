@@ -91,7 +91,11 @@ class TestStringmapHelper(unittest.TestCase):
         """Run tests using all the (key, value) pairs in kv_infos"""
         key, expected_val = kvi
 
-        # Test get_as_str...
+        # Test get_as_str without REGEX...
+        got_val = smg.get_as_str(key, _STRING_DEFAULT)
+        self.assertEqual(got_val, str(expected_val))
+
+        # Test get_as_str with REGEX...
         got_val = smg.get_as_str(key, _STRING_DEFAULT, _REGEX_VALIDNAME)
         valid = _REGEX_VALIDNAME.fullmatch(str(expected_val))
         if valid:
@@ -107,11 +111,38 @@ class TestStringmapHelper(unittest.TestCase):
         else:
             self.assertEqual(got_val, _BOOL_DEFAULT)
 
-        # TODO
         # Test get_as_num: int without min, max
+        valid_int = isinstance(expected_val, int) and not isinstance(expected_val, bool)
+        got_val = smg.get_as_num(key, _INT_DEFAULT)
+        if valid_int:
+            self.assertEqual(got_val, expected_val)
+        elif not isinstance(expected_val, float):
+            self.assertEqual(got_val, _INT_DEFAULT)
+
         # Test get_as_num: int with min, max
+        got_val = smg.get_as_num(key, _INT_DEFAULT, _INT_MIN, _INT_MAX)
+        valid = valid_int and expected_val >= _INT_MIN and expected_val <= _INT_MAX
+        if valid:
+            self.assertEqual(got_val, expected_val)
+        elif not isinstance(expected_val, float):
+            self.assertEqual(got_val, _INT_DEFAULT)
+
         # Test get_as_num: float without min, max
+        got_val = smg.get_as_num(key, _FLOAT_DEFAULT)
+        valid = isinstance(expected_val, float) or valid_int
+        if valid:
+            self.assertAlmostEqual(got_val, expected_val)
+        else:
+            self.assertAlmostEqual(got_val, _FLOAT_DEFAULT)
+
         # Test get_as_num: float with min, max
+        got_val = smg.get_as_num(key, _FLOAT_DEFAULT, _FLOAT_MIN, _FLOAT_MAX)
+        validtype = isinstance(expected_val, float) or valid_int
+        valid = validtype and expected_val >= _FLOAT_MIN and expected_val <= _FLOAT_MAX
+        if valid:
+            self.assertAlmostEqual(got_val, expected_val)
+        else:
+            self.assertAlmostEqual(got_val, _FLOAT_DEFAULT)
 
 
     def test_complex_cases(self):

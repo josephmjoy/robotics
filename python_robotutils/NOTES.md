@@ -1,8 +1,24 @@
 # Design and Development Notes for Python port of robututils.
 
+## January 6, 2019A JMJ: Completed implementation and tests for misc/strmap_helper
+All tests pass. Unit tests did catch a bug - see the delta to `misc/strmap_helper.py` in the
+accompanying checkin. Otherwise, debugging was chiefly type handling in the unit tests themselves.
+One gotcha was that `isinstance(x, int)` returns True if `x` is a `bool`, which was not
+intended. I switched to this check: `type(x) is int`, but eventually settled for
+`isinstance(x, int) and not isinstance(x, bool)` because pylint complained about 
+using `type` instead of `isinstance`.
+
+
+Note use of `@staticmethod` decoration for a few methods in `misc/test_strmap_helper`, such
+as `build_random_input`. Works fine - can be invoked either via `self.method` or 
+`Class.method` - in either case, the `self` argument is not supplied. `@staticmethod`
+is not _required_ if you invoke that method via `class.method`, however if not specified,
+you cannot invoke it via `self.method`, plus it is helpful to announce to everyone that
+it is a static method. Doc: https://docs.python.org/3.7/library/functions.html#staticmethod
+
 ## January 4, 2019D JMJ: misc/strmap_helper.get_as_num method
-This single method implements 4 methods from the Java version: two that get-as-ints and two
-that get-as-doubles. The '2' are the versions with and without min and max values. The method
+Interesting that this method implements *six* methods in Java
+(`[int, long, float] X [with-minmax, without-minmax]`).  The method
 uses the type of the default value to determine what type of value to return. So
 use `helper.get_as_num(key, 10, ...)` to get an integer, and
 `helper.get_as_num(key, 10.0, ...)` to get a float value. The docstring reports this, but 

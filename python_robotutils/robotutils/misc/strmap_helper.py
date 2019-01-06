@@ -50,31 +50,29 @@ class StringDictHelper:
             ret = False
         return ret
 
-    def get_as_num(self, key, default, minVal=None, maxVal=None):
+    def get_as_num(self, key, default, minval=None, maxval=None):
         """
         Returns a number - either parsed from map of {key} or {default}.
 
         key -- key to lookup.
         default -- default value to use if the key did exist, the value was not
                 parseable or out of bounds. This value does not need to be between
-                {minVal} and {maxVal}.
-                NOTE: The *type* of this default value is used to 
+                {minval} and {maxval}.
+                NOTE: The *type* of this default value is used to
                 determine the type of return value. So, if a floating point value is expected,
                 specify a float default value!
-        [minVal]  -- Optional inclusive minimum to accept.
-        [maxVal]  -- Optional inclusive (not exclusive) maximum to accept.
+        [minval]  -- Optional inclusive minimum to accept.
+        [maxval]  -- Optional inclusive (not exclusive) maximum to accept.
         """
         val = self._dct.get(key)
         ret = default
         if val:
             try:
                 # Below we extract type (int or float or ??) and use it to construct the result!
-                T = type(default)
-                ret = T(val)
-                if not minVal is None:
-                    ret = max(minVal, ret)
-                if not maxVal is None:
-                    ret = min(ret, maxVal)
+                type_ = type(default)
+                ret1 = type_(val)
+                valid = (minval is None or ret1 >= minval) and (maxval is None or ret1 <= maxval)
+                ret = ret1 if valid else default
             except ValueError:
                 ret = default
 
