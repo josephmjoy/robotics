@@ -68,7 +68,7 @@ section3: # with comment
 section4: # with comment
 
     k4a: v4a
-    k4b: v4b,    
+    k4b: v4b
   badSect: badVal
     skip: skip
 # List 1
@@ -96,7 +96,7 @@ list3: # with comment
 list4: # with comment
 
     - v4a
-    - v4b,    
+    - v4b
   - badVal
     - skip
 """
@@ -115,8 +115,8 @@ list4: # with comment
 
             # We expect certain keys and values to be there.
             self.assertEqual(2, len(mapping))
-            self.assertEqual("v"+i+"a", mapping.get("k" + stri + "a"))
-            self.assertEqual("v"+i+"b", mapping.get("k" + stri + "b"))
+            self.assertEqual("v" + stri + "a", mapping.get("k" + stri + "a"))
+            self.assertEqual("v" + stri + "b", mapping.get("k" + stri + "b"))
 
         # Process lists
         for i in range(1, 5):
@@ -128,8 +128,8 @@ list4: # with comment
 
             # We expect certain list items to be there.
             self.assertEqual(2, len(items))
-            self.assertEqual("v"+i+"a", items[0])
-            self.assertEqual("v"+i+"b", items[1])
+            self.assertEqual("v"+ stri +"a", items[0])
+            self.assertEqual("v"+ stri +"b", items[1])
 
         # Creat new input from what was just written
         input2 = writer.getvalue()

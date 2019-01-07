@@ -1,7 +1,13 @@
 # Design and Development Notes for Python port of robututils.
 
-## January 6, 2019C JMJ: 
+## January 7, 2019A JMJ: All config_helper unit tests pass!
+Apart from finding the right file objects to use, the porting of both the module and its
+test was straightforward, if tedious. There are probably more elegant Python ways to
+do the string processing but we have PEP 8 - clean code (pylint reports no errors) and
+the tests work, so time to move on to the next thing, which is BIG - the structured
+logging framework....
 
+## January 6, 2019C JMJ: First ported over test for config_helper passes
 The first ported unit test for `config_helper` passes! It's `test_simple_section_usage`.
 The main thing to fix was to remove the extra layer of buffered-reader. Instead I seek
 back to the start of the input file when reading a section.

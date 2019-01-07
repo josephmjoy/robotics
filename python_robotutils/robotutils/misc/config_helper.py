@@ -190,7 +190,7 @@ def _process_section(reader, mapping, keys) -> None:
 
         if line and not _REGEX_WHITESPACE.fullmatch(line):
 
-            icolon = line.index(_COLONSPACE)
+            icolon = line.index(_COLONSPACE) if _COLONSPACE in line else -1
             if icolon:
                 pre = line[:icolon].strip()
                 post = line[icolon + 1:].strip() # +1 for space after colon
