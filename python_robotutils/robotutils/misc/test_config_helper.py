@@ -26,20 +26,19 @@ class TestConfigHelper(unittest.TestCase):
         output = writer.getvalue()
         self.assertEqual(inp, output)
 
-'''
-    @Test
-    void testSimpleListUsage() {
-        String input = String.join("\n", "myList:", "  - item1", "  - item2\n");
+    def test_simple_list_usage(self):
+        """Test a simple list of two items"""
+        inp = "\n".join(("myList:", "  - item1", "  - item2\n"))
 
-        Reader r = new StringReader(input);
-        List<String> lines = ConfigurationHelper.readList("myList", r);
-        Writer w = new StringWriter();
-        boolean b = ConfigurationHelper.writeList("myList", lines, w);
-        assertEquals(true, b);
-        String output = w.toString();
-        assertEquals(input, output);
-    }
-    
+        reader = io.StringIO(inp) # in-memory stream input
+        lines = config_helper.read_list("myList", reader)
+        writer = io.StringIO() # in-memory stream output
+        bresult = config_helper.write_list("myList", lines, writer)
+        self.assertTrue(bresult)
+        output = writer.getvalue()
+        self.assertEqual(inp, output)
+
+'''
     @Test
     void testMessyYamlInput() {
     

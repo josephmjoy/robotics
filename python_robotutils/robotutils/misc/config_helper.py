@@ -3,7 +3,6 @@ Utilities for reading configuration data.
 Ported by Joseph M. Joy (https://github.com/josephmjoy) from
 the Java version (class ConfigurationHelper)
 """
-import io
 import sys
 import re
 
@@ -32,7 +31,6 @@ def read_section(reader, section_name, keys) -> dict:
     # We work with a copy becaues we have to seek ahead
     # looking for the section
     # OBSOLETE with io.TextIOWrapper(reader) as reader2:
-    start = -1
     try:
         start = reader.tell()
         if _find_section(section_name, reader):
@@ -75,18 +73,22 @@ def write_section(section_name, section, keys, writer) -> bool:
 
 def read_list(section_name, reader) -> list:
     """
-    Loads the specified list-of-strings section from the specified reader. It
-    will not throw an exception. On error (OS xception or not being able to find
+    Loads the specified list-of-strings section from the specified reader.
+    It will not throw an exception. On error (OS xception or not being able to find
     the section) it will return an empty list.
+    It leaves the reader in the same seek position as it did on entry,
+    unless there was an OS exception, in which case the state of the file pointer will be unknown.
     Return: List of strings in the section
     """
     list_items = []
-    with io.TextIOWrapper(reader) as reader2:
-        try:
-            if _find_section(section_name, reader2):
-                _process_list_section(reader2, list_items)
-        except OSError as err:
-            _printerr(err) # Just return false
+    # OBSOLETE with io.TextIOWrapper(reader) as reader2:
+    try:
+        start = reader.tell()
+        if _find_section(section_name, reader):
+            _process_list_section(reader, list_items)
+        reader.seek(start)
+    except OSError as err:
+        _printerr(err) # Just return false
     return list_items
 
 
@@ -103,15 +105,15 @@ def write_list(section_name, list_items, writer) -> bool:
     """
     ret = False
 
-    with io.TextIOWrapper(writer) as writer2:
-        try:
-            writer2.write(section_name + ":\n")
-            for item in list_items:
-                output = "  " + _HYPHENSPACE + item + "\n"
-                writer2.write(output)
-            ret = True
-        except OSError as err:
-            _printerr(err) # Just return false
+    #OBSOLETE with io.TextIOWrapper(writer) as writer2:
+    try:
+        writer.write(section_name + ":\n")
+        for item in list_items:
+            output = "  " + _HYPHENSPACE + item + "\n"
+            writer.write(output)
+        ret = True
+    except OSError as err:
+        _printerr(err) # Just return false
 
     return ret
 
@@ -235,7 +237,7 @@ def _process_list_section(reader, items) -> None:
                 pre = line[:ihyphen].strip()
                 post = line[ihyphen + 1:].strip() # +1 for space after hyphen
 
-                if pre:
+                if not pre:
 
                     this_indentation = ihyphen
                     if indentation < 0:
@@ -245,7 +247,7 @@ def _process_list_section(reader, items) -> None:
                     # We expect strictly indented lines with exactly the same
                     # indentation.
                     if indentation >= 1 and this_indentation == indentation:
-                        items.add(post) # Empty strings are added too.
+                        items.append(post) # Empty strings are added too.
                         quit_ = False
 
 
