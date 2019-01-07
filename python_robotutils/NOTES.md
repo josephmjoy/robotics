@@ -6,6 +6,10 @@
 `test_config_helper`.
 - Java `BufferedReader` and `BufferedWriter` map to `io.TextIoWrapper`.
 
+Finished porting all the code in `ConfigurationHelper.java` to `config_helper.py`. However the 
+one unit test ported over earlier fails - so need to debug - most likely the file I/O calls
+need to be tweaked. But the ported code does pass PEP 8.
+
 ## January 6, 2019A JMJ: Completed implementation and tests for misc/strmap_helper
 All tests pass. Unit tests did catch a bug - see the delta to `misc/strmap_helper.py` in the
 accompanying checkin. Otherwise, debugging was chiefly type handling in the unit tests themselves.
