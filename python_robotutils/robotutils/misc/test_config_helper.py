@@ -38,7 +38,7 @@ class TestConfigHelper(unittest.TestCase):
         output = writer.getvalue()
         self.assertEqual(inp, output)
 
-    def donttest_messy_yaml_input(self):
+    def test_messy_yaml_input(self):
         """Test a much more complicated config file"""
         inp = """
 # This is a comment
@@ -103,11 +103,11 @@ list4: # with comment
 
         keys = []
         writer = io.StringIO() # in-memory stream output
+        reader = io.StringIO(inp) # in-memory stream input
 
         # Process sections
         for i in range(1, 5):
             stri = str(i)
-            reader = io.StringIO(inp) # in-memory stream input
             section = "section" + stri
             mapping = config_helper.read_section(reader, section, keys)
             ret = config_helper.write_section(section, mapping, keys, writer)
@@ -121,7 +121,6 @@ list4: # with comment
         # Process lists
         for i in range(1, 5):
             stri = str(i)
-            reader = io.StringIO(inp)
             section = "list" + stri
             items = config_helper.read_list(section, reader)
             ret = config_helper.write_list(section, items, writer)
@@ -137,19 +136,17 @@ list4: # with comment
         writer2 = io.StringIO()
 
         # Process sections a 2nd time - from the new input
+        reader = io.StringIO(input2)
+
         for i in range(1, 5):
-            stri = str(i)
-            reader = io.StringIO(input2)
-            section = "section" + stri
+            section = "section" + str(i)
             mapping = config_helper.read_section(reader, section, keys)
             ret = config_helper.write_section(section, mapping, keys, writer2)
             self.assertTrue(ret)
 
         # Process lists a 2nd time - from the new input
         for i in range(1, 5):
-            stri = str(i)
-            reader = io.StringIO(input2)
-            section = "list" + stri
+            section = "list" + str(i)
             items = config_helper.read_list(section, reader)
             ret = config_helper.write_list(section, items, writer2)
             self.assertTrue(ret)
