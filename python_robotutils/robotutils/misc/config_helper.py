@@ -16,8 +16,10 @@ _HYPHENSPACE = "- " # space after - is MANDATORY
 def read_section(reader, section_name, keys) -> dict:
     """
     Loads the specified section from the specified reader. It will not raise an
-    exception. On error (IO exception or not being able to find the section) it
-    will return an empty dict.
+    exception. On error (OS exception or not being able to find the section) it
+    will return an empty dict. It leaves the reader in the same seek position
+    as it did on entry, unless there was an OS exception, in which case the
+    state of the file pointer will be unknown
 
     If {keys} is non-null it will clear it and fill it with the keys in the order
     that they were found in the input.
@@ -29,12 +31,15 @@ def read_section(reader, section_name, keys) -> dict:
         keys.clear()
     # We work with a copy becaues we have to seek ahead
     # looking for the section
-    with io.TextIOWrapper(reader) as reader2:
-        try:
-            if _find_section(section_name, reader2):
-                _process_section(reader2, mapping, keys)
-        except OSError as err:
-            _printerr(err) #nothing to do
+    # OBSOLETE with io.TextIOWrapper(reader) as reader2:
+    start = -1
+    try:
+        start = reader.tell()
+        if _find_section(section_name, reader):
+            _process_section(reader, mapping, keys)
+        reader.seek(start)
+    except OSError as err:
+        _printerr(err) #nothing to do
 
     return mapping
 
@@ -53,17 +58,17 @@ def write_section(section_name, section, keys, writer) -> bool:
     keys = keys if keys else section.keys()
     ret = False
 
-    with io.TextIOWrapper(writer) as writer2:
-        try:
-            writer2.write(section_name + ":\n")
-            for k in keys:
-                val = section.get(k)
-                if val:
-                    output = "  " + k + _COLONSPACE + val + "\n"
-                    writer2.write(output)
-            ret = True
-        except OSError as err:
-            _printerr(err) # Just return false
+    # OBSOLETE with io.TextIOWrapper(writer) as writer2:
+    try:
+        writer.write(section_name + ":\n")
+        for k in keys:
+            val = section.get(k)
+            if val:
+                output = "  " + k + _COLONSPACE + val + "\n"
+                writer.write(output)
+        ret = True
+    except OSError as err:
+        _printerr(err) # Just return false
 
     return ret
 
@@ -136,7 +141,7 @@ def _find_section(section_name, reader) -> bool:
             if ':' in remaining:
                 icolon = remaining.index(':')
                 precolon = remaining[:icolon].strip()
-                postcolon = remaining[:icolon + 1].strip()
+                postcolon = remaining[icolon + 1:].strip()
                 ret = not (precolon or postcolon)
                 break
         # doesn't match, keep looking...
@@ -183,7 +188,7 @@ def _process_section(reader, mapping, keys) -> None:
 
         if line and not _REGEX_WHITESPACE.fullmatch(line):
 
-            icolon = line.indexOf(_COLONSPACE)
+            icolon = line.index(_COLONSPACE)
             if icolon:
                 pre = line[:icolon].strip()
                 post = line[icolon + 1:].strip() # +1 for space after colon

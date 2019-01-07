@@ -1,5 +1,43 @@
 # Design and Development Notes for Python port of robututils.
 
+## January 6, 2019C JMJ: 
+
+The first ported unit test for `config_helper` passes! It's `test_simple_section_usage`.
+The main thing to fix was to remove the extra layer of buffered-reader. Instead I seek
+back to the start of the input file when reading a section.
+
+Details:
+```
+inp = "abc\ndef"
+    reader = io.StringIO(inp) # in-memory stream input
+    reader2 = io.TextIOWrapper(reader)
+    for x in reader2:
+        print(x)
+Produces:
+TypeError: underlying read() should have returned a bytes-like object, not 'str'
+```
+So we can't layer a `TextIOWrapper` over a text reader. Instead of attempting to open a new
+`TextIOWrapper`, just use the passed-in reader (and writer), and in the case of the reader,
+remember the initial position and seek back to it on exit.
+
+The test code can read and write from / to strings:
+
+```
+    inp = "abc\ndef\nghi"
+    reader = io.StringIO(inp) # in-memory stream input
+    writer = io.StringIO()
+    for x in reader:
+        writer.write(x)
+    print(writer.getvalue())
+    writer.close()
+Prints...
+abc
+def
+ghi
+```
+This has been incorporated into `config_helper`.
+
+
 ## January 6, 2019B JMJ: Begun port of Java ConfigurationHelper to misc/config_helper
 - Class `ConfigurationHelper` becomes module `config_helper`. The class only has static methods.
 - JUnit test `ConfigurationHelperTest` becomes class `TestConfigHelper` in module
