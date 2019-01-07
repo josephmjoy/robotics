@@ -38,126 +38,122 @@ class TestConfigHelper(unittest.TestCase):
         output = writer.getvalue()
         self.assertEqual(inp, output)
 
-'''
-    @Test
-    void testMessyYamlInput() {
-    
-        String input = String.join("\n", 
-                "# This is a comment",
-                "---",
-                "",
-                "# Section 1",
-                "section1:",
-                "  k1a: v1a",
-                "  k1b: v1b",
-                "sectionx:# empty section",
-                "section2: # with comment",
-                "    k2a:     v2a",
-                "    k2b:     v2b",
-                "",
-                "section3: # with comment",
-                "    kComplex: #complex section to be ignored",
-                "      with complex floating text",
-                "       complex1: 1",
-                "       complex2: 2",
-                "    k3a:     v3a # added comment",
-                "# some comment and empty lines and lines with spacecs",
-                "  # comment",
-                "",
-                "               \t",
-                "    k3b:     v3b",
-                "",
-                "section4: # with comment",
-                "",
-                "    k4a: v4a",
-                "    k4b: v4b",    
-                "  badSect: badVal",
-                "    skip: skip",
-                "# List 1",
-                "list1:",
-                "  - v1a",
-                "  - v1b",
-                "listx:# empty section",
-                "list2: # with comment",
-                "    -     v2a",
-                "    -   v2b",
-                "",
-                "list3: # with comment",
-                "    -     v3a # added comment",
-                "# some comment and empty lines and lines with spacecs",
-                "  # comment",
-                "",
-                "               \t",
-                "    -   v3b",
-                "    kComplex: #complex section will trigger early quitting",
-                "      with complex floating text",
-                "       complex1: 1",
-                "       complex2: 2",
-                "    - random item",
-                                "",
-                "list4: # with comment",
-                "",
-                "    - v4a",
-                "    - v4b",    
-                "  - badVal",
-                "    - skip"
-                );
+    def donttest_messy_yaml_input(self):
+        """Test a much more complicated config file"""
+        inp = """
+# This is a comment
+---
 
-        ArrayList<String> keys = new ArrayList<>();
-        Writer w = new StringWriter();
-        
-        // Process Sections
-        for (int i = 1; i <= 4; i++) {
-            Reader r = new StringReader(input);
-            String section = "section" + i;
-            Map<String, String> map = ConfigurationHelper.readSection(r, section, keys);
-            boolean b = ConfigurationHelper.writeSection(section, map, keys, w);
-            assertEquals(true, b);
-            
-            // We expect certain keys and values to be there.
-            assertEquals(2, map.size());
-            assertEquals("v"+i+"a", map.get("k" + i + "a"));
-            assertEquals("v"+i+"b", map.get("k" + i + "b"));
-        }
-        
-        // Process Lists
-        for (int i = 1; i <= 4; i++) {
-            Reader r = new StringReader(input);
-            String section = "list" + i;
-            List<String> li = ConfigurationHelper.readList(section, r);
-            boolean b = ConfigurationHelper.writeList(section, li, w);
-            assertEquals(true, b);
-            
-            // We expect certain list items to be there.
-            assertEquals(2, li.size());
-            assertEquals("v"+i+"a", li.get(0));
-            assertEquals("v"+i+"b", li.get(1));
-        }
-        
-        String input2 = w.toString();
-        Writer w2 = new StringWriter();
-        for (int i = 1; i <= 4; i++) {
-            Reader r = new StringReader(input2);
-            String section = "section" + i;
-            Map<String, String> map = ConfigurationHelper.readSection(r, section, keys);
-            boolean b = ConfigurationHelper.writeSection(section, map, keys, w2);
-            assertEquals(true, b);
-         }
-        //String output2 = w2.toString();
-        //assertEquals(input2, output2);
-       
-        
-        for (int i = 1; i <= 4; i++) {
-            Reader r = new StringReader(input2);
-            String section = "list" + i;
-            List<String> li = ConfigurationHelper.readList(section, r);
-            boolean b = ConfigurationHelper.writeList(section, li, w2);
-            assertEquals(true, b);
-         }
-        
-        String output2 = w2.toString();
-        assertEquals(input2, output2);
+# Section 1
+section1:
+  k1a: v1a
+  k1b: v1b
+sectionx:# empty section
+section2: # with comment
+    k2a:     v2a
+    k2b:     v2b
 
-    }
+section3: # with comment
+    kComplex: #complex section to be ignored
+      with complex floating text
+       complex1: 1
+       complex2: 2
+    k3a:     v3a # added comment
+# some comment and empty lines and lines with spacecs
+  # comment
 
-'''
+               \t
+    k3b:     v3b
+
+section4: # with comment
+
+    k4a: v4a
+    k4b: v4b,    
+  badSect: badVal
+    skip: skip
+# List 1
+list1:
+  - v1a
+  - v1b
+listx:# empty section
+list2: # with comment
+    -     v2a
+    -   v2b
+
+list3: # with comment
+    -     v3a # added comment
+# some comment and empty lines and lines with spacecs
+  # comment
+
+               \t
+    -   v3b
+    kComplex: #complex section will trigger early quitting
+      with complex floating text
+       complex1: 1
+       complex2: 2
+    - random item
+                
+list4: # with comment
+
+    - v4a
+    - v4b,    
+  - badVal
+    - skip
+"""
+
+        keys = []
+        writer = io.StringIO() # in-memory stream output
+
+        # Process sections
+        for i in range(1, 5):
+            stri = str(i)
+            reader = io.StringIO(inp) # in-memory stream input
+            section = "section" + stri
+            mapping = config_helper.read_section(reader, section, keys)
+            ret = config_helper.write_section(section, mapping, keys, writer)
+            self.assertEqual(True, ret)
+
+            # We expect certain keys and values to be there.
+            self.assertEqual(2, len(mapping))
+            self.assertEqual("v"+i+"a", mapping.get("k" + stri + "a"))
+            self.assertEqual("v"+i+"b", mapping.get("k" + stri + "b"))
+
+        # Process lists
+        for i in range(1, 5):
+            stri = str(i)
+            reader = io.StringIO(inp)
+            section = "list" + stri
+            items = config_helper.read_list(section, reader)
+            ret = config_helper.write_list(section, items, writer)
+            self.assertTrue(ret)
+
+            # We expect certain list items to be there.
+            self.assertEqual(2, len(items))
+            self.assertEqual("v"+i+"a", items[0])
+            self.assertEqual("v"+i+"b", items[1])
+
+        # Creat new input from what was just written
+        input2 = writer.getvalue()
+        writer2 = io.StringIO()
+
+        # Process sections a 2nd time - from the new input
+        for i in range(1, 5):
+            stri = str(i)
+            reader = io.StringIO(input2)
+            section = "section" + stri
+            mapping = config_helper.read_section(reader, section, keys)
+            ret = config_helper.write_section(section, mapping, keys, writer2)
+            self.assertTrue(ret)
+
+        # Process lists a 2nd time - from the new input
+        for i in range(1, 5):
+            stri = str(i)
+            reader = io.StringIO(input2)
+            section = "list" + stri
+            items = config_helper.read_list(section, reader)
+            ret = config_helper.write_list(section, items, writer2)
+            self.assertTrue(ret)
+
+
+        output2 = writer2.getvalue()
+        self.assertEqual(input2, output2)
