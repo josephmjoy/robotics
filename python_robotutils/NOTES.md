@@ -1,11 +1,119 @@
-# Design and Development Notes for Python port of robututils.
+# Design and Development Notes for Python port of Robotutils.
+
+
+## January 10, 2018B JMJ: Pylint doesn't like nested classes as function return annotation
+
+```
+class DatagramTransport(abc.ABC):
+    ....
+    class RemoteNode(abc.ABC):
+    ...
+    @abc.abstractmethod
+    def new_remotenode(self, address): -> RemoteNode # Pylint doesn't like it
+    ...
+
+```
+In the above, Pylint reports that `RemoteNode` is an undefined variable, but the code actually 
+runs. If I replace `RemoteNode` with `DatagramTransport.RemoteNode`, `__class__.RemoteNode`
+or `__self__.RemoteNode`, then Pylint is happy but I can't actually run the code using unittest.
+I think Pylint is wrong here - the internal class was just defined earlier in the code, so it
+should be recognizable, but it is not. For now I've commented out the return type.
+
+## January 9, 2018B JMJ: Implemented AtomicNumber class, and started using doctest
+Wrote `misc/atomic.py`, a module that implements various atomic operations (for now just `next`).
+This code is adapted from https://gist.github.com/benhoyt/8c8a8d62debe8e5aa5340373f9c509c7,
+including the use of `doctest`, which is so elegant! The original (Ben Hoyt's) code 
+had more elaborate doc tests that including creating many threads.
+
+```
+class AtomicNumber:
+
+    ...
+    def next(self):
+        """
+        Atomically increment the counter and return the new value
+        >>> counter = AtomicNumber(40)
+        >>> counter.next()
+        41
+        >>> counter.next()
+        42
+        """
+        with self._lock:
+            self._value += 1
+            return self._value
+
+
+if __name__ == '__main__':
+    import doctest
+    doctest.testmod()
+```
+Later we can add compare exchange, etc, as required.
+
+## January 9, 2018A JMJ: Porting over the DatagramTransport interface
+Planning to eliminate the Address interface. The original idea behind Address was to
+separate out the time-consuming operation of address resolution. In the case of UDP,
+this can involve a time-consuming DNS lookup. The idea is that `DatagramTransport.resolveAddress` can
+be time consuming, while `DatagramTransport.newRemoteNode` can be a non-blocking, in-memory operation
+
+On the other hand, in actual use, it looks like both `resolveAddress` and `newRemoteNode` are called exactly once per distinct address, so as long as we make it clear in the docs that `newRemoteNode`
+can potentially block, depending on the specific transport and the contents of the text-form of the
+address (for UDP, it's an IP address vs. a name), it should be fine and gets rid of `Address` as an interface type.
+
+## January 7, 2019C JMJ: What about Python's own logging support?
+Python has pretty good logging functionality on its own - see
+https://docs.python.org/3/library/logging.html
+
+It supports multiple consumers, and a hierarchy of named loggers and multiprocessor support.
+It is very sophisticated, with lots of documentation,
+including this cookbook: https://docs.python.org/3/howto/logging-cookbook.html
+
+This begs the question: can't we just adapt Python's existing logging support instead of a strict
+port of Robotutils's structured logger from Java?
+
+Generating log messages is similar: methods like:
+```
+log.info("msg") # Robotutils
+vs.
+logger.debug("msg") # Python
+```
+I think the _right_ approach is to leverage Python's logging support. To replace the innards of
+our logging with Python's, but add the things we have, like:
+- start/stop logging dynamically
+- add dynamic tags to a logger that get inserted automatically, including relative time stamping.
+- output that is in the "structured" format, including time stamp and unique ID.
+
+This approach has the added benefit of getting to know Python's logging well, so it may be used in other
+projects unrelated to Robotutils.
+
+The plan: don't attempt to port over `StructuredLogging`. Instead just start porting `RobotComm` and
+`_testRobotComm`, as comm/robotcomm and comm/test_robotcomm, and try to map its logging into
+Python logging apis, or create a simple wrapper, especially for trace messages.
+
+
+## January 7, 2019B JMJ: What to do about all the Java interface definitions in Robotutils?
+I decided to define abstract base classes for most (all?) of them. Relevant articles:
+https://pymotw.com/3/abc/ and article's it references, including Guido's original PEP.
+
+The Java `StructuredLogger` class has the complete implementation of structured logging, including all
+the interfaces and private classes it uses. For the first port, I'm inclined to keep this model,
+i.e., a single module that contains everything (separate from the port of `LoggerUtils` that
+contains higher level functionality).
+
+Proposed module names:
+```
+logger/structlogger.py - the complete implementation of structured logging
+logger/test_struct_logger.py - unit tests for the above
+
+import ./structlogger as sl
+```
+
 
 ## January 7, 2019A JMJ: All config_helper unit tests pass!
 Apart from finding the right file objects to use, the porting of both the module and its
 test was straightforward, if tedious. There are probably more elegant Python ways to
-do the string processing but we have PEP 8 - clean code (pylint reports no errors) and
+do the string processing but we have PEP 8 - clean code (Pylint reports no errors) and
 the tests work, so time to move on to the next thing, which is BIG - the structured
-logging framework....
+logging framework...
 
 ## January 6, 2019C JMJ: First ported over test for config_helper passes
 The first ported unit test for `config_helper` passes! It's `test_simple_section_usage`.
@@ -59,7 +167,7 @@ All tests pass. Unit tests did catch a bug - see the delta to `misc/strmap_helpe
 accompanying checkin. Otherwise, debugging was chiefly type handling in the unit tests themselves.
 One gotcha was that `isinstance(x, int)` returns True if `x` is a `bool`, which was not
 intended. I switched to this check: `type(x) is int`, but eventually settled for
-`isinstance(x, int) and not isinstance(x, bool)` because pylint complained about 
+`isinstance(x, int) and not isinstance(x, bool)` because Pylint complained about 
 using `type` instead of `isinstance`.
 
 
