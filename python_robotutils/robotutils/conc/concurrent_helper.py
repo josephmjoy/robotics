@@ -108,7 +108,7 @@ class ConcurrentDeque:
         that items may have been removed (or during) the function call, and items
         may have been concurrently added that are not processsed."""
         with self._lock:
-            elements = [x for x in self._deque] # Snapshot of entire deque
+            elements = list(self._deque) # Snapshot of entire deque
         for x in elements:
             func(x)
 
