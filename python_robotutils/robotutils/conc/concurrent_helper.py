@@ -40,7 +40,7 @@ class ConcurrentDeque:
     A thread-safe deque. It implements a subset of deque methods.
     >>> dq = ConcurrentDeque()
     >>> dq.appendleft(42)
-    >>> print(dq.len())
+    >>> print(len(dq))
     1
     >>> print(dq.pop())
     42
@@ -50,7 +50,7 @@ class ConcurrentDeque:
     >>> print(dq.popleft())
     100
     >>> dq.clear()
-    >>> print(dq.len())
+    >>> print(len(dq))
     0
     """
 
@@ -83,7 +83,7 @@ class ConcurrentDeque:
         with self._lock:
             return self._deque.clear()
 
-    def len(self):
+    def __len__(self):
         """Returns a snapshot of the dequeue length."""
         with self._lock:
             return len(self._deque)
@@ -114,7 +114,24 @@ class ConcurrentDeque:
 
 
 class ConcurrentDict:
-    """A thread-safe dictionary, implementing a subset of dict methods"""
+    """A thread-safe dictionary, implementing a subset of dict methods
+    >>> cd = ConcurrentDict()
+    >>> cd.set('a', 1)
+    >>> len(cd)
+    1
+    >>> cd.set('b', 2)
+    >>> cd.get('b')
+    2
+    >>> cd.get('c', 42)
+    42
+    >>> cd.process_all(lambda k, y: print(k, y))
+    a 1
+    b 2
+    >>> cd.clear()
+    >>> len(cd)
+    0
+    >>>
+    """
 
     #
     # Implementation note: the lock MUST be held for all the calls below,
@@ -144,7 +161,7 @@ class ConcurrentDict:
         with self._lock:
             return self._dict.clear()
 
-    def len(self):
+    def __len__(self):
         """Returns a snapshot of the dictionary length."""
         with self._lock:
             return len(self._dict)
