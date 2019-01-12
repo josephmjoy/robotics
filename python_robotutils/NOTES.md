@@ -1,7 +1,56 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
-## January 10, 2018B JMJ: Pylint doesn't like nested classes as function return annotation
+## January 11, 2018A JMJ: Exploring concurrent data structures for queues and dictionaries
+In the Java version of Robotutils, we use the following concurrent classes:
+
+```
+java.util.concurrent.ConcurrentHashMap;
+java.util.concurrent.ConcurrentLinkedQueue;
+
+java.util.concurrent.ExecutorService;  -- created by Executors.newFixedThreadPool
+	- map nicely to Python concurrent.futures.ThreadPoolExecutor (there is also a process pool
+	  version, but we don't want that)
+java.util.concurrent.atomic.AtomicLong;
+	  (concurrent.futures.Future) to get the result either synchronously (with timeout option)
+	  or asynchronously via callback.
+	- didn't find an equivalent, so wrote my own (AtomicNumber)
+```
+I haven't found a definitive replacement for concurrent queues and dictionaries. Here
+are candidates for replacing `ConcurrentLinkedQueue`:
+
+```
+queue.Queue
+queue.SimpleQueue (3.7)
+collections.dequeue
+```
+I couldn't find candidates for replacing `ConcurrentHashMap`
+
+One key requirement is the ability to iterate over the items in the queues and dictionaries - with
+semantics similar to the Java versions.
+
+`queue.Queue` has semantics I don't need like blocking and for clients to be able to check if 
+a queue item has been processed. Both `Queue` and `SimpleQueue` seem tailored for inter thread
+communications, while we are using these data structures to keep track of ongoing messages or commands.
+Their documentation mentions nothing about iterating over items in the queue.
+So I'm disinclined to use either `Queue` or `SimpleQueue`.
+
+Proposal: to write a set of helper methods that perform thread safe lookup and iteration over
+the Python  `dequeue` and `dict` objects.
+
+```
+ConcurrentDict
+	methods: get, set, process_all, etc
+	underlying data structure: dict
+
+ConcurrentDeque
+	methods: append, popleft, process_all, etc
+	underlying data structure: collections.dequeue
+```
+We may find better standard library classes to use later, but for now it unblocks us from
+going on with the port of Robotcomm.
+
+## January 10, 2018A JMJ: Pylint doesn't like nested classes as function return annotation
 
 ```
 class DatagramTransport(abc.ABC):
