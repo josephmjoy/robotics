@@ -29,11 +29,31 @@ class AtomicNumber:
             self._value += 1
             return self._value
 
+    def add(self, addend) -> None:
+        """
+        Atomically add {addend} to the counter. Returns nothing.
+        >>> counter = AtomicNumber(40)
+        >>> counter.add(2) # returns nothing
+        >>> counter.value()
+        42
+        """
+        with self._lock:
+            self._value += addend
+
     def __repr__(self):
         """ Returns string representation of value"""
         return repr(self._value)
 
 
+    def value(self):
+        """
+        Returns a snapshot of the number without attempting
+        to take the internal lock.
+        >>> counter = AtomicNumber(42)
+        >>> counter.value()
+        42
+        """
+        return self._value
 
 class ConcurrentDeque:
     """

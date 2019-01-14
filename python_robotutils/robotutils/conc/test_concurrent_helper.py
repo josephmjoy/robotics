@@ -21,12 +21,16 @@ class TestAtomicNumber(unittest.TestCase):
         counters = ((0, counter1), (-10, counter2), (3.14, counter3))
         for initial, counter in counters:
             for _ in range(10):
-                counter.next()
+                if random.randint(0, 1):
+                    counter.next()
+                else:
+                    counter.add(1)
             self.assertAlmostEqual(counter.next(), initial+11)
             self.assertEqual(repr(counter), repr(initial+11))
+            self.assertEqual(counter.value(), initial+11)
 
-    def test_concurrent(self):
-        """Multithreaded test"""
+    def test_concurrent_next(self):
+        """Multithreaded test for next"""
         counter = ch.AtomicNumber()
         n_submits = 4
         n_nexts_per_submit = 100000
@@ -37,8 +41,33 @@ class TestAtomicNumber(unittest.TestCase):
             sum_many = lambda n: sum(counter.next() for _ in range(n))
             # Sum up result of concurrently mapping multiple calls to sum_many
             total = sum(ex.map(sum_many, (n_nexts_per_submit for _ in range(n_submits))))
+        # The end result is that count.next has been called
+        # n_submits * n_nexts_per_submit times. The return value of *each* of
+        # those calls are summed up...
         n = n_submits * n_nexts_per_submit
         n_expected = n * (n + 1) // 2  # sum OF 1 TO n - integer division
+        self.assertEqual(total, n_expected)
+
+    def test_concurrent_add(self):
+        """Multithreaded test for add"""
+        counter = ch.AtomicNumber()
+        n_submits = 4
+        max_addend = 100000
+        max_workers = 3
+
+        def add_many():
+            for addend in range(max_addend + 1): # [0 ... max_addend]
+                counter.add(addend)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers) as ex:
+            # All the workers do the exact same thing - summing from 0 to max_addend
+            for _ in range(n_submits):
+                ex.submit(add_many)
+        # The end result is that count.add has been called to
+        # add values from 0 to max_addend (inclusive). This is done
+        # by each worker in the pool, i.e., n_submit times.
+        n_expected = n_submits * max_addend * (max_addend + 1) // 2
+        total = counter.value()
         self.assertEqual(total, n_expected)
 
 
@@ -162,10 +191,8 @@ class TestConcurrentDeque(unittest.TestCase):
 
         except StopIteration:
             pass # we quit when any of our sequences end
-        # TODO: Replace by opcount.add
-        for _ in range(local_opcount):
-            opcount.next()
-        # suppressed: print("Task {} completed. Opcount: {}".format(name, local_opcount))
+        opcount.add(local_opcount)
+        # print("Task {} completed. Opcount: {}".format(name, local_opcount))
 
     def _make_deque(self, n):
         """Makes a deque containing 1 to {n} in increasing order"""

@@ -1,6 +1,9 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 14, 2018B JMJ: Added AtomicNumber methods add and value.
+In `conc/concurrent_helper.py`. Also added unit tests for them. All pass.
+
 ## January 14, 2018A JMJ: Finished complex unit test: TestConcurrentDeque.test_concurrent
 This tests creates a shared `ConcurrentDeque`. Each concurrent worker inserts a unique "stream"
 if tuples to either end of the deque. The worker randomly appends and pops items, occasionally
@@ -9,6 +12,7 @@ Exceptions in the worker thread are propagated to the main thread so failures ar
 reported by `unittest` (see January 13, 2018A note).
 
 On thing I don't understand is how the `self` object is propagated in the call to `_worker` below:
+[UPDATE: This is because `self._worker` is a so-called "bound function" - see Python docs]
 
 ```
 with concurrent.futures.ThreadPoolExecutor(max_workers) as ex:
