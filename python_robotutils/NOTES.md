@@ -1,6 +1,93 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 14, 2018A JMJ: Finished complex unit test: TestConcurrentDeque.test_concurrent
+This tests creates a shared `ConcurrentDeque`. Each concurrent worker inserts a unique "stream"
+if tuples to either end of the deque. The worker randomly appends and pops items, occasionally
+clears and occasionally tests the state of a snapshot of the queue using the `process` method.
+Exceptions in the worker thread are propagated to the main thread so failures are properly
+reported by `unittest` (see January 13, 2018A note).
+
+On thing I don't understand is how the `self` object is propagated in the call to `_worker` below:
+
+```
+with concurrent.futures.ThreadPoolExecutor(max_workers) as ex:
+            futures = [ex.submit(self._worker, 'task'+str(i), cdq, opcount)
+                       for i in range(num_workers)]
+
+```
+Initially, I passed in `self` explicitly (before `'task'+str()`), but that actually seemed to
+insert `self` twice! I'm confused, because I thought that the expression `self._worker` simply
+passes a pointer to the function object - so how does Python know to insert `self` (and where
+does it even get a hold of `self`?). It's like it's created a curried version of `self._worker`
+that includes `self` as the first argument, appending the remaining arguments. Perhaps this
+is what happens whenever the form `a.func` is passed in where a function is expected? If so
+I was unaware of this.
+
+Other learnings:
+- Made use of `unittest.TestCase` methods `assertGreater`, `assertLess` (not `assertLesser`)
+  and `fail` for the first time.
+- Realized that popping from an empty collection raises an `IndexError`.
+- Realized that functions nested within a function must be defined before they are used. This
+  makes sense, of course, but I was treating those as class-level or module-level functions
+  which can be specified in any order. The latter makes sense because the functions are
+  actually not _executed_ when evaluating the class or module. If we attempted to execute
+  a function defined later in the top level of a class (say when defining a class attribute)
+  or top level of the module, then that function _would_ have to be defined earlier.
+
+
+## January 13, 2018B JMJ: Disabling specific Pylint warnings
+Just add a comment to the line as follows. There are more options too, but this one is most
+locally targeted
+
+```
+ _deque = cdq._deque # pylint: disable=protected-access
+```
+The above was in a piece of test code that needed to verify the state of a private variable.
+Without the Pylint comment, Pylint generates the following warning:
+
+```
+test_concurrent_helper.py:171:17: W0212: Access to a protected member _deque of a client class (protected-access)
+```
+
+## January 13, 2018A JMJ: Dealing with exeptions in concurrent.futures.ThreadPoolExecutor threads
+To catch exceptions in unitttest, you have to transfer over any
+assertions raised. You can do this by calling
+exception = future.exception() # gets exception raised (of None) in that task
+self.assertFalse(exception) - will display the exception raised. This works
+even with unit tests. 
+
+For example:
+
+```
+  def test_concurrent(self):
+  	...
+
+	# this function is called in a thread pool thread
+        def worker0(name):
+            print("\nI AM WORKER " + name)
+            self.assertAlmostEqual(3.15, 3.2)
+
+	# main thread launches a bunch of instances of the above, and then
+	# checks each for an exception - the first one that has an exception
+	# causes the 'self.assertFalse` to fail
+        with concurrent.futures.ThreadPoolExecutor(max_workers) as ex:
+            futures = [ex.submit(worker0, 'task'+str(i)) for i in range(num_workers)]
+            for future in futures:
+                exception = future.exception() # wait until task complete
+                self.assertFalse(exception)
+```
+The above code fails in unittest with the following output:
+
+```
+	Traceback (most recent call last):
+	  File "c:\Users\jmj\Documents\GitHub\robotics\python_robotutils\robotutils\conc\test_concurrent_helper.py", line 116, in test_concurrent
+	    self.assertFalse(exception)
+	AssertionError: AssertionError('3.15 != 3.2 within 7 places (0.050000000000000266 difference)') is not false
+```
+If the main line code had not called `future.exception` the test would have passed without
+reporting anything wrong!
+
 ## January 11, 2018A JMJ: Exploring concurrent data structures for queues and dictionaries
 In the Java version of Robotutils, we use the following concurrent classes:
 

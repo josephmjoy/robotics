@@ -70,7 +70,7 @@ class TestConcurrentDeque(unittest.TestCase):
 
 
         #process empty list
-        cdq.process_all(lambda: self.assertTrue(False)) #func should never get called
+        cdq.process_all(lambda: self.fail('func call unexpected'))
 
         #process nonempty list
         num = 10
@@ -88,79 +88,117 @@ class TestConcurrentDeque(unittest.TestCase):
         #   the left of the deque.
         # - Similarly, each thread appends elements
         #   from a unique *decreasing* sequence to the *right* of the deque.
-        # - Every thread randomly removes elements on the left - and verifies that
-        #   the removed element is greater than the previous element removed from that
-        #   unique sequence.
-        # - Similarly thread randomly removes elements on
-        #   the *right* - and verifies that the removed element is greater
-        #   than the previous element removed from that unique sequence.
+        # - Every thread randomly removes elements on the left and the right.
         # - Each thread occasionally processes all the elements in the queue and
         #   verifies the snapshot invariant that all elements from a particular
         #   unique sequence are increasing left-to-right.
         # - Each thread very occasionally clears the deque by calling clear.
-        seq_length = 1
         cdq = ch.ConcurrentDeque()
-        quit_ = False
+        opcount = ch.AtomicNumber(0)
+        max_workers = 10
+        num_workers = 10
 
-        def worker(name):
-            """Thread function with unique name {name}"""
+        with concurrent.futures.ThreadPoolExecutor(max_workers) as ex:
+            futures = [ex.submit(self._worker, 'task'+str(i), cdq, opcount)
+                       for i in range(num_workers)]
+            for future in futures:
+                # supressed - print("Waiting for exception...")
+                exception = future.exception() # Will wait until task completes
+                self.assertFalse(exception)
 
-            prevleft = dict()
-            prevright = dict()
-            leftseq = ((name + '_L', i) for i in range(seq_length))
-            rightseq = ((name + '_R', -i) for i in range(seq_length))
+    def _worker(self, name, cdq, opcount):
+        """Thread function with unique name {name}"""
+        seq_length = 1000
+        leftseq = ((name + '_L', -i)  for i in range(seq_length))
+        rightseq = ((name + '_R', i) for i in range(seq_length))
 
-            def examine_deque_element(element):
-                """Examine deque element from snapshot of deque"""
-                seqname, value = element
-                self.assertTrue(isinstance(seqname, str))
-                self.assertTrue(isinstance(value, int))
+        def examine_deque_element(element):
+            """Examine deque element from snapshot of deque"""
+            seqname, value = element
+            self.assertTrue(isinstance(seqname, str))
+            self.assertTrue(isinstance(value, int))
 
+        local_opcount = 0
+
+        def do_operation(): # pylint: disable=too-many-branches
+            nonlocal local_opcount
+            if random.random() < 0.5:
+                cdq.appendleft(next(leftseq))  # append left
+                local_opcount += 1
+            if random.random() < 0.5:
+                cdq.append(next(rightseq))     # append right
+                local_opcount += 1
+            if random.random() < 0.4:
                 try:
-                    while not quit_:
-                        if random.random() < 0.5:
-                            cdq.appendleft(leftseq.next())  # append left
-                        if random.random() < 0.5:
-                            cdq.append(rightseq.next())     # append right
-                        if random.random() < 0.4:
-                            (seqname, value) = cdq.pop()    # pop left
-                            prev = prevright.get(seqname)
-                            if prev:
-                                self.assertGreater(prevright[seqname], value)
-                            prevright[seqname] = value
-                        if random.random() < 0.4:
-                            (seqname, value) = cdq.popleft()  # pop right
-                            prev = prevleft.get(seqname)
-                            if prev:
-                                self.assertTrue(prevleft[seqname] > value)
-                            prevleft[seqname] = value
-                        if random.random() < 0.1:
-                            cdq.process_all(examine_deque_element) # process all
-                        if random.random() < 0.01:
-                            cdq.clear()                      # clear
-                        if random.random() < 0.1:
-                            len(cdq) # just exercise  len    # calculate length
-                except StopIteration:
-                    pass # we quit when any of our sequences end
+                    element = cdq.popleft()  # pop left
+                    examine_deque_element(element)
+                except IndexError:
+                    pass
+                finally:
+                    local_opcount += 1
+            if random.random() < 0.4:
+                try:
+                    element = cdq.pop()    # pop right
+                    examine_deque_element(element)
+                except IndexError:
+                    pass
+                finally:
+                    local_opcount += 1
+            if random.random() < 0.1:
+                cdq.process_all(examine_deque_element) # process all
+                local_opcount += 1
+            if random.random() < 0.01:
+                cdq.clear()                      # clear
+            if random.random() < 0.1:
+                len(cdq) # just exercise  len    # calculate length
+                local_opcount += 1
+
+        try:
+            while True: # exit on exception
+                # print("xx-{}:{}".format(name, cdq._deque))
+                if random.random() < 0.1:
+                    self._verify_tuple_deque(cdq) # we don't do this everytime because it locks
+                do_operation()
+
+        except StopIteration:
+            pass # we quit when any of our sequences end
+        # TODO: Replace by opcount.add
+        for _ in range(local_opcount):
+            opcount.next()
+        # suppressed: print("Task {} completed. Opcount: {}".format(name, local_opcount))
 
     def _make_deque(self, n):
         """Makes a deque containing 1 to {n} in increasing order"""
         cdq = ch.ConcurrentDeque()
         for x in range(1, n+1):
-            cdq.appendleft(x)
-        self._verify_increasing_dequeue(cdq)
+            cdq.append(x)
+        self._verify_increasing_deque(cdq)
         return cdq
 
-    def _verify_increasing_dequeue(self, cdq):
+    def _verify_increasing_deque(self, cdq):
         """Verifies that deque contains only increasing values (if any)
         WARNING: we reach into the underlying _deque object, and this all
         assumes that no other threads are messing with {cdq}"""
 
-        if not 1 * len(cdq):
+        if not len(cdq): # pylint: disable=len-as-condition
             return
 
-        dq = cdq._deque
-        prev = dq[0] - 1
-        for x in dq:
+        _deque = cdq._deque # pylint: disable=protected-access
+        prev = _deque[0] - 1
+        for x in _deque:
             self.assertTrue(prev < x)
             prev = x
+
+    def _verify_tuple_deque(self, cdq):
+        """Verify that each of the 'streams' in cdq are increasing"""
+        prev_values = dict() # last seen value per stream
+
+        def verify_element(element):
+            """Verify that an element is greater than previousl seen
+            value for that stream"""
+            seqname, value = element # seqname is the name of the stream
+            prev = prev_values.get(seqname, value-1)
+            self.assertLess(prev, value, 'pooka')
+            prev_values[seqname] = value
+
+        cdq.process_all(verify_element)
