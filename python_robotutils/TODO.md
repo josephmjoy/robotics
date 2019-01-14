@@ -1,7 +1,6 @@
 # TODOs and Open Issues for the Python robotutils package
 
 #Plan
-1. Add `add` and `value` methods to `AtomicNumber`, add tests for those
 1. Implement unit tests for `ConcurrentDict`
 1. Implement `MockDatagramTransport` and write unit tests for it (test for a test!)
 1. [BIG] Implement sending and receiving of `robotcomm` messages (not commands). Port the unit

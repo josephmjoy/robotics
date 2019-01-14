@@ -6,6 +6,7 @@ queues, dictionaries and counters.
 import threading
 import collections
 
+_NO_DEFAULT = object() # To check if an optional parameter was specified in selected method calls
 
 class AtomicNumber:
     """Supports various atomic operations on numbers
@@ -147,11 +148,16 @@ class ConcurrentDict:
     >>> cd.process_all(lambda k, y: print(k, y))
     a 1
     b 2
+    >>> cd.pop('a')
+    1
+    >>> cd.pop('a', 42) # key 'a' is no longer present
+    42
     >>> cd.clear()
     >>> len(cd)
     0
     >>>
     """
+
 
     #
     # Implementation note: the lock MUST be held for all the calls below,
@@ -175,6 +181,17 @@ class ConcurrentDict:
         """Add x to the left side of the deque."""
         with self._lock:
             self._dict[key] = value
+
+    def pop(self, key, default=_NO_DEFAULT):
+        """
+        If key is in the dictionary, remove it and return its value,
+        else return default. If default is not given and key is not in
+        the dictionary, a KeyError is raised.
+        """
+        with self._lock:
+            if default is _NO_DEFAULT:
+                return self._dict.pop(key)
+            return self._dict.pop(key, default)
 
     def clear(self):
         """Remove all elements from the dictionary."""

@@ -229,3 +229,59 @@ class TestConcurrentDeque(unittest.TestCase):
             prev_values[seqname] = value
 
         cdq.process_all(verify_element)
+
+
+class TestConcurrentDict(unittest.TestCase):
+    """Container for ConcurrentDict tests"""
+
+    def test_sequential_cdict(self):
+        """Single-threaded ConcurrentDict test"""
+        cdict = ch.ConcurrentDict()
+        self.assertEqual(len(cdict), 0)
+
+        cdict.set('1', 1)
+        self.assertEqual(len(cdict), 1)
+        cdict.clear()
+        self.assertEqual(len(cdict), 0)
+        self.assertEqual(cdict.get('1'), None)
+
+
+        num_elements = 1
+        kvdata = [(str(x), x) for x in range(num_elements)]
+
+        # pylint: disable=invalid-name
+        # (for all the v's)
+
+        for k, v in kvdata:
+            cdict.set(k, -v)
+            cdict.set(k, v)
+        self.assertEqual(len(cdict), num_elements)
+
+        for k, v in kvdata:
+            v1 = cdict.get(k, -1)
+            v2 = cdict.get(k)
+            v3 = cdict.pop(k)
+            v4 = cdict.pop(k, -1) # should not find it
+            self.assertEqual(v, v1)
+            self.assertEqual(v, v2)
+            self.assertEqual(v, v3)
+            self.assertEqual(v4, -1)
+
+        for k in range(num_elements, 2 * num_elements):
+            v1 = cdict.get(k, -1)
+            v2 = cdict.get(k)
+            v3 = cdict.pop(k, -1) # should not find it
+            self.assertEqual(v1, -1)
+            self.assertEqual(v2, None)
+            self.assertEqual(v3, -1)
+            self.assertRaises(KeyError, cdict.pop, k)
+
+        total = 0
+
+        def process_func(x):
+            nonlocal total
+            total += x
+
+        cdict.process_all(process_func)
+        expected = (num_elements - 1) * num_elements // 2 # sum of 0 to (num-1)
+        self.assertEqual(total, expected)

@@ -1,6 +1,32 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 14, 2018C JMJ: Added ConcurrentDict.pop, and started unit tests
+Needed a way to delete items in the dictionary (`del` or equivalent). Decided on
+implementing `pop` - same semantics as `dict.pop`. Additional methods can be added as needed,
+especially smart insert and delete that atomically call a function and conditionally
+perform the operation (equivalent to Java's methods for concurrent map and list).
+
+`pop` has an optional parameter that doesn't have a default. I didn't know how to implement
+this, and looked online. Settled on the following:
+
+```
+# module level...
+_NO_DEFAULT = object() # To check if an optional parameter was specified in selected method calls
+...
+class ConcurrentDict:
+    ...
+    def pop(self, key, default=_NO_DEFAULT):
+        with self._lock:
+            if default is _NO_DEFAULT:
+                return self._dict.pop(key)
+            return self._dict.pop(key, default)
+```
+This works as long as the client does not pass in this module's `-NO_DEFAULTi` value as the default,
+which they have no business doing. The overhead is one object for the whole module.
+Presumably `dict.pop` does something similar - should check.
+
+
 ## January 14, 2018B JMJ: Added AtomicNumber methods add and value.
 In `conc/concurrent_helper.py`. Also added unit tests for them. All pass.
 
