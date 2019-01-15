@@ -1,6 +1,18 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 14, 2018D JMJ: Displaying uncaught exceptions:
+In `test_concurrent_helper.py`, Started wrapping the top of threadpool workers with this - so we get information about
+line numbers, etc.
+```
+	except Exception as exc:
+            print("Worker {}: UNCAUGHT EXCEPTION {}", name, exc)
+            traceback.print_exc()
+            raise exc
+
+```
+See `TestConcurrentDict.test_concurrent_cdict` for an example.
+
 ## January 14, 2018C JMJ: Added ConcurrentDict.pop, and started unit tests
 Needed a way to delete items in the dictionary (`del` or equivalent). Decided on
 implementing `pop` - same semantics as `dict.pop`. Additional methods can be added as needed,

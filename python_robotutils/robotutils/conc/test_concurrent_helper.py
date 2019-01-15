@@ -6,6 +6,7 @@ Author: JMJ
 import unittest
 import concurrent.futures
 import random
+import traceback
 
 from . import concurrent_helper as ch
 
@@ -285,3 +286,102 @@ class TestConcurrentDict(unittest.TestCase):
         cdict.process_all(process_func)
         expected = (num_elements - 1) * num_elements // 2 # sum of 0 to (num-1)
         self.assertEqual(total, expected)
+
+    def test_concurrent_cdict(self):
+        """Concurrent test for ConcurrentDict"""
+        # Create two distinct set of keys - shared and private
+        # Partition the private set among the workers
+        # Workers attempt to set, get and delete keys randomly from the
+        # shared set - if they succeeed they verify the value.
+        # They also keep a local dictionay of their private keys to keep track
+        # of whether or not they hav set or deleted a specific key - and verify
+        # this.
+        # Periodically workers process the dictionary, picking out the keys that
+        # they own and verifying the list against their local dictionary.
+        #
+        # Self validating keys and values:
+        #     Shared key: 'shared_{n}', eg 'shared_25'
+        #     Unshared key: '{task_id}_{n}', eg 'task2_42'
+        #     Value: ({key}, {random-integer})', eg ('task2_42', 136369)
+        # All can be generated from three integers: num_shared, num_private, num_workers
+        num_shared = 100 # number of shared keys
+        num_private = 100 # number of private keys per worker
+        assert num_shared and num_private # need to be nonzero for random.choice to work
+        num_workers = 3 # number of  workers
+        max_workers = 3 # max number of workers executing concurrently
+        num_iterations = 10000 # number of test operations performed by a worker
+
+        cdict = ch.ConcurrentDict()
+        opcount = ch.AtomicNumber(0)
+
+        sizes = (num_shared, num_private, num_iterations) # check the order!
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers) as ex:
+            futures = [ex.submit(self._worker, 'task'+str(i), cdict, sizes, opcount)
+                       for i in range(num_workers)]
+            for future in futures:
+                # supressed - print("Waiting for exception...")
+                exception = future.exception() # Will wait until task completes
+                self.assertFalse(exception)
+        
+        print("opcount: " + str(opcount))
+
+    def _worker(self, name, cdict, sizes, opcount):
+        """A worker task, runs concurrently"""
+        num_shared, _, num_iterations = sizes
+        shared_keys = self._make_shared_keys(num_shared)
+        # private_keys = self._make_private_keys(name, num_private)
+        local_ops = 0
+
+        def cointoss():
+            return random.randint(0, 1)
+
+        try:
+            for _ in range(num_iterations):
+                if cointoss(): # get
+                    key = random.choice(shared_keys)
+                    value = cdict.get(key)
+                    if value:
+                        self._validate_kv_pair(key, value)
+                    value = cdict.get(key, self._genvalue(key))
+                    self._validate_kv_pair(key, value)
+                    local_ops += 1
+                if cointoss(): # set
+                    key = random.choice(shared_keys)
+                    value = self._genvalue(key)
+                    cdict.set(key, value)
+                    local_ops += 1
+                if cointoss(): # pop
+                    key = random.choice(shared_keys)
+                    value = cdict.pop(key, self._genvalue(key))
+                    self._validate_kv_pair(key, value)
+                    local_ops += 1
+        except Exception as exc:
+            print("Worker {}: UNCAUGHT EXCEPTION {}", name, exc)
+            traceback.print_exc()
+            raise exc
+        finally:
+            opcount.add(local_ops)
+            print("Task {} completed. local_ops: {}".format(name, local_ops))
+
+
+    @staticmethod
+    def _make_shared_keys(num) -> list:
+        """Make {num} shared keys. Returns a list."""
+        return ['shared_{}'.format(i) for i in range(num)]
+
+    @staticmethod
+    def _make_private_keys(name, num) -> list:
+        """Make {num} private keys for worker {name}. Returns a list."""
+        return ['{}_{}'.format(name, i) for i in range(num)]
+
+    @staticmethod
+    def _genvalue(key):
+        """Generate a valid random value given key {key}"""
+        return (key, random.randint(0, 1<<32))
+
+    def _validate_kv_pair(self, key, value):
+        """Assert that this is a valid k-v pair"""
+        vkey, vvalue = value
+        self.assertEqual(key, vkey)
+        self.assertIsInstance(vvalue, int)
