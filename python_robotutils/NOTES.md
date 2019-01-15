@@ -1,6 +1,20 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 14, 2018A JMJ: Finished concurrent unit test for ConcurrentDict
+This is `TestConcurrentDict.test_concurrent_cdict`. Multiple threads party on
+a shared `ConcurrentDict`. There are shared keys - all threads party on them -- and
+private keys, that are specific to specific threads. When using private keys, the tests
+verify that the dictionary values are exactly as expected.
+
+One strange thing: I disabled the locking for the `set` and `pop` methods on
+`ConcurrentDict`, expecting the concurrent tests to fail when attempting to run `process_all`.
+They ran fine, even with 100,000 iterations with multiple threads! I think that the
+`list(_dict)` that extracts the keys of the dictionary into a list is effectively
+atomic. If true, this means there is no need to use a lock after all, at least assuming
+the GIL in CPython. However the lock should remain, as it allows for future, more complex 
+atomic operations such as 'construct new object if object not present`.
+
 ## January 14, 2018D JMJ: Displaying uncaught exceptions:
 In `test_concurrent_helper.py`, Started wrapping the top of threadpool workers with this - so we get information about
 line numbers, etc.

@@ -323,14 +323,17 @@ class TestConcurrentDict(unittest.TestCase):
                 # supressed - print("Waiting for exception...")
                 exception = future.exception() # Will wait until task completes
                 self.assertFalse(exception)
-        
+
         print("opcount: " + str(opcount))
 
     def _worker(self, name, cdict, sizes, opcount):
         """A worker task, runs concurrently"""
-        num_shared, _, num_iterations = sizes
+        # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+
+        num_shared, num_private, num_iterations = sizes
         shared_keys = self._make_shared_keys(num_shared)
-        # private_keys = self._make_private_keys(name, num_private)
+        private_keys = self._make_private_keys(name, num_private)
+        prev_privates = dict() # keeps track of previous values
         local_ops = 0
 
         def cointoss():
@@ -338,7 +341,7 @@ class TestConcurrentDict(unittest.TestCase):
 
         try:
             for _ in range(num_iterations):
-                if cointoss(): # get
+                if cointoss(): # get shared
                     key = random.choice(shared_keys)
                     value = cdict.get(key)
                     if value:
@@ -346,16 +349,50 @@ class TestConcurrentDict(unittest.TestCase):
                     value = cdict.get(key, self._genvalue(key))
                     self._validate_kv_pair(key, value)
                     local_ops += 1
-                if cointoss(): # set
+                if cointoss(): # set shared
                     key = random.choice(shared_keys)
                     value = self._genvalue(key)
                     cdict.set(key, value)
                     local_ops += 1
-                if cointoss(): # pop
+                if cointoss(): # pop shared
                     key = random.choice(shared_keys)
                     value = cdict.pop(key, self._genvalue(key))
                     self._validate_kv_pair(key, value)
                     local_ops += 1
+                if cointoss(): # get private
+                    key = random.choice(private_keys)
+                    prev_value = prev_privates.get(key)
+                    value = cdict.get(key)
+                    self.assertEqual(prev_value, value) # could be None
+                if cointoss(): # set private
+                    key = random.choice(private_keys)
+                    value = self._genvalue(key)
+                    cdict.set(key, value)
+                    prev_privates[key] = value
+                    local_ops += 1
+                if cointoss(): # pop private
+                    key = random.choice(private_keys)
+                    prev_value = prev_privates.pop(key, None) # could be None
+                    try:
+                        value = cdict.pop(key)
+                        self.assertTrue(value) # if we get here, value is non-null
+                        self.assertEqual(prev_value, value)
+                    except KeyError as exc:
+                        self.assertFalse(prev_value,
+                                         "KeyError; Expecting key {}".format(prev_value))
+                if random.random() < 0.5:
+                    private_snapshot = dict() # new one each time, hence pylint disable below
+                    def copy_privates(key, value):
+                        """Collect all private kv pairs into prev_kvs"""
+                        if key.startswith(name):
+                            # private key
+                            private_snapshot[key] = value # pylint: disable=cell-var-from-loop
+                    cdict.process_all(copy_privates)
+                    # comparing entire dictionaries below!
+                    self.assertEqual(prev_privates, private_snapshot)
+                    local_ops += 1
+
+
         except Exception as exc:
             print("Worker {}: UNCAUGHT EXCEPTION {}", name, exc)
             traceback.print_exc()
