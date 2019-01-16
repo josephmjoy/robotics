@@ -1,6 +1,47 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 14, 2018B JMJ: Porting notes for comm/test_robotcomm.MockTransport
+Ported over `MockTransport` (not executed yet - just passes Pylint)
+
+Porting strategy:
+- Start by copying over chunks of Java code - smallest unit for which a simple unit test can be
+  ported or written.
+- Bulk remove ending ';', clean up trailing whitespaces, bulk change '//' to '#'
+- Bulk change 'this.' to 'self.'
+- Temporarily disable  Pylint invalid name warning: `# pylint: disable=invalid-name`
+- Starting porting from the top. Do NOT change names from camel casing to snake-casing (yet).
+  This is so that we don't introduce typos before any unit testing is done.
+- Once the first pass is complete, clean up Pylint warnings until you get a perfect score.
+  (if necessary selectively disable Pylint warnings - but sparingly)
+- Then get unit tests to run (these will themselves have to be ported over - following the same
+  process)
+- Random: I'm just using the module-level random functions - random.random(), etc, rather
+	than instantiate an instance of random.Random. We don't mind sharing randomness state.
+- Timer: Each Python `threading.Timer` instance is a one-shot timer, compared with
+	Java`Timer` object.
+- Where we print to `sderr` - use `warning.warn()` instead, and consider other case here we could use
+	`warn`.
+- For now, try to use native logging as-is, based on Python's recommendations. At some point,
+  look into using the exact same output format between Java and Python.
+  	- define `trace` as a module-level function, and use this pattern for trace messages:
+
+	```
+		if trace:
+		    trace(...)
+	```
+  I had tried `trace and trace(...)` by Pylint complained about not using the result of
+  that expression, and I didn't want to disable that warning. Pylint does warn that 
+  about the module-level `trace` not being all-caps, but I disable that selectively (for now) - 
+  see the beginning of test_robotcomm.py.
+- Remove @Override - don't bother commenting it. Visual noise. Maybe instead cluster all
+  methods that implement an interface together with some heading comments
+
+Used chained comparison `assert 0 <= failurerate <= 1` - Pylint pointed this out
+
+
+
+
 ## January 14, 2018A JMJ: Finished concurrent unit test for ConcurrentDict
 This is `TestConcurrentDict.test_concurrent_cdict`. Multiple threads party on
 a shared `ConcurrentDict`. There are shared keys - all threads party on them -- and
