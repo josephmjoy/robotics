@@ -16,12 +16,13 @@ from . import robotcomm as rc
 from ..conc import concurrent_helper as ch
 
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
-# set trace to None below to disable tracing in code
-trace = tracefunc # pylint: disable=invalid-name
 
 def tracefunc(*args, **kwargs):
     """simply call debug"""
     logger.debug(args, kwargs)
+# set trace to None below to disable tracing in code
+trace = tracefunc # pylint: disable=invalid-name
+
 
 
 TransportStats = collections.namedtuple('TransportStats', 'sends recvs forcedrops randomdrops')
