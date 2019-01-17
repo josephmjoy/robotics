@@ -8,14 +8,14 @@ import threading
 import collections
 import sched
 import logging
-import time
 
 _NO_DEFAULT = object() # To check if an optional parameter was specified in selected method calls
 
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 def trace(*args, **kwargs):
     """simply call debug"""
-    logger.debug(args, kwargs)
+    #logger.debug(*args, **kwargs)
+    #print(*args, **kwargs)
 
 def tracing():
     """ Whether to trace or not"""
@@ -262,30 +262,37 @@ class EventScheduler:
     #      is called and will not be left waiting in some corner case.
     #
 
-    def __init__(self, timefunc=time.monotonic, delayfunc=time.sleep):
-        """Initialize an EventScheduler. See sched.scheduler documentation
-        for information about the optional arguments."""
-        self._scheduler = sched.scheduler(timefunc, delayfunc)
+    def __init__(self):
+        """Initialize an EventScheduler."""
+
+        self._scheduler = sched.scheduler()
         self._lock = threading.Lock()
         self._event = threading.Event()
+        self._cancelevent = threading.Event()
         self._numexceptions = 0
         self._thread = None
         self._quit = False
+
 
     def start(self):
         """Starts the scheduler. It starts a background thread in which context the
         scheduling is done"""
 
         def threadfn():
-            while not self._quit:
-                trace("threadfn: waiting on event")
-                self._event.wait()
-                trace("threadfn: got event")
+            more = True
+            while more:
                 try:
-                    self._event.clear()
-                    self._scheduler.run() # will block as long as there are events
+                    delay = self._scheduler.run(blocking=False)
+                    if delay:
+                        if self._cancelevent.wait(delay):
+                            trace("threadfn: CANCELING")
+                            more = False # we  are done - abandon the rest
+                    else:
+                        self._event.wait() # wait for more events...
+                        self._event.clear()
+                        more = not self._quit
                 except Exception as exc: # pylint: disable=broad-except
-                    trace("Caught exception " + exc)
+                    trace("Caught exception " + str(exc))
                     self._numexceptions += 1
             trace("Exiting threadfn")
 
@@ -309,16 +316,11 @@ class EventScheduler:
 
     def cancel_all(self):
         """Cancel any pending and future events"""
-        with self._lock:
-            self._quit = True
-            elist = self._scheduler.queue
-            for event in elist:
-                try:
-                    self._scheduler.cancel(event)
-                except ValueError: # just mean event is no longer in queue
-                    pass
-            assert self._scheduler.empty()
-            self._event.set() # wake up background thread if necessary
+        trace("cancel_all: enter")
+        self._quit = True
+        self._event.set() # wake up background thread if necessary
+        self._cancelevent.set() # get out of scheduler.run() if necessary
+        trace("cancel_all: exit")
 
     def get_exception_count(self) -> int:
         """Returns the count of exceptions thrown by scheduled events"""
@@ -328,13 +330,14 @@ class EventScheduler:
         """Stop running once all pending events have been scheduled. If {block}
         then block until all events are completed. Once stopped, the scheduler
         cannot be restarted."""
+        trace("stop: entered")
         with self._lock: # we don't NEED to lock, but locking anyway
             self._quit = True
             self._event.set() # wake up background thread if necessary
         if block:
-            trace("main: waiting for thread to complete")
+            trace("stop: waiting for thread to complete")
             self._thread.join()
-            trace("main:thread completed")
+            trace("stop:thread completed")
 
 if __name__ == '__main__':
     import doctest

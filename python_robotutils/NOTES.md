@@ -2,6 +2,51 @@
 
 
 
+## January 17, 2018B JMJ: Fixing issues with EventScheduler
+There were two problems:
+1. `sched.scheduler.run(blocking=True)` doesn't return if it is waiting for an event, even if
+    the event has been canceled. This is because it's `delayfunc` defaults to `time.sleep`, and
+    the latter will simply sleep for the entire duration to the (now canceled) event. I first fixed
+    by providing my own `delayfunc` that would wait for `self._cancelevent` - so it would bail out
+    early if the lattter was signaled. This worked, but I backed out of that because of the next
+    problem.
+2. `sched.scheduler.cancel(event)` is slow - about 1000 calls per second on my Elitebook. For
+    comparison, `time.sleep(0)` is about 1 million calls per second. So it doesn't make
+    sense to cal `cancel` on every remaining scheduled event in `cancel_all` - when the 
+    scheudler is winding down. So instead `cancel_all` simply signals the background thread
+    using `self._cancelevent`. The background thread can no longer call 
+    `self._scheduler.run(blocking=True)` because the scheduler would never quit early if
+    there are still events in the queue. So I have to use the nonblocking version and implement
+    delays in the background function itself:
+    ```
+       def threadfn():
+            more = True
+            while more:
+                    delay = self._scheduler.run(blocking=False)
+                    if delay:
+                        if self._cancelevent.wait(delay):
+                            trace("threadfn: CANCELING")
+                            more = False # we are done - abandon the rest
+                    else:
+                        self._event.wait() # wait for more events...
+                        self._event.clear()
+                        more = not self._quit
+    ```
+
+With this change test_cancel_scheduler can now pump about 100,000 events per second
+(was about 1000 events / sec) and `cancel_all` returns immediately.
+
+NOTE: `time.sleep(0)` is about 1 million calls per second, but `time.sleep(0.00001)` is about
+1000 calls per second - so any non-zero sleep, however small takes a minimum of about a millisecond.
+
+```
+$ py -m timeit -n 1 "for _ in range(10000): time.sleep(0)"
+1 loop, best of 5: 8.8 msec per loop
+$ py -m timeit -n 1 "for _ in range(10000): time.sleep(0.000001)"
+1 loop, best of 5: 15.3 sec per loop
+```
+
+
 ## January 17, 2018A JMJ: Schedule large numbers of events.
 In Java, we have `java.util.Timer` with its `schedule` methods that can be used to
 schedule a large number of tasks with little overhead, all sharing the same thread.

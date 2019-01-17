@@ -7,6 +7,7 @@ import unittest
 import concurrent.futures
 import random
 import traceback
+import time
 
 from . import concurrent_helper as ch
 
@@ -427,7 +428,7 @@ class TestConcurrentDict(unittest.TestCase):
 class TestEventScheduler(unittest.TestCase):
     """Container for EventScheduler tests"""
 
-    def test_sequential_simple(self):
+    def test_simple_scheduler(self):
         """Simple test of EventScheduler"""
         scheduler = ch.EventScheduler()
         scheduler.start()
@@ -441,5 +442,50 @@ class TestEventScheduler(unittest.TestCase):
         scheduler.stop(block=True)
         self.assertTrue(x)
 
-    def test_sequential_complex(self):
+    def test_complex_scheduler(self):
         """A more complex test of EventScheduler"""
+        scheduler = ch.EventScheduler()
+        scheduler.start()
+        count = 0
+
+        def eventfunc():
+            nonlocal count
+            count += 1 # Only one thread is modifying count
+
+        numevents = 1
+        timespan = 1 # second
+        for _ in range(numevents):
+            scheduler.schedule(random.random()*timespan, eventfunc)
+            if random.random() < 10/numevents:
+                time.sleep(0.1) # induce context switch every now and then
+        scheduler.stop(block=True)
+        self.assertEqual(scheduler.get_exception_count(), 0)
+        self.assertEqual(count, numevents)
+
+    def test_cancel_scheduler(self):
+        """Tests EventScheduler.cancel_all"""
+        scheduler = ch.EventScheduler()
+        scheduler.start()
+        count = 0
+
+        def eventfunc():
+            nonlocal count
+            count += 1 # Only one thread is modifying count
+            #print("----IN EVENTFUNC!!!!----")
+
+        numevents = 100000
+        timespan = 2 # seconds, i.e. a long time
+        for i in range(numevents):
+            delay = i*timespan/numevents
+            #print("DELAY = " + str(delay))
+            #delay = random.random()*timespan
+            scheduler.schedule(delay, eventfunc)
+            if random.random() < 10/numevents:
+                time.sleep(0.1) # induce context switch every now and then
+        print("MAIN: done submitting events")
+        time.sleep(1)
+        scheduler.cancel_all()
+        scheduler.stop(block=True)
+        print("MAIN: count=" + str(count))
+        self.assertEqual(scheduler.get_exception_count(), 0)
+        self.assertGreater(count, 0)
