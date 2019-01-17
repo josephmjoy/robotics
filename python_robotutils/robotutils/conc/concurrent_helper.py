@@ -8,6 +8,7 @@ import threading
 import collections
 import sched
 import logging
+import time
 
 _NO_DEFAULT = object() # To check if an optional parameter was specified in selected method calls
 
@@ -261,9 +262,10 @@ class EventScheduler:
     #      is called and will not be left waiting in some corner case.
     #
 
-    def __init__(self):
-        """Initialize an EventScheduler"""
-        self._scheduler = sched.scheduler()
+    def __init__(self, timefunc=time.monotonic, delayfunc=time.sleep):
+        """Initialize an EventScheduler. See sched.scheduler documentation
+        for information about the optional arguments."""
+        self._scheduler = sched.scheduler(timefunc, delayfunc)
         self._lock = threading.Lock()
         self._event = threading.Event()
         self._numexceptions = 0
