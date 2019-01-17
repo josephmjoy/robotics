@@ -1,12 +1,25 @@
 """
 A private module that implements concurrency-friendly versions of
 queues, dictionaries and counters.
+Author: JMJ
 """
 
 import threading
 import collections
+import sched
+import logging
 
 _NO_DEFAULT = object() # To check if an optional parameter was specified in selected method calls
+
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+def trace(*args, **kwargs):
+    """simply call debug"""
+    logger.debug(args, kwargs)
+
+def tracing():
+    """ Whether to trace or not"""
+    return True
+
 
 class AtomicNumber:
     """Supports various atomic operations on numbers
@@ -56,6 +69,7 @@ class AtomicNumber:
         """
         return self._value
 
+
 class ConcurrentDeque:
     """
     A thread-safe deque. It implements a subset of deque methods.
@@ -76,7 +90,7 @@ class ConcurrentDeque:
     """
 
     #
-    # Implementation note: the lock MUST be held for all the calls below,
+    # IMPLEMENTATION NOTE: the lock MUST be held for all the calls below,
     # even if the GIL guarantees the calls (like self._deque.append) are themselves
     # thread safe. This is because iteration over elements in the deque may not
     # be able to deal with modifications done by other threads (deque documentation
@@ -158,9 +172,8 @@ class ConcurrentDict:
     >>>
     """
 
-
     #
-    # Implementation note: the lock MUST be held for all the calls below,
+    # IMPLEMENTATION NOTE: the lock MUST be held for all the calls below,
     # even if the GIL guarantees the calls (like self._dict.get) are themselves
     # thread safe. This is because the dict state must remain unchanged during iteration.
     #
@@ -217,6 +230,109 @@ class ConcurrentDict:
             if val is not None:
                 func(key, val)
 
+
+
+class EventScheduler:
+    """
+    Each instance manages events scheduled on a single background thread.
+    >>> scheduler = EventScheduler()
+    >>> scheduler.start()
+    >>> x = False
+    >>> def myevent(): global x; x = True
+    >>> scheduler.schedule(0.1, myevent)
+    >>> scheduler.stop(block=True)
+    >>> print(x)
+    True
+    """
+
+    #
+    # IMPLEMENTATION NOTE: To keep the background thread active - i.e., re-running
+    # self._scheduler.run(), various calls that the client calls all signal
+    # self._event (threading.Event, not to be confused with client events!).
+    # Lock self._lock is used to atomically check/set the value
+    # of self._quit, self._event and relevant self._scheduler calls. The
+    # sequence of signalling the threading event in relation to various
+    # other calls is quite important. This ensures that:
+    #  (a) a scheduled client event will always be serviced 'immediately' by the
+    #      background thread.
+    #  (b) No client events can sneak in concurrently with `cancel_all` being
+    #      called and risk remaining scheduled in the queue.
+    #  (c) The background thread will always exit 'immediately' after 'cancel_all'
+    #      is called and will not be left waiting in some corner case.
+    #
+
+    def __init__(self):
+        """Initialize an EventScheduler"""
+        self._scheduler = sched.scheduler()
+        self._lock = threading.Lock()
+        self._event = threading.Event()
+        self._numexceptions = 0
+        self._thread = None
+        self._quit = False
+
+    def start(self):
+        """Starts the scheduler. It starts a background thread in which context the
+        scheduling is done"""
+
+        def threadfn():
+            while not self._quit:
+                trace("threadfn: waiting on event")
+                self._event.wait()
+                trace("threadfn: got event")
+                try:
+                    self._event.clear()
+                    self._scheduler.run() # will block as long as there are events
+                except Exception as exc: # pylint: disable=broad-except
+                    trace("Caught exception " + exc)
+                    self._numexceptions += 1
+            trace("Exiting threadfn")
+
+        with self._lock:
+            if self._thread:
+                raise ValueError("Scheduler seems already started")
+            else:
+                self._thread = threading.Thread(target=threadfn)
+                self._thread.start()
+
+
+    def schedule(self, delay, func) -> None:
+        """Schedule event {func} to run after waiting {delay} from the point this
+    call was made OR the scheduler was started, whichever happened later."""
+        with self._lock:
+            if not self._quit:
+                self._scheduler.enter(delay, priority=0, action=func) # will not block
+                self._event.set() # wake up background thread if necessary
+            else:
+                raise ValueError("Cannot schedule event in current state")
+
+    def cancel_all(self):
+        """Cancel any pending and future events"""
+        with self._lock:
+            self._quit = True
+            elist = self._scheduler.queue
+            for event in elist:
+                try:
+                    self._scheduler.cancel(event)
+                except ValueError: # just mean event is no longer in queue
+                    pass
+            assert self._scheduler.empty()
+            self._event.set() # wake up background thread if necessary
+
+    def get_exception_count(self) -> int:
+        """Returns the count of exceptions thrown by scheduled events"""
+        return self._numexceptions
+
+    def stop(self, block=False):
+        """Stop running once all pending events have been scheduled. If {block}
+        then block until all events are completed. Once stopped, the scheduler
+        cannot be restarted."""
+        with self._lock: # we don't NEED to lock, but locking anyway
+            self._quit = True
+            self._event.set() # wake up background thread if necessary
+        if block:
+            trace("main: waiting for thread to complete")
+            self._thread.join()
+            trace("main:thread completed")
 
 if __name__ == '__main__':
     import doctest

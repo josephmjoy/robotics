@@ -1,7 +1,67 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
-## January 14, 2018B JMJ: Porting notes for comm/test_robotcomm.MockTransport
+## January 16, 2018A JMJ: Schedule large numbers of events.
+In Java, we have `java.util. Timerk` with its `schedule` methods that can be used to
+schedule a large number of tasks with little overhead, all sharing the same thread.
+
+The closes equivalent in the Python standard library is `sched.scheduler`. But they are not 
+completely equivalent, in that in Python we have to provide the thread execution context, and
+some extra support when we have concurrent additions to the events being scheduled.
+So I created added the following class to `concurrent_helper`:
+
+```
+class EventScheduler:
+    def start(self):
+        """Starts the scheduler. It starts a background thread in which context the
+        scheduling is done"""
+
+    def schedule(self, delay, func) -> None:
+        """Schedule event {func} to run after waiting {delay} from the point this
+        call was made OR the scheduler was started, whichever happened later."""
+
+    def cancel_all(self):
+        """Cancel any pending and future events"""
+
+    def get_exception_count(self) -> int:
+        """Returns the count of exceptions thrown by scheduled events"""
+
+    def stop(self, block=False):
+        """Stop running once all pending events have been scheduled. If {block}
+        then block until all events are completed. Once stopped, the scheduler
+        cannot be restarted."""
+```
+Also added unit test class TestEventScheduler. Both pass.
+The implementation has subtle sequencing to prevent corner cases of endless waiting.
+See the "IMPLEMENTATION NOTE" at the head of class `EventScheduler`.
+
+## January 16, 2018A JMJ: Propertly calling unittest from the command line.
+
+`Unittest` wasn't working when submodules are reaching over to others, like
+
+```
+from ..conc import concurrent_helper as ch
+```
+Fix is to specify the `-s` parameter when launching unittest, here from a directory
+under `robotutil` such as `robotutil/comm`:
+
+```
+py -m unittest discover -s ../.. -k mock
+```
+Note it's `unittest discover`, not just `unittest`. It's the discover option that accepts
+the `-s` (start directory) option.
+
+The `-k testname_pattern` specifies a substring of test class or method to run. The following
+alias seems to work:
+
+```
+alias unittest='py -m unittest discover -s ../.. -k'
+```
+I can now type `unittest mock` and it will discover and run all classes or methods that match
+"mock". To run all tests, type `unittest .`
+
+
+## January 15, 2018A JMJ: Porting notes for comm/test_robotcomm.MockTransport
 Ported over `MockTransport` (not executed yet - just passes Pylint)
 
 Porting strategy:
@@ -34,6 +94,9 @@ Porting strategy:
   that expression, and I didn't want to disable that warning. Pylint does warn that 
   about the module-level `trace` not being all-caps, but I disable that selectively (for now) - 
   see the beginning of test_robotcomm.py.
+  [UPDATE] Pylint complains about `if trace:` because it considers `trace` to be a constant.
+  So now it's `if tracing():`, where tracing is a method.
+
 - Remove @Override - don't bother commenting it. Visual noise. Maybe instead cluster all
   methods that implement an interface together with some heading comments
 

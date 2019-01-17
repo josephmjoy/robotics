@@ -422,3 +422,24 @@ class TestConcurrentDict(unittest.TestCase):
         vkey, vvalue = value
         self.assertEqual(key, vkey)
         self.assertIsInstance(vvalue, int)
+
+
+class TestEventScheduler(unittest.TestCase):
+    """Container for EventScheduler tests"""
+
+    def test_sequential_simple(self):
+        """Simple test of EventScheduler"""
+        scheduler = ch.EventScheduler()
+        scheduler.start()
+        x = False
+
+        def eventfunc():
+            nonlocal x
+            x = True
+
+        scheduler.schedule(0.1, eventfunc)
+        scheduler.stop(block=True)
+        self.assertTrue(x)
+
+    def test_sequential_complex(self):
+        """A more complex test of EventScheduler"""

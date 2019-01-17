@@ -11,17 +11,20 @@ import threading
 import random
 import logging
 import collections
+import time
 
 from . import robotcomm as rc
 from ..conc import concurrent_helper as ch
 
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
-def tracefunc(*args, **kwargs):
+def trace(*args, **kwargs):
     """simply call debug"""
     logger.debug(args, kwargs)
-# set trace to None below to disable tracing in code
-trace = tracefunc # pylint: disable=invalid-name
+
+def tracing():
+    """ Whether to trace or not"""
+    return True
 
 
 
@@ -40,15 +43,15 @@ class MockRemoteNode(rc.DatagramTransport.RemoteNode):
 
     def send(self, msg) -> None:
         """Sends {msg} over transport"""
-        self._transport.numSends.next()
+        self._transport.numsends.next()
         if self._force_drop(msg):
-            if trace:
+            if tracing():
                 trace("TRANSPORT FORCEDROP:\n[%s]", msg)
             self._transport.numforcedrops.next()
             return # **************** EARLY RETURN *****
 
         if self._non_forcedrop():
-            if trace:
+            if tracing():
                 trace("TRANSPORT: RANDDROP\n[%s]", msg)
             self._transport.numRandomDrops.next()
             return # **************** EARLY RETURN *****
@@ -72,6 +75,9 @@ class MockRemoteNode(rc.DatagramTransport.RemoteNode):
             return False
         return random.random() < self._transport.failurerate
 
+    def __str__(self):
+        return self._address
+
 
 class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-attributes
     """Implements the mock transport used in these tests"""
@@ -90,7 +96,6 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
         self.closed = False
         self.failurerate = 0
         self.maxdelay = 0
-        #private BiConsumer<String, RemoteNode> clientRecv; we support only one listener at a time.
         self.client_recv = None # set in start_listening
 
     #
@@ -181,7 +186,7 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
 
         if self.client_recv:
             self.numrecvs.next()
-            if trace:
+            if tracing():
                 trace("TRANSPORT RECV:\n[{}]\n", s)
             self.client_recv(s, self.loopbacknode)
         else:
@@ -193,6 +198,30 @@ class TestRobotComm(unittest.TestCase):
 
     def test_mock_transport_simple(self):
         """Simple test of our own test mock transport!"""
+        messagecount = 100
+        messages = {'msg='+str(i) for i in range(messagecount)}
+        errcount = ch.AtomicNumber(0)
+        recvcount = ch.AtomicNumber(0)
+
+        def receivemsg(msg, node):
+            #print("Received message [{}] from {}".format(msg, node))
+            recvcount.next()
+            if not msg in messages:
+                errcount.next() # note error
+
         transport = MockTransport()
+        failurerate = 0
+        maxdelay = 1
+        transport.setTransportCharacteristics(failurerate, maxdelay)
+        transport.start_listening(receivemsg)
+        node = transport.new_remotenode("loopback")
+        for msg in messages:
+            node.send(msg)
+        print("Waiting...")
+        while recvcount.value() < messagecount:
+            time.sleep(0.1)
+        print("Received {} messages".format(messagecount))
+        self.assertEqual(recvcount.value(), messagecount)
         transport.close()
         self.assertTrue(transport)
+
