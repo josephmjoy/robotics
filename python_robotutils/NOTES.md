@@ -3,10 +3,10 @@
 
 
 ## January 17, 2018A JMJ: Schedule large numbers of events.
-In Java, we have `java.util. Timerk` with its `schedule` methods that can be used to
+In Java, we have `java.util.Timer` with its `schedule` methods that can be used to
 schedule a large number of tasks with little overhead, all sharing the same thread.
 
-The closes equivalent in the Python standard library is `sched.scheduler`. But they are not 
+The closest equivalent in the Python standard library is `sched.scheduler`. But they are not 
 completely equivalent, in that in Python we have to provide the thread execution context, and
 some extra support when we have concurrent additions to the events being scheduled.
 So I created added the following class to `concurrent_helper`:
@@ -36,7 +36,7 @@ Also added unit test class TestEventScheduler. Both pass.
 The implementation has subtle sequencing to prevent corner cases of endless waiting.
 See the "IMPLEMENTATION NOTE" at the head of class `EventScheduler`.
 
-## January 16, 2018A JMJ: Propertly calling unittest from the command line.
+## January 16, 2018A JMJ: Property calling unittest from the command line.
 
 `Unittest` wasn't working when submodules are reaching over to others, like
 
