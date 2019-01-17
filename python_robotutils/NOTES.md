@@ -1,7 +1,8 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
-## January 16, 2018A JMJ: Schedule large numbers of events.
+
+## January 17, 2018A JMJ: Schedule large numbers of events.
 In Java, we have `java.util. Timerk` with its `schedule` methods that can be used to
 schedule a large number of tasks with little overhead, all sharing the same thread.
 
