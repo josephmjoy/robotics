@@ -2,6 +2,15 @@
 
 
 
+## January 18, 2018A JMJ: Fixed corner cases with EventScheduler
+Function `EventScheduler.start.threadfn` had to be fixed  because it was exiting without
+processing events if `EventScheduler.stop` was called immediately after scheduling an event -
+it was a small window which would sometimes be hit. The main part of the fix was to check
+*before* calling `sched.scheduler.run` if the client had called `stop`, but act on this only
+after returning from `run`.
+
+Now all `EventScheduler` tests pass.
+
 ## January 17, 2018B JMJ: Fixing issues with EventScheduler
 There were two problems:
 1. `sched.scheduler.run(blocking=True)` doesn't return if it is waiting for an event, even if

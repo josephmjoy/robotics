@@ -14,7 +14,7 @@ _NO_DEFAULT = object() # To check if an optional parameter was specified in sele
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 def trace(*args, **kwargs):
     """simply call debug"""
-    #logger.debug(*args, **kwargs)
+    logger.debug(*args, **kwargs)
     #print(*args, **kwargs)
 
 def tracing():
@@ -279,18 +279,26 @@ class EventScheduler:
         scheduling is done"""
 
         def threadfn():
-            more = True
-            while more:
+            done = False
+            while not done:
                 try:
+                    prequit = self._quit
                     delay = self._scheduler.run(blocking=False)
                     if delay:
+                        # Next event in queue happens in {delay} seconds
                         if self._cancelevent.wait(delay):
                             trace("threadfn: CANCELING")
-                            more = False # we  are done - abandon the rest
+                            done = True # we  are done - abandon the rest
                     else:
-                        self._event.wait() # wait for more events...
-                        self._event.clear()
-                        more = not self._quit
+                        # Nothing in queue
+                        if prequit:
+                            # All done
+                            trace("threadfn: NORMAL EXIT")
+                            done = True
+                        else:
+                            # Queue is empty, let's wait for more
+                            self._event.wait() # wait for more events...
+                            self._event.clear()
                 except Exception as exc: # pylint: disable=broad-except
                     trace("Caught exception " + str(exc))
                     self._numexceptions += 1

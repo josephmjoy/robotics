@@ -428,7 +428,7 @@ class TestConcurrentDict(unittest.TestCase):
 class TestEventScheduler(unittest.TestCase):
     """Container for EventScheduler tests"""
 
-    def test_simple_scheduler(self):
+    def test_scheduler_trivial(self):
         """Simple test of EventScheduler"""
         scheduler = ch.EventScheduler()
         scheduler.start()
@@ -442,8 +442,8 @@ class TestEventScheduler(unittest.TestCase):
         scheduler.stop(block=True)
         self.assertTrue(x)
 
-    def test_complex_scheduler(self):
-        """A more complex test of EventScheduler"""
+    def test_scheduler_nocancel(self):
+        """Schedule lots of events without canceling"""
         scheduler = ch.EventScheduler()
         scheduler.start()
         count = 0
@@ -452,18 +452,20 @@ class TestEventScheduler(unittest.TestCase):
             nonlocal count
             count += 1 # Only one thread is modifying count
 
-        numevents = 1
+        numevents = 20000
         timespan = 1 # second
         for _ in range(numevents):
-            scheduler.schedule(random.random()*timespan, eventfunc)
+            delay = random.random()*timespan
+            scheduler.schedule(delay, eventfunc)
             if random.random() < 10/numevents:
                 time.sleep(0.1) # induce context switch every now and then
         scheduler.stop(block=True)
         self.assertEqual(scheduler.get_exception_count(), 0)
         self.assertEqual(count, numevents)
+        print("SCHED NOCANCEL: count=" + str(count))
 
-    def test_cancel_scheduler(self):
-        """Tests EventScheduler.cancel_all"""
+    def test_scheduler_cancel(self):
+        """Tests calling cancel_all in the midst of scheduling lots of events"""
         scheduler = ch.EventScheduler()
         scheduler.start()
         count = 0
@@ -473,12 +475,10 @@ class TestEventScheduler(unittest.TestCase):
             count += 1 # Only one thread is modifying count
             #print("----IN EVENTFUNC!!!!----")
 
-        numevents = 100000
+        numevents = 20000
         timespan = 2 # seconds, i.e. a long time
         for i in range(numevents):
-            delay = i*timespan/numevents
-            #print("DELAY = " + str(delay))
-            #delay = random.random()*timespan
+            delay = random.random()*timespan
             scheduler.schedule(delay, eventfunc)
             if random.random() < 10/numevents:
                 time.sleep(0.1) # induce context switch every now and then
@@ -486,6 +486,6 @@ class TestEventScheduler(unittest.TestCase):
         time.sleep(1)
         scheduler.cancel_all()
         scheduler.stop(block=True)
-        print("MAIN: count=" + str(count))
+        print("SCHED CANCEL: count=" + str(count))
         self.assertEqual(scheduler.get_exception_count(), 0)
         self.assertGreater(count, 0)
