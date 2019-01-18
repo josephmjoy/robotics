@@ -462,7 +462,7 @@ class TestEventScheduler(unittest.TestCase):
         scheduler.stop(block=True)
         self.assertEqual(scheduler.get_exception_count(), 0)
         self.assertEqual(count, numevents)
-        print("SCHED NOCANCEL: count=" + str(count))
+        print("scheduler NOCANCEL: count={}/{}".format(count, numevents))
 
     def test_scheduler_cancel(self):
         """Tests calling cancel_all in the midst of scheduling lots of events"""
@@ -475,17 +475,17 @@ class TestEventScheduler(unittest.TestCase):
             count += 1 # Only one thread is modifying count
             #print("----IN EVENTFUNC!!!!----")
 
-        numevents = 20000
-        timespan = 2 # seconds, i.e. a long time
+        numevents = 100000
+        timespan = 100 # seconds, i.e. a long time
         for i in range(numevents):
             delay = random.random()*timespan
             scheduler.schedule(delay, eventfunc)
             if random.random() < 10/numevents:
                 time.sleep(0.1) # induce context switch every now and then
-        print("MAIN: done submitting events")
-        time.sleep(1)
+        # print("MAIN: done submitting events")
+        time.sleep(1) # 1 second into 100 seconds we cancel...
         scheduler.cancel_all()
         scheduler.stop(block=True)
-        print("SCHED CANCEL: count=" + str(count))
+        print("scheduler CANCEL: count={}/{}".format(count, numevents))
         self.assertEqual(scheduler.get_exception_count(), 0)
         self.assertGreater(count, 0)
