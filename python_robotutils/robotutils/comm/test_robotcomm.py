@@ -84,9 +84,9 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
 
     ALWAYSDROP_TEXT = "TRANSPORT-MUST-DROP"
 
-    def __init__(self):
+    def __init__(self, local_address):
         """Initialize MockTransport"""
-        self.loopbacknode = MockRemoteNode(self, "loopback")
+        self.loopbacknode = MockRemoteNode(self, local_address)
         self.recvqueue = ch.ConcurrentDeque()
         self.transport_timer = None
         self.numsends = ch.AtomicNumber(0)
@@ -196,32 +196,63 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
 class TestRobotComm(unittest.TestCase):
     """Container for robotcomm unit tests"""
 
-    def test_mock_transport_simple(self):
+    LOCAL_ADDRESS = "loopback"
+
+    @staticmethod
+    def cointoss():
+        """Rreturns True with 0.5 probabilyt"""
+        return random.random() < 0.5
+
+    def test_mock_transport_simple(self): # pylint: disable=too-many-locals
         """Simple test of our own test mock transport!"""
-        messagecount = 100
-        messages = {'msg='+str(i) for i in range(messagecount)}
-        errcount = ch.AtomicNumber(0)
+        msgcount = 1000
+        expected_msgcount = 0
+
+        def genmsg(x):
+            nonlocal expected_msgcount
+            msg = 'msg-' + str(x)
+            if self.cointoss():
+                expected_msgcount += 1
+                return msg
+            # force drop
+            return msg + MockTransport.ALWAYSDROP_TEXT
+
+        messages = {genmsg(i): ch.AtomicNumber(0) for i in range(msgcount)}
         recvcount = ch.AtomicNumber(0)
+        errcount = ch.AtomicNumber(0) # count of unexpected messages recvd
 
         def receivemsg(msg, node):
             #print("Received message [{}] from {}".format(msg, node))
+            if node.address != self.LOCAL_ADDRESS:
+                errcount.next()
             recvcount.next()
-            if not msg in messages:
-                errcount.next() # note error
+            counter = messages.get(msg)
+            if counter:
+                counter.next()
+            else:
+                errcount.next() # unexpected message
 
-        transport = MockTransport()
+        transport = MockTransport(self.LOCAL_ADDRESS)
         failurerate = 0
         maxdelay = 1
         transport.setTransportCharacteristics(failurerate, maxdelay)
         transport.start_listening(receivemsg)
         node = transport.new_remotenode("loopback")
         for msg in messages:
-            node.send(msg)
-        print("Waiting...")
-        while recvcount.value() < messagecount:
+            node.send(msg) # We're sending the keys
+        #print("Waiting...")
+        while recvcount.value() < expected_msgcount:
             time.sleep(0.1)
-        print("Received {} messages".format(messagecount))
-        self.assertEqual(recvcount.value(), messagecount)
-        transport.close()
-        self.assertTrue(transport)
+        #print("Received {} messages".format(msgcount))
+        self.assertEqual(recvcount.value(), expected_msgcount)
 
+        # Check that expected messages are received exactly once, and
+        # unexpected messages are not received.
+        for msg, counter in messages.items():
+            expected = 1
+            if  MockTransport.ALWAYSDROP_TEXT in msg:
+                expected = 0
+            self.assertEqual(counter.value(), expected, "msg count for:" + msg)
+
+        transport.close()
+        print("transport_simple: received {}/{} messages".format(recvcount, msgcount))
