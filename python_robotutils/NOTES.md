@@ -2,6 +2,10 @@
 
 
 
+## January 18, 2018A JMJ: MockTransport test: Replaced threading.Timer by our own EventScheduler
+And got an expected 10x speedup! Now processing about 50,000 messages per second.
+Previously it was about 5000 messages per second.
+
 ## January 18, 2018A JMJ: Fixed corner cases with EventScheduler
 Function `EventScheduler.start.threadfn` had to be fixed  because it was exiting without
 processing events if `EventScheduler.stop` was called immediately after scheduling an event -

@@ -7,7 +7,6 @@ Author: JMJ
 '''
 
 import unittest
-import threading
 import random
 import logging
 import collections
@@ -97,6 +96,7 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
         self.failurerate = 0
         self.maxdelay = 0
         self.client_recv = None # set in start_listening
+        self.scheduler = ch.EventScheduler()
 
     #
     # DatagramTransport methods
@@ -105,6 +105,7 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
         """Listen should only be called once."""
         assert not self.client_recv
         self.client_recv = handler
+        self.scheduler.start()
 
     def stop_listening(self) -> None:
         """Stop previously-started listening sessions."""
@@ -117,6 +118,10 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
 
     def close(self) -> None:
         """Close the transport"""
+        self.scheduler.cancel_all()
+        # print("Stopping scheduler...")
+        self.scheduler.stop(block=True)
+        # print("Scheduler stopped")
         self.closed = True
         if self.transport_timer:
             self.transport_timer.cancel()
@@ -174,8 +179,7 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
                 else:
                     self.numforcedrops.next()
 
-            self.transport_timer = threading.Timer(delay, timertask)
-            self.transport_timer.start()
+            self.scheduler.schedule(delay, timertask)
 
     #
     # Private methods
@@ -205,7 +209,7 @@ class TestRobotComm(unittest.TestCase):
 
     def test_mock_transport_simple(self): # pylint: disable=too-many-locals
         """Simple test of our own test mock transport!"""
-        msgcount = 1000
+        msgcount = 10000
         expected_msgcount = 0
 
         def genmsg(x):
