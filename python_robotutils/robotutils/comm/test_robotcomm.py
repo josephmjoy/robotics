@@ -215,10 +215,12 @@ class TestRobotComm(unittest.TestCase):
         """Rreturns True with 0.5 probabilyt"""
         return random.random() < 0.5
 
-    def test_mock_transport_simple(self): # pylint: disable=too-many-locals
-        """Simple test of our own test mock transport!"""
+    def test_mock_transport_without_random_failures(self): # pylint: disable=too-many-locals
+        """Sends a bunch of messages and verifies each one is received exactly once."""
         msgcount = 10000
         expected_msgcount = 0
+        failurerate = 0
+        maxdelay = 1
 
         def genmsg(x):
             nonlocal expected_msgcount
