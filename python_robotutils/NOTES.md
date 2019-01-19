@@ -1,8 +1,37 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 18, 2018C JMJ: Handling exceptions in EventScheduler's background thread
+`EventScheduler`'s background thread now exits if the client's event handler function throws
+an exception, after first logging the stack trace by calling `logger,exception`:
 
-## January 18, 2018A JMJ: MockTransport test: Replaced threading.Timer by our own EventScheduler
+```
+EventScheduler.start.threadfn:
+	...
+	except Exception: # pylint: disable=broad-except
+	    self._event_exception = True
+	    # This would log an ERROR message with details about the exception.
+	    # By default this prints to stderr, so we get to reports of this error
+	    logger.exception("EventScheduler: Client's threadfn threw exception")
+	    break  # Get out of the loop
+```
+Previously it was catching the exception and ignoring it (after tracing it, which didn't show up
+because tracing is off by default. `logger.exception` logs as an error information about
+the last caught exception available via `sys.exc_info()`.
+I also experimented with using `warnings.warn()`, but settled on logging the exception. Errors
+are sent to `stderr` by default so they show up on the command line.
+
+The status of `EventScheduler's` background thread can be checked by querying
+`EventScheduler.healthy` which checks flag `_event_exception` set by the background thread
+if the latter exits because of an exception.
+
+There is an OPEN ISSUE - if the main thread exits, the background thread is left blocked
+(probably on `sched.wait`) and the process does not exit, even with CTRL-C. So if any
+test assertion fails before the mock transport is closed, the bash window has to be killed - the
+only I could find to kill the process :-(.  Need to look at ways for the background thread to
+realize that it has been abandoned and exit on its own. But that's for another day.
+
+## January 18, 2018B JMJ: MockTransport test: Replaced threading.Timer by our own EventScheduler
 And got an expected 10x speedup! Now processing about 50,000 messages per second.
 Previously it was about 5000 messages per second.
 

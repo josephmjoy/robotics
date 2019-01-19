@@ -21,6 +21,9 @@ def tracing():
     """ Whether to trace or not"""
     return True
 
+def critical(*args, **kwargs):
+    """Wrapper to log critical error messages"""
+    logger.critical(*args, **kwargs)
 
 class AtomicNumber:
     """Supports various atomic operations on numbers
@@ -269,7 +272,7 @@ class EventScheduler:
         self._lock = threading.Lock()
         self._event = threading.Event()
         self._cancelevent = threading.Event()
-        self._numexceptions = 0
+        self._event_exception = False
         self._thread = None
         self._quit = False
 
@@ -299,9 +302,12 @@ class EventScheduler:
                             # Queue is empty, let's wait for more
                             self._event.wait() # wait for more events...
                             self._event.clear()
-                except Exception as exc: # pylint: disable=broad-except
-                    trace("Caught exception " + str(exc))
-                    self._numexceptions += 1
+                except Exception: # pylint: disable=broad-except
+                    self._event_exception = True
+                    # This would log an ERROR message with details about the exception.
+                    # By default this prints to stderr, so we get to reports of this error
+                    logger.exception("EventScheduler: Client's threadfn threw exception")
+                    break  # Get out of the loop
             trace("Exiting threadfn")
 
         with self._lock:
@@ -316,7 +322,7 @@ class EventScheduler:
         """Schedule event {func} to run after waiting {delay} from the point this
     call was made OR the scheduler was started, whichever happened later."""
         with self._lock:
-            if not self._quit:
+            if not self._quit and not self._event_exception:
                 self._scheduler.enter(delay, priority=0, action=func) # will not block
                 self._event.set() # wake up background thread if necessary
             else:
@@ -330,10 +336,6 @@ class EventScheduler:
         self._cancelevent.set() # get out of scheduler.run() if necessary
         trace("cancel_all: exit")
 
-    def get_exception_count(self) -> int:
-        """Returns the count of exceptions thrown by scheduled events"""
-        return self._numexceptions
-
     def stop(self, block=False):
         """Stop running once all pending events have been scheduled. If {block}
         then block until all events are completed. Once stopped, the scheduler
@@ -344,8 +346,14 @@ class EventScheduler:
             self._event.set() # wake up background thread if necessary
         if block:
             trace("stop: waiting for thread to complete")
+            # This works even if the thread has exited prematurely
             self._thread.join()
             trace("stop:thread completed")
+
+    def healthy(self) -> bool:
+        """ Returns if the scheduler is stopped or running OK. If
+        a client event handler threw an exception it returns True."""
+        return not self._event_exception
 
 if __name__ == '__main__':
     import doctest

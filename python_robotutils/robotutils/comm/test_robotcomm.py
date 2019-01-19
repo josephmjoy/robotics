@@ -49,10 +49,10 @@ class MockRemoteNode(rc.DatagramTransport.RemoteNode):
             self._transport.numforcedrops.next()
             return # **************** EARLY RETURN *****
 
-        if self._non_forcedrop():
+        if self._nonforce_drop():
             if tracing():
                 trace("TRANSPORT: RANDDROP\n[%s]", msg)
-            self._transport.numRandomDrops.next()
+            self._transport.numrandomdrops.next()
             return # **************** EARLY RETURN *****
 
         self._transport.handleSend(msg)
@@ -62,15 +62,19 @@ class MockRemoteNode(rc.DatagramTransport.RemoteNode):
         """Text representation of destination address"""
         return self._address
 
+    def isrunning(self) -> bool:
+        """Returns if the transport is able to send and receive packets"""
+        return self._transport.isrunning()
 
     def _force_drop(self, msg) -> bool:
         """Whether or not to always drop this message"""
         return self._transport.ALWAYSDROP_TEXT in msg
 
-
-    def _non_forcedrop(self) -> bool:
-        """Whether to drop even if it's not a forced drop"""
-        if not self._transport.closed and not self._transport.zeroFailures():
+    def _nonforce_drop(self) -> bool:
+        """Whether randomly drop message"""
+        if self._transport.closed:
+            return True
+        if self._transport.zeroFailures():
             return False
         return random.random() < self._transport.failurerate
 
@@ -101,7 +105,7 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
     #
     # DatagramTransport methods
     #
-    def start_listening(self, handler) -> None: # BiConsumer<String, RemoteNode> handler
+    def start_listening(self, handler) -> None:
         """Listen should only be called once."""
         assert not self.client_recv
         self.client_recv = handler
@@ -137,6 +141,10 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
         assert maxdelay >= 0
         self.failurerate = failurerate
         self.maxdelay = maxdelay
+
+    def healthy(self) -> bool:
+        """Returns if the underlying transport is healthy, i.e., can still send/recv messages."""
+        return self.scheduler.healthy()
 
     def zeroFailures(self) -> bool:
         """{failurerate} "close enough" to 0 is considered to be zero-failures."""
@@ -226,8 +234,8 @@ class TestRobotComm(unittest.TestCase):
         errcount = ch.AtomicNumber(0) # count of unexpected messages recvd
 
         def receivemsg(msg, node):
-            #print("Received message [{}] from {}".format(msg, node))
-            if node.address != self.LOCAL_ADDRESS:
+            # print("Received message [{}] from {}".format(msg, node))
+            if node.address() != self.LOCAL_ADDRESS:
                 errcount.next()
             recvcount.next()
             counter = messages.get(msg)
@@ -237,17 +245,21 @@ class TestRobotComm(unittest.TestCase):
                 errcount.next() # unexpected message
 
         transport = MockTransport(self.LOCAL_ADDRESS)
-        failurerate = 0
-        maxdelay = 1
         transport.setTransportCharacteristics(failurerate, maxdelay)
         transport.start_listening(receivemsg)
-        node = transport.new_remotenode("loopback")
+        node = transport.new_remotenode(self.LOCAL_ADDRESS)
         for msg in messages:
             node.send(msg) # We're sending the keys
-        #print("Waiting...")
-        while recvcount.value() < expected_msgcount:
+        # print("Waiting... for {} messages".format(expected_msgcount))
+        while recvcount.value() < expected_msgcount and transport.healthy():
             time.sleep(0.1)
-        #print("Received {} messages".format(msgcount))
+        # print("Received {} messages".format(msgcount))
+
+        # Need to close before any test failure assertions, otherwise
+        # scheduler thread will never exit
+        transport.close()
+
+        self.assertEqual(errcount.value(), 0)
         self.assertEqual(recvcount.value(), expected_msgcount)
 
         # Check that expected messages are received exactly once, and
@@ -258,5 +270,33 @@ class TestRobotComm(unittest.TestCase):
                 expected = 0
             self.assertEqual(counter.value(), expected, "msg count for:" + msg)
 
+        print("transport_simple: received {}/{} messages".format(recvcount, msgcount))
+
+
+    def test_mock_transport_with_random_failures(self):
+        """Sends a bunch of messages with random transport failures."""
+        msgcount = 10000
+        failurerate = 0.3
+        maxdelay = 1
+
+        recvcount = ch.AtomicNumber(0)
+        messages = {'msg-' + str(i) for i in range(msgcount)}
+        transport = MockTransport(self.LOCAL_ADDRESS)
+        transport.setTransportCharacteristics(failurerate, maxdelay)
+
+        # def receivemsg(msg, node):
+        #     recvcount.next()
+        transport.start_listening(lambda msg, node: recvcount.next())
+
+        node = transport.new_remotenode("loopback")
+        for msg in messages:
+            node.send(msg) # We're sending the keys
+        time.sleep(maxdelay)
+
+        # Need to close before any test failure assertions, otherwise
+        # scheduler thread will never exit
         transport.close()
+
+        # Actual failure rate must match expected to within 0.1
+        self.assertAlmostEqual(recvcount.value()/msgcount, 1-failurerate, 1)
         print("transport_simple: received {}/{} messages".format(recvcount, msgcount))

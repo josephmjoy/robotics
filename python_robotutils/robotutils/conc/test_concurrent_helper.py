@@ -460,7 +460,7 @@ class TestEventScheduler(unittest.TestCase):
             if random.random() < 10/numevents:
                 time.sleep(0.1) # induce context switch every now and then
         scheduler.stop(block=True)
-        self.assertEqual(scheduler.get_exception_count(), 0)
+        self.assertTrue(scheduler.healthy())
         self.assertEqual(count, numevents)
         print("scheduler NOCANCEL: count={}/{}".format(count, numevents))
 
@@ -477,7 +477,7 @@ class TestEventScheduler(unittest.TestCase):
 
         numevents = 100000
         timespan = 100 # seconds, i.e. a long time
-        for i in range(numevents):
+        for _ in range(numevents):
             delay = random.random()*timespan
             scheduler.schedule(delay, eventfunc)
             if random.random() < 10/numevents:
@@ -487,5 +487,5 @@ class TestEventScheduler(unittest.TestCase):
         scheduler.cancel_all()
         scheduler.stop(block=True)
         print("scheduler CANCEL: count={}/{}".format(count, numevents))
-        self.assertEqual(scheduler.get_exception_count(), 0)
+        self.assertTrue(scheduler.healthy())
         self.assertGreater(count, 0)
