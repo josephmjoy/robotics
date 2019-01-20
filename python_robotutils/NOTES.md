@@ -1,6 +1,37 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 20, 2018B JMJ: Documenting named tuples and Pylint smarts
+Started porting `RobotComm` class and tests...
+- `ReceivedMessage` is a named tuple. 
+- `Channel` Java interface is the top-level `Channel` ABC
+
+## January 20, 2018A JMJ: Documenting named tuples and Pylint smarts
+
+Got this from a Stack overflow answer: Since Python 3.5, docstrings for `namedtuple` objects
+can be updated.  From https://docs.python.org/3/whatsnew/3.5.html#collections
+
+```
+	Point = namedtuple('Point', ['x', 'y'])
+	Point.__doc__ += ': Cartesian coodinate'
+	Point.x.__doc__ = 'abscissa'
+	Point.y.__doc__ = 'ordinate'
+```
+Using this for `ReceivedMessage` which is now a named tuple (as an interface in Java)
+
+Pylint is _very_ smart. 
+
+```
+def myfunc():
+	return 'blah' # return a string
+
+x = myfunc()
+x.operation()
+```
+Pylint warns that `str` has no method `operation`! In other words, it discovers
+that `myfunc` returns a `str` object and then checks what's being done to that 
+object!
+
 ## January 18, 2018C JMJ: Handling exceptions in EventScheduler's background thread
 `EventScheduler`'s background thread now exits if the client's event handler function throws
 an exception, after first logging the stack trace by calling `logger,exception`:

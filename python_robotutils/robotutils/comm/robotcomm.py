@@ -3,6 +3,7 @@ This module implements robotcomm communications functionality. Ported by JMJ
 from the Java implementation (class RobotComm)
 """
 import abc
+import collections
 
 
 class DatagramTransport(abc.ABC):
@@ -56,6 +57,103 @@ class DatagramTransport(abc.ABC):
     def close(self) ->None:
         """Closes all open listeners and remote notes."""
 
+
+ReceivedMessage = collections.namedtuple('ReceivedMessage',
+                                         'message msgtype remote_address '
+                                         + 'received_timestamp channel')
+ReceivedMessage.__doc__ += ":blah" # Requires Python 3.5+
+
+
+class Channel(abc.ABC):
+    """Interface to a RobotComm channel"""
+
+    @abc.abstractmethod
+    def bind_to_remote_node(self, address) -> None:
+        """Binds to a remote node"""
+
+
+    @abc.abstractmethod
+    def start_receiving_messages(self, ) -> None:
+        """Starts receiving messages"""
+
+    @abc.abstractmethod
+    def send_message(self, msgtype, message) -> None:
+        """Send a message"""
+
+    @abc.abstractmethod
+    def poll_received_message(self) -> ReceivedMessage:
+        """Returns a received message, None otherwise"""
+
+    @abc.abstractmethod
+    def stop_receiving_messages(self) -> None:
+        """Stops receiving messages"""
+
+
 #
-#  ------------ Private Methods ----------------
+# End of Abstract Base Classes
 #
+
+
+class RobotComm():
+    """The top-level class for robotcomm"""
+
+    def __init__(self, transport):
+        """Initializes an instance of RobotComm with the specified transport."""
+        self._channelstats = []
+        self._transport = transport
+
+    #
+    # Abstract method implementations...
+    #
+
+    def new_channel(self, address) -> Channel:
+        """Returns a new channel"""
+        return self._ChannelImplementation(address)
+
+
+    def start_listening(self) -> None:
+        """Start listening for messages on all channels"""
+
+    def stop_listening(self) -> None:
+        """Stop listening"""
+
+    def close(self) -> None:
+        """Close"""
+
+    def get_channel_statistics(self):
+        """Gets an enumeration of channel statistics"""
+        return self._channelstats
+
+    #
+    # End of abstract method implementations
+    #
+
+    class _ChannelImplementation(Channel):
+        """Hello!"""
+
+        def __init__(self, address):
+            """Initialzies the channel object"""
+        #
+        # Abstract method implementations...
+        #
+
+        def bind_to_remote_node(self, address) -> None:
+            """Binds to a remote node"""
+
+
+        def start_receiving_messages(self, ) -> None:
+            """Starts receiving messages"""
+
+        def send_message(self, msgtype, message) -> None:
+            """Send a message"""
+
+        def poll_received_message(self) -> ReceivedMessage:
+            """Returns a received message, None otherwise"""
+            return ReceivedMessage()
+
+        def stop_receiving_messages(self) -> None:
+            """Stops receiving messages"""
+
+        #
+        # End of abstract method implementations
+        #

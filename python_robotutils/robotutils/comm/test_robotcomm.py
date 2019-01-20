@@ -27,6 +27,7 @@ def tracing():
 
 
 
+
 TransportStats = collections.namedtuple('TransportStats', 'sends recvs forcedrops randomdrops')
 
 #pylint: disable=invalid-name
@@ -88,7 +89,7 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
     ALWAYSDROP_TEXT = "TRANSPORT-MUST-DROP"
 
     def __init__(self, local_address):
-        """Initialize MockTransport"""
+        """Initialize MockTransport. {local_address}" can be any string."""
         self.loopbacknode = MockRemoteNode(self, local_address)
         self.recvqueue = ch.ConcurrentDeque()
         self.transport_timer = None
@@ -205,8 +206,8 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
             self.numforcedrops.next()
 
 
-class TestRobotComm(unittest.TestCase):
-    """Container for robotcomm unit tests"""
+class TestMockTransport(unittest.TestCase):
+    """Container for mock transport unit tests"""
 
     LOCAL_ADDRESS = "loopback"
 
@@ -302,3 +303,66 @@ class TestRobotComm(unittest.TestCase):
         # Actual failure rate must match expected to within 0.1
         self.assertAlmostEqual(recvcount.value()/msgcount, 1-failurerate, 1)
         print("transport_simple: received {}/{} messages".format(recvcount, msgcount))
+
+
+# Keeps track of a single test message
+TestMessageRecord = collections.namedtuple('TestMessageRecord', 'id alwaysDrop msgType msgBody')
+
+
+# Keeps track of a command and expected response
+TestCommandRecord = collections.namedtuple('TestCommandRecord', 'cmdRecord respRecord rt timeout')
+
+def new_message_record(id_, alwaysdrop):
+    """Creates and returns a new test message record"""
+
+    def rand32():
+        return random.randint(0, 1<<32)
+
+    def random_body():
+        """First line in message body is the internal 'id'. Remainder is random junk."""
+        extra = random.randint(1, 9)
+        sequence = (hex(random.randint(0, 1<<32)) for _ in range(extra))
+        return hex(id_) + '\n' + '\n'.join(sequence)
+
+    def random_type():
+        x = hex(rand32())
+        return x[:random.randint(0, len(x))] # can be the empty string
+
+    body = MockTransport.ALWAYSDROP_TEXT if alwaysdrop else random_body()
+    return TestMessageRecord(id=id_, alwaysDrop=alwaysdrop,
+                             msgType=random_type(), msgBody=body)
+
+
+# class StressTester:
+#     """Test engine that instantiates and runs robotcomm stress tests with
+#     various parameters"""
+
+class TestRobotComm(unittest.TestCase):
+    """Container for RobotComm unit tests"""
+
+    @unittest.skip("Unimplemented")
+    def test_message_basic(self):
+        """Sends and receives a single message"""
+        transport = MockTransport("localhost")
+        rcomm = rc.RobotComm(transport)
+        channel = rcomm.new_channel("testChannel")
+        channel.bind_to_remote_node("localhost")
+        rcomm.start_listening()
+
+        testMessage = "test message"
+        channel.start_receiving_messages()
+        channel.send_message("MYTYPE", testMessage)
+
+        rm = None
+        while not rm:
+            rm = channel.poll_received_message()
+            time.sleep(0.01)
+
+        for stats in rcomm.get_channel_statistics():
+            print(stats)
+
+        channel.stop_receiving_messages()
+        rcomm.stop_listening()
+        rcomm.close()
+        self.assertTrue(rm)
+        self.assertEqual(testMessage, rm.message())
