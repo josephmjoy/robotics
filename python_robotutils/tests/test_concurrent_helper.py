@@ -9,8 +9,9 @@ import random
 import traceback
 import time
 
-from . import concurrent_helper as ch
+from .context import concurrent_helper as ch
 
+# pylint: disable=invalid-name
 
 class TestAtomicNumber(unittest.TestCase):
     """Container for AtomicNumber tests"""

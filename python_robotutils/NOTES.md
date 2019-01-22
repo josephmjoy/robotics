@@ -2,6 +2,13 @@
 
 
 
+## January 22, 2018C JMJ: Moved to flatter structure, moved some tests to tests directory
+Per Design Note "January 22, 2018B", various modules have been moved up to to the top level.
+Also tests for stable code have been moved to the `tests` directory that is a sibling of 
+`robotutils` which is the recommended location. All tests under `tests` pass and have a 10/10 Pylint
+score (of course they have several warnings disables within their code, in particular disable
+the invalid name check.
+
 ## January 22, 2018B JMJ: Design Note: Flattening the Directory Structure
 In keeping with "Flat is better than nested", I'm removing  the `misc` and `conc` sub directories.
 The only subdirectory that remains is `comm`. The new rule: only make a sub directory (sub package)

@@ -10,7 +10,7 @@ import unittest
 import re
 import random
 
-from . import strmap_helper
+from .context import strmap_helper
 
 _REGEX_VALIDNAME = re.compile(r"\w+")
 _STRING_DEFAULT = 'WOAH!!!'
@@ -23,6 +23,8 @@ _INT_DEFAULT = _INT_MAX * 10
 _FLOAT_MIN = -1.0
 _FLOAT_MAX = 1.0
 _FLOAT_DEFAULT = _FLOAT_MAX * 10
+
+# pylint: disable=invalid-name
 
 class TestStringmapHelper(unittest.TestCase):
     """Container class for unittest tests."""
@@ -151,4 +153,3 @@ class TestStringmapHelper(unittest.TestCase):
         smh = strmap_helper.StringDictHelper(smap)
         for kv in kv_infos:
             self.run_gauntlet(smh, kv)
-

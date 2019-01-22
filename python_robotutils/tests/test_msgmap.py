@@ -9,7 +9,9 @@ Author: JMJ
 import unittest
 import random
 
-from . import msgmap
+from .context import msgmap
+
+# pylint: disable=invalid-name
 
 class TestStringMethods(unittest.TestCase):
     """Container class for unittest tests."""

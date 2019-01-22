@@ -9,7 +9,7 @@ Author: JMJ
 import unittest
 import io
 
-from . import config_helper
+from .context import config_helper
 
 class TestConfigHelper(unittest.TestCase):
     """Container for config_helper unit tests"""
