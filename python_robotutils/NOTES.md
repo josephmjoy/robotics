@@ -1,10 +1,221 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
-## January 20, 2018B JMJ: Documenting named tuples and Pylint smarts
+
+## January 22, 2018A JMJ: Logging design decisions
+After much (too much?) thought, here is the plan. Each package and significant sub-package
+will have a file called `_mylogging.py`.  This module adds `TRACE` as a new level, and also defines 
+a logging instance, `_logger`, and module-level functions `_tracing` and `_trace`.
+
+Here's a sample `_mylogging.py`:
+
+```
+import logging
+
+TRACELEVEL = 9 # Default level of trace messages
+LOGNAME = "robotutils"
+
+_logger = logging.getLogger(LOGNAME) # pylint: disable=invalid-name
+logging.addLevelName(TRACELEVEL, "TRACE")
+
+def _tracing() -> bool:
+    """Whether or not tracing is enabled. Use it to conditinally execute code
+    just for tracing."""
+    return _logger.isEnabledFor(TRACELEVEL)
+
+def _trace(*args, **kwargs) -> None:
+    """Trace message. Tracing analog to logger.debug, etc"""
+    _logger.log(TRACELEVEL, *args, **kwargs)
+```
+Modules can import one or more of the module attributes as follow
+Sample `somemodule.py` below imports various `_myloggin` attributes by name and uses them. Function
+`testfunc` is called twice, once with the default log level (only warnings and errors displayed)
+and once with the log level set to `TRACELEVEL`.
+
+
+```
+import logging
+from _mylogging2 import _logger, _tracing, _trace
+import _mylogging2
+
+logging.basicConfig() # setups up logging of to console by default
+
+def testfunc():
+    """Main Test function"""
+    print("---in testfunc---")
+
+    if _tracing():
+        print("main: going to trace...")
+        result = sum(x for x in range(20000000)) # Complex prep work
+        _trace("This is a trace message from main. sum: %d", result)
+
+    _trace("This an UNGUARDED trace message")
+    _logger.error("This is an error message")
+
+
+testfunc()
+
+_logger.setLevel(_mylogging2.TRACELEVEL)
+
+testfunc()
+```
+This produces output:
+
+```
+---in testfunc---
+ERROR:robotutils:This is an error message
+---in testfunc---
+main: going to trace...
+TRACE:robotutils:This is a trace message from main. sum: 199999990000000
+TRACE:robotutils:This an UNGUARDED trace message
+ERROR:robotutils:This is an error message
+```
+Note the default output format starts with the logging level, and TRACE has been added to the 
+list of levels. This was done in `_mylogging.py`, with `logging.addLevelName(TRACELEVEL, "TRACE")`.
+
+
+### A discarded variation - automatically populate module-level attributes
+The following version of `_mylogging.py` exposes method `setuplogging` that takes a module name.
+It looks up that module and populates attributes `_logger`, `_tracing` and `_trace`, so that
+that module can use them without having to import them explicitly. This option does work, but
+was discarded because it violates Pythonic principles "explicit is better than implicit" and
+"simple is better than complex". Also, Pylint throws a fit because it can't find these inserted
+attributes.
+
+```
+import sys
+import logging
+
+TRACELEVEL = 9 # Default level of trace messages
+logging.addLevelName(TRACELEVEL, "TRACE")
+
+def setuplogging(modulename, logname=None) -> None:
+    """Sets up logging for module with name {name}. Optional {logname}
+    provides a logical name for this logger. If None it is set to {name}."""
+
+    try:
+        module = sys.modules[modulename] # wil throw Key error if not found
+    except KeyError:
+        raise ValueError("Invalid module name [{}]".format(modulename))
+
+    logname = logname or modulename
+    logger = logging.getLogger(logname)
+
+    def tracing() -> bool:
+        """Whether or not trace is enabled"""
+        return logger.getEffectiveLevel() <= TRACELEVEL
+
+    def trace(*args, **kwargs) -> None:
+        if tracing():
+            logger.log(TRACELEVEL, *args, **kwargs)
+
+    #pylint: disable=protected-access
+    module._tracing = tracing
+    module._trace = trace
+    module._logger = logger
+```
+
+## January 21, 2018A JMJ: Some logging resources
+
+Official docs, tutorial and cookbook:
+	https://docs.python.org/3/library/logging.html
+	https://docs.python.org/3/howto/logging.html#logging-basic-tutorial
+	https://docs.python.org/3/howto/logging.html#logging-advanced-tutorial
+	https://docs.python.org/3/howto/logging-cookbook.html#logging-cookbook
+
+Tips on logging: https://fangpenlin.com/posts/2012/08/26/good-logging-practice-in-python/
+From Hitchhiker's guide:
+https://12factor.net/logs
+https://12factor.net/
+
+Logging level aka severty level: higher is more important. So opposite of 'priority' in general.
+`exc_info, stack_info`. Latter can be specified even if there is no exception - any time you
+want the full stack trace
+extra
+
+Can define your own levels. (don't know how).
+```
+CRITICAL 50
+ERROR 40
+WARNING 30
+INFO 20
+DEBUG 10
+NOTSET 0
+```
+
+`logging.captureWarnings(capture: bool)` - route warnings to logging system
+
+### Design Decisions
+
+Looking at video 
+https://www.youtube.com/watch?v=HTLu2DFOdTg&t=33m8s
+
+-Use clasmethods if you want to properly deal with subclassing
+-Use slots for lightweight objects. Use slots only if you really need them -
+ you can add them later. If someone subclasses, the slots doesn't inheret - so
+ subclassers can add attributes.
+-Use properties as required if there is a need to hide previously exposed
+ attributes.
+-Use __ (dunder) prefix to enable subclasses to NOT override your attributes.
+
+
+For a sub package containing multiple modules, the main module, called
+`mainmod` here, would have:
+```
+import logging
+logger = logging.getLogger('mainmod') # pylint: disable=invalid-name
+def tracing():
+    return true
+def trace():
+    return logger.level >= _TRACELEVEL
+```
+
+Other sibling modules would include:
+```
+from .mainmod import logger, tracing, trace
+```
+
+Code can call...
+```
+    logger.info("blah bla')
+    if tracing():
+        trace("this is a trace message")
+```
+
+
+## January 20, 2018B JMJ: Started porting RobotComm
 Started porting `RobotComm` class and tests...
 - `ReceivedMessage` is a named tuple. 
 - `Channel` Java interface is the top-level `Channel` ABC
+
+To disable a particular unit test: `@unittest.skip("Unimplemented")`
+
+More porting strategies (see also January 15, 2018A note)
+-  Only use interfaces if the client will need to provide an implementation - like for
+   `DatagramTransport`. The Java version had many interfaces, like `RobotComm.Client` and
+   `RobotComm.ReceivedCommand` that were implemented by RobotComm itself. These all go away,
+   replaced by the implementation classes.
+- Flatten class structure. In Python, we have the module-level (file-level) namespace
+  that wasn't there in Java, where each file had to be a class. So we can promote
+  classes & interfaces living inside the RobotComm class to the top (file) level.
+- Java `enum` become Python `Enum` instances.
+
+```
+Java                		Python
+--------------------------------------
+RobotComm.SentCommand &         SentCommand class
+SentCommandImplementation
+
+RobotComm.ReceivedMessage &     ReceivedMessage (named tuple)
+ReceiveMesssageImplementaion
+
+RobotComm.ReceivedCommand &     ReceivedCommand class
+ReceivedCommandImplementation
+
+RobotComm.Channel  &            Channel class
+ChannelImplementation
+
+```
 
 ## January 20, 2018A JMJ: Documenting named tuples and Pylint smarts
 
@@ -31,6 +242,7 @@ x.operation()
 Pylint warns that `str` has no method `operation`! In other words, it discovers
 that `myfunc` returns a `str` object and then checks what's being done to that 
 object!
+
 
 ## January 18, 2018C JMJ: Handling exceptions in EventScheduler's background thread
 `EventScheduler`'s background thread now exits if the client's event handler function throws
@@ -106,7 +318,7 @@ There were two problems:
                         more = not self._quit
     ```
 
-With this change test_cancel_scheduler can now pump about 100,000 events per second
+With this change `test_cancel_scheduler` can now pump about 100,000 events per second
 (was about 1000 events / sec) and `cancel_all` returns immediately.
 
 NOTE: `time.sleep(0)` is about 1 million calls per second, but `time.sleep(0.00001)` is about
@@ -156,7 +368,7 @@ See the "IMPLEMENTATION NOTE" at the head of class `EventScheduler`.
 
 ## January 16, 2018A JMJ: Property calling unittest from the command line.
 
-`Unittest` wasn't working when submodules are reaching over to others, like
+`Unittest` wasn't working when sub modules are reaching over to others, like
 
 ```
 from ..conc import concurrent_helper as ch
@@ -220,9 +432,6 @@ Porting strategy:
   methods that implement an interface together with some heading comments
 
 Used chained comparison `assert 0 <= failurerate <= 1` - Pylint pointed this out
-
-
-
 
 ## January 14, 2018A JMJ: Finished concurrent unit test for ConcurrentDict
 This is `TestConcurrentDict.test_concurrent_cdict`. Multiple threads party on
