@@ -2,7 +2,28 @@
 
 
 
-## January 22, 2018A JMJ: Logging design decisions
+## January 22, 2018B JMJ: Design Note: Flattening the Directory Structure
+In keeping with "Flat is better than nested", I'm removing  the `misc` and `conc` sub directories.
+The only subdirectory that remains is `comm`. The new rule: only make a sub directory (sub package)
+if the logical content spans more than one module (file). So only `comm` qualifies.
+See "January 4, 2019A" note on the original code structure proposal for additional context.
+
+For now the unit tests still live side-by-side with the modules they test, but they should move
+to a `test` directory in parallel with `robotutil` once the code is stabilized.
+When that happens, we'll need to add (just for the tests), `robotutil` to the python path. Follow
+the instructions in https://docs.python-guide.org/writing/structure/ (Hitchhiker's Guide to Python),
+in particular, create a `tests/context.py` file:
+```
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import sample
+```
+And import this from individual test modules.
+
+
+## January 22, 2018A JMJ: Design Note: Logging Design
 After much (too much?) thought, here is the plan. Each package and significant sub-package
 will have a file called `_mylogging.py`.  This module adds `TRACE` as a new level, and also defines 
 a logging instance, `_logger`, and module-level functions `_tracing` and `_trace`.
@@ -36,7 +57,7 @@ and once with the log level set to `TRACELEVEL`.
 ```
 import logging
 from _mylogging2 import _logger, _tracing, _trace
-import _mylogging2
+import _mylogging
 
 logging.basicConfig() # setups up logging of to console by default
 
@@ -70,9 +91,10 @@ TRACE:robotutils:This is a trace message from main. sum: 199999990000000
 TRACE:robotutils:This an UNGUARDED trace message
 ERROR:robotutils:This is an error message
 ```
-Note the default output format starts with the logging level, and TRACE has been added to the 
-list of levels. This was done in `_mylogging.py`, with `logging.addLevelName(TRACELEVEL, "TRACE")`.
-
+Note that, by default, each line in the output starts with the text version of the logging level,
+and in the about output, TRACE has been added to the list of levels.
+This was done in `_mylogging.py`, with `logging.addLevelName(TRACELEVEL, "TRACE")`.
+Without this call, the level gets reported as "Level 9".
 
 ### A discarded variation - automatically populate module-level attributes
 The following version of `_mylogging.py` exposes method `setuplogging` that takes a module name.
