@@ -2,12 +2,45 @@
 
 
 
+## January 23, 2018D JMJ: Added ConcurrentDict.upsert
+Added `upsert` because it is a common case - there was code in 
+Robotutils that attempted to do this. It's better included in
+`ConcurrentDict` because it controls the lock. Decided to add a creation function so that
+the chance of creating and then discarding a value is minimized.
+Updated `TestConcurrentDict` to also include `upsert`. All tests pass.
+```
+    def upsert(self, key, valuefunc, *args, **kwargs):
+        """ Atomically, if there is no value or None associated with {key}, then
+        call {valuefunc}(*args, **args) to generate and set a new value 'newvalue' and
+        return tuple (newvalue, True).
+        If, on the other hand, there was a non None previous value `prevvalue`, return
+        (`prevvalue`, False). Thus, the return value is a tuple. The first element is the
+        new or previous value, and the second element is True if the value was created and
+        False if the value was preexisting. NOTE: {valuefunc} is called WITHOUT the dictionary lock
+        being held. There is a small chance that {valuefunc} may be called but the resultant
+        object discarded. There is also the chance that the previous or newly set value
+        may be deleted concurrently by another thread before upsert returns.
+        """
+```
+
+## January 22, 2018D JMJ: Regarding Circular Imports
+Lots of good discussions in circular imports - for example:
+https://stackoverflow.com/questions/744373/circular-or-cyclic-imports-in-python
+
+Pylint complains of circular references:
+```
+test_robotcomm.py:1:0: R0401: Cyclic import (robotutils.comm.channel -> robotutils.comm.robotcomm) (cyclic-import)
+```
+I think that circular imports should be avoided - they are confusing. So the question is
+how to avoid them in the `RobotComm` <-> `Channel` relationship. Let's see as we proceed
+with the port.
+
 ## January 22, 2018C JMJ: Moved to flatter structure, moved some tests to tests directory
 Per Design Note "January 22, 2018B", various modules have been moved up to to the top level.
 Also tests for stable code have been moved to the `tests` directory that is a sibling of 
 `robotutils` which is the recommended location. All tests under `tests` pass and have a 10/10 Pylint
 score (of course they have several warnings disables within their code, in particular disable
-the invalid name check.
+the invalid name check because of lots of single-char and double-char variables.
 
 ## January 22, 2018B JMJ: Design Note: Flattening the Directory Structure
 In keeping with "Flat is better than nested", I'm removing  the `misc` and `conc` sub directories.

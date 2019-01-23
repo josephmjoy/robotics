@@ -239,6 +239,8 @@ class TestConcurrentDict(unittest.TestCase):
 
     def test_sequential_cdict(self):
         """Single-threaded ConcurrentDict test"""
+
+        # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         cdict = ch.ConcurrentDict()
         self.assertEqual(len(cdict), 0)
 
@@ -249,7 +251,7 @@ class TestConcurrentDict(unittest.TestCase):
         self.assertEqual(cdict.get('1'), None)
 
 
-        num_elements = 1
+        num_elements = 1000
         kvdata = [(str(x), x) for x in range(num_elements)]
 
         # pylint: disable=invalid-name
@@ -260,16 +262,24 @@ class TestConcurrentDict(unittest.TestCase):
             cdict.set(k, v)
         self.assertEqual(len(cdict), num_elements)
 
+        # These items should always be found
         for k, v in kvdata:
             v1 = cdict.get(k, -1)
             v2 = cdict.get(k)
             v3 = cdict.pop(k)
             v4 = cdict.pop(k, -1) # should not find it
+            v5, created = cdict.upsert(k, lambda x: x, v) # add it back
+            v6, created6 = cdict.upsert(k, lambda x: x, -v) # try to upsert it again with -v
             self.assertEqual(v, v1)
             self.assertEqual(v, v2)
             self.assertEqual(v, v3)
             self.assertEqual(v4, -1)
+            self.assertEqual(v, v5)
+            self.assertTrue(created) # because it didn't exist
+            self.assertEqual(v, v6)  # previous value
+            self.assertFalse(created6) # because it already existed
 
+        # These items should never be found
         for k in range(num_elements, 2 * num_elements):
             v1 = cdict.get(k, -1)
             v2 = cdict.get(k)
@@ -281,19 +291,21 @@ class TestConcurrentDict(unittest.TestCase):
 
         total = 0
 
-        def process_func(x):
+        def process_func(k, v):
+            self.assertEqual(k, str(v))
             nonlocal total
-            total += x
+            total += v
 
         cdict.process_all(process_func)
         expected = (num_elements - 1) * num_elements // 2 # sum of 0 to (num-1)
         self.assertEqual(total, expected)
 
+
     def test_concurrent_cdict(self):
         """Concurrent test for ConcurrentDict"""
         # Create two distinct set of keys - shared and private
         # Partition the private set among the workers
-        # Workers attempt to set, get and delete keys randomly from the
+        # Workers attempt to set, get, upsert and delete keys randomly from the
         # shared set - if they succeeed they verify the value.
         # They also keep a local dictionay of their private keys to keep track
         # of whether or not they hav set or deleted a specific key - and verify
@@ -361,6 +373,12 @@ class TestConcurrentDict(unittest.TestCase):
                     value = cdict.pop(key, self._genvalue(key))
                     self._validate_kv_pair(key, value)
                     local_ops += 1
+                if cointoss(): # upsert shared
+                    key = random.choice(shared_keys)
+                    value, created = cdict.upsert(key, lambda x: x, self._genvalue(key))
+                    self._validate_kv_pair(key, value)
+                    self.assertTrue(created is True or created is False)
+                    local_ops += 1
                 if cointoss(): # get private
                     key = random.choice(private_keys)
                     prev_value = prev_privates.get(key)
@@ -371,6 +389,22 @@ class TestConcurrentDict(unittest.TestCase):
                     value = self._genvalue(key)
                     cdict.set(key, value)
                     prev_privates[key] = value
+                    local_ops += 1
+                if cointoss(): # upsert private
+                    key = random.choice(private_keys)
+                    prev_value = prev_privates.get(key) # could be None
+                    new_value = self._genvalue(key)
+                    value, created = cdict.upsert(key, lambda x: x, new_value)
+                    self._validate_kv_pair(key, value)
+                    if prev_value:
+                        # Value existed and so remains
+                        self.assertTrue(created is False)
+                        self.assertEqual(prev_value, value)
+                    else:
+                        # Value did not exist, so is set
+                        self.assertTrue(created is True)
+                        self.assertEqual(new_value, value)
+                        prev_privates[key] = value
                     local_ops += 1
                 if cointoss(): # pop private
                     key = random.choice(private_keys)

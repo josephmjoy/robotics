@@ -13,7 +13,7 @@ import collections
 import time
 
 from . import robotcomm as rc
-from ..conc import concurrent_helper as ch
+from .. import concurrent_helper as ch
 
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 

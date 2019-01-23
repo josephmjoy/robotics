@@ -170,6 +170,10 @@ class ConcurrentDict:
     1
     >>> cd.pop('a', 42) # key 'a' is no longer present
     42
+    >>> cd.upsert('b', lambda x: x, 10) # 'b' exists, value is 2
+    (2, False)
+    >>> cd.upsert('e', lambda x: x, 10) # 'c' does not exist
+    (10, True)
     >>> cd.clear()
     >>> len(cd)
     0
@@ -195,13 +199,13 @@ class ConcurrentDict:
             return self._dict.get(key, value)
 
     def set(self, key, value):
-        """Add x to the left side of the deque."""
+        """Sets the value of key {key} to {value}. The previous value, if any
+        will be lost. Another option is upsert."""
         with self._lock:
             self._dict[key] = value
 
     def pop(self, key, default=_NO_DEFAULT):
-        """
-        If key is in the dictionary, remove it and return its value,
+        """ If key is in the dictionary, remove it and return its value,
         else return default. If default is not given and key is not in
         the dictionary, a KeyError is raised.
         """
@@ -209,6 +213,34 @@ class ConcurrentDict:
             if default is _NO_DEFAULT:
                 return self._dict.pop(key)
             return self._dict.pop(key, default)
+
+    def upsert(self, key, valuefunc, *args, **kwargs):
+        """ Atomically, if there is no value or None associated with {key}, then
+        call {valuefunc}(*args, **args) to generate and set a new value 'newvalue' and
+        return tuple (newvalue, True).
+        If, on the other hand, there was a non None previous value `prevvalue`, return
+        (`prevvalue`, False). Thus, the return value is a tuple. The first element is the
+        new or previous value, and the second element is True if the value was created and
+        False if the value was preexisting. NOTE: {valuefunc} is called WITHOUT the dictionary lock
+        being held. There is a small chance that {valuefunc} may be called but the resultant
+        object discarded. There is also the chance that the previous or newly set value
+        may be deleted concurrently by another thread before upsert returns.
+        """
+        # Note that if the previous value is None it will be replaced.
+        # The new value also may potentially be None - if {valuefunc} returns None.
+        # We don't examine the value returned by {valuefunc}
+        curvalue = self.get(key) # default is None
+        created = False
+        if curvalue is None:
+            newvalue = valuefunc(*args, **kwargs)
+            with self._lock:
+                curvalue = self._dict.get(key)
+                if curvalue is None:
+                    created = True
+                    curvalue = self._dict[key] = newvalue
+                # (else we discard newvalue)
+        return (curvalue, created)
+
 
     def clear(self):
         """Remove all elements from the dictionary."""
@@ -226,7 +258,7 @@ class ConcurrentDict:
         copy of the entire dqueue with the deque lock held, but it does not
         keep the lock held when calling {func}. This also means that it is possible
         that items may have been removed (or during) the function call, and items
-        may have been concurrently added that are not processsed.."""
+        may have been concurrently added that are not processed.."""
         with self._lock:
             keys = list(self._dict) # Snapshot of all keys
         for key in keys:
