@@ -1,6 +1,12 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 25, 2018B JMJ: Checking in logging related files under `comm/`
+File `_commlogging.py` defines `_trace` and `_tracing` and a default logger, more or less
+following the design outlined in the "January 22, 2018A" design note.
+File `_comlogmsgtypes.py` is for collecting together common log message types.
+These files have not been tested other than basic proof of concept.
+
 ## January 25, 2018A JMJ: Implemented `comm/_protocol.py` completely
 
 Java's `MessageHeader` has become `Datagram`, that includes the message body.
