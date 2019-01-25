@@ -1,8 +1,128 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 25, 2018A JMJ: Implemented `comm/_protocol.py` completely
 
-## January 23, 2018D JMJ: Added ConcurrentDict.upsert
+Java's `MessageHeader` has become `Datagram`, that includes the message body.
+This is cleaner. Earlier (and Java) code extracted the message body separately.
+That may be been motivated by reducing effort spent handling bad messages.
+However the check for the protocol signature is still there, and the bulk of
+the work involves parsing the header, which was anyways happening.
+
+In `_protocol.header_from_str`, I just check `KeyError` at the bottom, and report it as the cause exception.
+```
+try:
+	...
+except KeyError as exp:
+	raise ValueError("Malformed header - invalid cmd ID") from exp
+```
+
+I use predefined `frozenset` objects to check messages for validity. The following code is from
+`_protocol.py`. There may be better/shorter ways of doing this, but this is what I came up with.
+I did consider making two sets and intersecting them - but that does more work because we just need
+to know whether or not there is overlap, not compute the overlap. Also, not clear if there is
+any actual benefit (or perhaps penalty) to using frozen sets vs strings when the
+strings are short. For long strings, using frozen set would be O(n) vs O(n^2) using strings.
+```
+BAD_HEADER_CHARS = frozenset(string.whitespace)
+BAD_CHANNEL_CHARS = frozenset(',' + string.whitespace)
+
+def containschars(str_, charset) -> bool:
+    """Returns if {str} contains any chars in {chars}"""
+    for char in str_:
+        if char in charset:
+            return True
+    return False
+```
+
+Used `Enum` and `IntEnum` for various fields.
+```
+class DatagramType(Enum):
+    ...
+class CommandStatus(Enum):
+    ...
+class Position(IntEnum):
+    ...
+```
+The `name` attribute is used to extract the string version, and these also form the over-the-wire
+versions.
+
+There is a nice docstring at the head of `_protocol.py` that exercises the functionality.
+
+## January 24, 2018B JMJ: Some Vim Tips
+
+### Reflowing text and 80-column visual check
+Vim - help with PEP 8 80-column guidance
+Set column 80 to have a red color (by default)
+`:set colorcolumn=80` or `:set cc=80`
+Then use the `gq<motion>` command, for example `3gq<ret>` to re-flow 3 lines of
+text. Or `vjjjjgq`
+
+Works pretty well, including respecting indentation, and
+automatically adding language specific comment lines, and smart enough to
+re-flow multi-line comments in Java/C/C++: `/* a very long line */` re-flows
+really well!  Vim is certainly aware of the file type, because, for example, it
+treats `//` differently
+when editing Python vs. Java source code.
+
+`gq` uses `textwidth` if set, else 79 (or window width, if it is smaller). The 79 default works well
+with PEP 8!
+
+### Uppercase/lowercase reminder
+- `{visual}U`
+- `gU{motion}`
+- `gUU`
+(replace 'U' by 'u' for lowercase), and '~' to toggle case.
+
+
+## January 24, 2018A JMJ: Porting parsing and serializaton of Messages
+
+Moving MessageHeader Java class to `_protocol.py` named tuple.
+
+'Normal' Enums can't be compared with their underlying bare values - they can only be compared with
+each other! They can be enumerated, and support the `in` containment check.
+```
+	>>> class Status(enum.Enum): A=0; B=1; C=2
+
+	>>> Status.A
+	<Status.A: 0>
+	>>> Status.A == 0
+	False
+	>>> [x for x in Status]
+	[<Status.A: 0>, <Status.B: 1>, <Status.C: 2>]
+	>>> Status.A in Status
+	True
+	>>> 0 in Status
+
+	Warning (from warnings module):
+	  File "__main__", line 1
+	DeprecationWarning: using non-Enums in containment checks will raise TypeError in Python 3.8
+	False
+```
+This is all by design. There is a `IntEnum` that is a subclass of int, so can be used wherever
+an `int` can:
+```
+	>>> class Status(enum.IntEnum): A=0; B=1; C=2
+
+	>>> [x for x in Status]
+	[<Status.A: 0>, <Status.B: 1>, <Status.C: 2>]
+	>>> Status.A == 0
+	True
+	>>> Status.A < 2
+	True
+	>>> Status.B + 2
+	3
+	>>> 2 in Status # Note this - Stats.B is in Status, but Status.B.value is NOT in Status
+	False
+	>>> [x.value for x in Status]
+	[0, 1, 2]
+	>>> len(Status)
+	3
+```
+`RobotComm._protocol` will use a regular `Enum` for various keywords in the on-the-wire protocol,
+and an `IntEnum` for indexing into the string representation.
+
+## January 23, 2018A JMJ: Added ConcurrentDict.upsert
 Added `upsert` because it is a common case - there was code in 
 Robotutils that attempted to do this. It's better included in
 `ConcurrentDict` because it controls the lock. Decided to add a creation function so that
