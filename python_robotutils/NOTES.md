@@ -1,6 +1,14 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 25, 2018B JMJ: Removed `__len__` from ConcurrentDict
+It was triggered by a Pylint warning in `comm/robotcomm.py` not test
+for a collection to be empty by `len(collection) == 0`. You are supposed to just use
+`not collection`. But I can't do that for ConcurrentDictionaries, and anyway, its 
+questionable to ask what the length is at any instant. So I removed `__len__` and added
+`empty`. The doc tests and unit tests have been changed to reflect this and tests pass.
+
+
 ## January 25, 2018B JMJ: Checking in logging related files under `comm/`
 File `_commlogging.py` defines `_trace` and `_tracing` and a default logger, more or less
 following the design outlined in the "January 22, 2018A" design note.

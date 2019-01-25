@@ -156,7 +156,7 @@ class ConcurrentDict:
     """A thread-safe dictionary, implementing a subset of dict methods
     >>> cd = ConcurrentDict()
     >>> cd.set('a', 1)
-    >>> len(cd)
+    >>> cd.get('a')
     1
     >>> cd.set('b', 2)
     >>> cd.get('b')
@@ -175,8 +175,8 @@ class ConcurrentDict:
     >>> cd.upsert('e', lambda x: x, 10) # 'c' does not exist
     (10, True)
     >>> cd.clear()
-    >>> len(cd)
-    0
+    >>> cd.empty()
+    True
     >>>
     """
 
@@ -247,10 +247,10 @@ class ConcurrentDict:
         with self._lock:
             return self._dict.clear()
 
-    def __len__(self):
-        """Returns a snapshot of the dictionary length."""
+    def empty(self) -> bool:
+        """Returns True if the dictionary is empty at this instant, False otherwise."""
         with self._lock:
-            return len(self._dict)
+            return not self._dict
 
     def process_all(self, func):
         """Applies {func}(key, value) to a snapshot of all elements.

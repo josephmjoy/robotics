@@ -242,12 +242,12 @@ class TestConcurrentDict(unittest.TestCase):
 
         # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         cdict = ch.ConcurrentDict()
-        self.assertEqual(len(cdict), 0)
+        self.assertTrue(cdict.empty())
 
         cdict.set('1', 1)
-        self.assertEqual(len(cdict), 1)
+        self.assertFalse(cdict.empty())
         cdict.clear()
-        self.assertEqual(len(cdict), 0)
+        self.assertTrue(cdict.empty())
         self.assertEqual(cdict.get('1'), None)
 
 
@@ -260,7 +260,6 @@ class TestConcurrentDict(unittest.TestCase):
         for k, v in kvdata:
             cdict.set(k, -v)
             cdict.set(k, v)
-        self.assertEqual(len(cdict), num_elements)
 
         # These items should always be found
         for k, v in kvdata:
