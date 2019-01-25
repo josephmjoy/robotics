@@ -1,7 +1,15 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
-## January 25, 2018B JMJ: Removed `__len__` from ConcurrentDict
+## January 25, 2018D JMJ: Checking in untested `robotcomm.py` and skeleton `channel.py`
+`robotcomm.py` is a port of the Java `RobotComm` class. It has also been refactored - with
+the datagram parsing and generation code stuff that lives in embedded class `MessageHeader`
+moving to the previously checked in `_protocol.py`.
+
+This code cannot yet be tested because it simply delegates work to channels and channels are not
+yet implemented - the checked in `channel.py` is just a skeleton.
+
+## January 25, 2018C JMJ: Removed `__len__` from ConcurrentDict
 It was triggered by a Pylint warning in `comm/robotcomm.py` not test
 for a collection to be empty by `len(collection) == 0`. You are supposed to just use
 `not collection`. But I can't do that for ConcurrentDictionaries, and anyway, its 
