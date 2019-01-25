@@ -1,6 +1,11 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 25, 2018D JMJ: Moved shared definitions to ./comm/common.py
+These definitions were sitting in `robotcomm.py`, but are needed in `channel.py`. But
+`channel.py` must be imported by `robotcomm.py`. To avoid the circular import
+(see "January 22, 2018D" note), I'm moving these definitions to `common.py`
+
 ## January 25, 2018D JMJ: Checking in untested `robotcomm.py` and skeleton `channel.py`
 `robotcomm.py` is a port of the Java `RobotComm` class. It has also been refactored - with
 the datagram parsing and generation code stuff that lives in embedded class `MessageHeader`

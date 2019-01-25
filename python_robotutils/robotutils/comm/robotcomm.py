@@ -2,126 +2,26 @@
 This module implements robotcomm communications functionality. Ported by JMJ
 from the Java implementation (class RobotComm)
 """
-import abc
-import collections
 import threading
 import random
 
-from .channel import Channel
 from ._commlogging import _logger, _trace
 
 from . import _commlogmsgtypes as _LMT
-from .. import concurrent_helper as ch
+from .. import concurrent_helper
 from . import _protocol
+#from .channel import Channel
+
+# Temporary...
+class Channel:
+    pass
+
 
 # TODO: Fix these...
 # pylint: disable=invalid-name
 
-class DatagramTransport(abc.ABC):
-    """
-    Interface for a datagram transport that is provided to an instance of
-    RobotComm to provide the underlying raw communication.
-    """
-
-    class RemoteNode(abc.ABC):
-        """Represents a remote node"""
-
-        @abc.abstractmethod
-        def send(self, msg) -> None:
-            """Sends a single text message"""
-
-        @abc.abstractmethod
-        def address(self) -> str:
-            """"Text representation of destination address"""
-
-    @abc.abstractmethod
-    def start_listening(self, handler) -> None:
-        """
-        Starts listening for incoming datagrams. This will likely use up
-        resources, such as a dedicated thread, depending on the implementation.
-
-        handler -- called when a message arrives. Will likely be called in
-                    some other thread's context. The handler is expected NOT to
-                    block. If time consuming operations need to be performed,
-                    queue the message for further processing, or implement a
-                    state machine. The handler *may* be reentered or called
-                    concurrently from another thread.  Call stopListening to
-                    stop new messages from being received.  """
-
-
-    @abc.abstractmethod
-    def stop_listening(self) -> None:
-        """Stops listening"""
-
-
-    @abc.abstractmethod
-    def new_remotenode(self, address): # -> RemoteNode:  but pylint doesn't like it
-        """
-        Creates a new remote node from a string representation of the address
-        WARNING: Depending on the transport and the string representation, this
-        method can block as it attempts to perform network operations.
-        """
-
-
-    @abc.abstractmethod
-    def close(self) ->None:
-        """Closes all open listeners and remote notes."""
-
-
-#
-# End of Abstract Base Classes
-#
-
-
-ReceivedMessage = collections.namedtuple('ReceivedMessage',
-                                         ('msgtype',
-                                          'message',
-                                          'remote_address',
-                                          'received_timestamp',
-                                          'channel'))
-# Following requires Python 3.5+
-ReceivedMessage.__doc__ += """: Incoming message as reported to client"""
-
-
-ServerStatistics = collections.namedtuple('ServerStatistics',
-                                          ('rcvdCommands',
-                                           'rcvdCMDs',
-                                           'sentCMDRESPs',
-                                           'rcvdCMDRESPACKs',
-                                           'curSvrRecvdCmdMapSize',
-                                           'curSvrRcvdCmdIncomingQueueSize',
-                                           'curSvrRcvdCmdCompletedQueueSize'))
-
-
-ClientStatistics = collections.namedtuple('ClientStatistics',
-                                          ('sentCommands',
-                                           'sentCMDs',
-                                           'rcvdCMDRESPs',
-                                           'sentCMDRESPACKs',
-                                           'curCliSentCmdMapSize',
-                                           'curCliSentCmdCompletionQueueSize'))
-
-
-ClientRtStatistics = collections.namedtuple('ClientRtStatistics',
-                                            ('approxSentRtCommands',
-                                             'approxSendRTCMDs',
-                                             'approxRcvdRTCMDRESPs',
-                                             'approxRtTimeouts',
-                                             'curCliSentRtCmdMapSize'))
-
-
-ChannelStatistics = collections.namedtuple('ChannelStatistics',
-                                           ('channelName',
-                                            'sentMessages',
-                                            'rcvdMessages',
-                                            'ClientStatistics',
-                                            'clientStats',
-                                            'clientRtStats',
-                                            'serverStats'))
-
 class RobotComm():
     """The top-level class for robotcomm"""
-
 
     def __init__(self, transport):
         """Initializes an instance of RobotComm with the specified transport."""
@@ -131,7 +31,7 @@ class RobotComm():
         self.transport = transport
         self.listenLock = threading.Lock()
         self.rand = random.random
-        self.channels = ch.ConcurrentDict()
+        self.channels = concurrent_helper.ConcurrentDict()
 
     #
     # Public methods
@@ -199,11 +99,13 @@ class RobotComm():
 
         self.transport.close()
 
+
     def periodic_work(self):
         """ MUST be called periodically so that periodic maintenance tasks can be
         done, chiefly handling of re-transmits."""
         if not self.commClosed and self.is_listening():
             self.channels.process_all(lambda name, chan: chan.periodic_work())
+
 
     def get_channel_statistics(self):
         """Gets an enumeration of channel statistics"""
