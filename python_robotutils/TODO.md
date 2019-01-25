@@ -16,15 +16,17 @@
 
 
 The following are postponed
-2. [BIG!] StructuredLogger and part of StructuredLoggerTest (the part that doesn't use
+1. [BIG!] StructuredLogger and part of StructuredLoggerTest (the part that doesn't use
 	LoggerUtils).
 	- Goes under robotutils/logger (haven't decided module names yet)
-3. LoggerUtils and LoggerUtilsTest - the latter includes some test functionality not yet
+1. LoggerUtils and LoggerUtilsTest - the latter includes some test functionality not yet
 	ported over from StructuredLoggerTest.
 	- Goes under robotutils/logger (haven't decided module names yet)
-
+1. Various message types and categories defined in StructuredLogger. A couple of them 
+   have been temporarily placed in comm/_commlogger.py (E.g, TAG_TYPE and TAG_DEF_MSG,
+   but there are a whole not more.
 
 #Future
-`ConcurrentDeque.remove_some(quickfunc)` - hold the internal lock and removes elements for which
+-`ConcurrentDeque.remove_some(quickfunc)` - hold the internal lock and removes elements for which
 `quickfunc` returns true. Similarly, one for `ConcurrentDict`. Challenge is to do this
 effeciently whether many or just a few items are to be removed.
