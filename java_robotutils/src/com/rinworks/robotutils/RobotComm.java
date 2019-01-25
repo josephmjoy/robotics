@@ -553,7 +553,7 @@ public class RobotComm implements Closeable {
         }
 
         public boolean isComplete() {
-            return (this.dgType == DgType.DG_CMDRESP || this.dgType == DgType.DG_RTCMDRESP) && !!!isPending();
+            return (this.dgType == DgType.DG_CMDRESP || this.dgType == DgType.DG_RTCMDRESP) && !!!isPending(); // TODO: Remove !!
         }
 
         // Examples
