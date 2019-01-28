@@ -174,6 +174,13 @@ class ConcurrentDict:
     (2, False)
     >>> cd.upsert('e', lambda x: x, 10) # 'c' does not exist
     (10, True)
+    >>> cd.remove_instance('e', 11) # shouldn't get deleted
+    False
+    >>> cd.get('e')
+    10
+    >>> cd.remove_instance('e', 10) # should get deleted
+    True
+    >>> cd.get('e') # doesn't exist, so None is returned, which isn't printed
     >>> cd.clear()
     >>> cd.empty()
     True
@@ -213,6 +220,20 @@ class ConcurrentDict:
             if default is _NO_DEFAULT:
                 return self._dict.pop(key)
             return self._dict.pop(key, default)
+
+    def remove_instance(self, key, value) -> bool:
+        """ Remove ({key}, {value}) the specific instance of {value} is
+        present, otherwise does nothing. Returns True IFF value was
+        actually deleted."""
+        with self._lock:
+            try:
+                obj = self._dict[key]
+                if obj is value:
+                    del self._dict[key]
+                    return True
+            except KeyError:
+                pass
+            return False
 
     def upsert(self, key, valuefunc, *args, **kwargs):
         """ Atomically, if there is no value or None associated with {key}, then

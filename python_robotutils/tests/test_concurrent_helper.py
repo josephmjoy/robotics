@@ -263,30 +263,57 @@ class TestConcurrentDict(unittest.TestCase):
 
         # These items should always be found
         for k, v in kvdata:
+
             v1 = cdict.get(k, -1)
-            v2 = cdict.get(k)
-            v3 = cdict.pop(k)
-            v4 = cdict.pop(k, -1) # should not find it
-            v5, created = cdict.upsert(k, lambda x: x, v) # add it back
-            v6, created6 = cdict.upsert(k, lambda x: x, -v) # try to upsert it again with -v
             self.assertEqual(v, v1)
-            self.assertEqual(v, v2)
-            self.assertEqual(v, v3)
-            self.assertEqual(v4, -1)
-            self.assertEqual(v, v5)
+
+            v1 = cdict.get(k)
+            self.assertEqual(v, v1)
+
+            v1 = cdict.pop(k)
+            self.assertEqual(v, v1)
+
+            v1 = cdict.pop(k, -1) # should not find it
+            self.assertEqual(v1, -1)
+
+            v1, created = cdict.upsert(k, lambda x: x, v) # add it back
+            self.assertEqual(v, v1)
             self.assertTrue(created) # because it didn't exist
-            self.assertEqual(v, v6)  # previous value
-            self.assertFalse(created6) # because it already existed
+
+            v1, created = cdict.upsert(k, lambda x: x, -v) # try to upsert it again with -v
+            self.assertEqual(v, v1)  # previous value
+            self.assertFalse(created) # because it didn't exist
+
+            removed = cdict.remove_instance(k, v+1) # should not remove; instance mismatch
+            v1 = cdict.get(k) # should find it
+            self.assertFalse(removed)
+            self.assertEqual(v, v1)
+
+            removed = cdict.remove_instance(k, v) # should remove; instance match
+            v1 = cdict.get(k, -1) # should not find it
+            self.assertTrue(removed)
+            self.assertEqual(v1, -1)
+
+            # We need to put it back for the final process_all check...
+            cdict.set(k, v)
+
 
         # These items should never be found
         for k in range(num_elements, 2 * num_elements):
+
             v1 = cdict.get(k, -1)
-            v2 = cdict.get(k)
-            v3 = cdict.pop(k, -1) # should not find it
             self.assertEqual(v1, -1)
-            self.assertEqual(v2, None)
-            self.assertEqual(v3, -1)
-            self.assertRaises(KeyError, cdict.pop, k)
+
+            v1 = cdict.get(k)
+            self.assertEqual(v1, None)
+
+            v1 = cdict.pop(k, -1) # should not find it
+            self.assertEqual(v1, -1)
+
+            self.assertRaises(KeyError, cdict.pop, k) # because k is not there
+
+            removed = cdict.remove_instance(k, v) # should not remove: doesn't exist
+            self.assertFalse(removed)
 
         total = 0
 
@@ -372,6 +399,13 @@ class TestConcurrentDict(unittest.TestCase):
                     value = cdict.pop(key, self._genvalue(key))
                     self._validate_kv_pair(key, value)
                     local_ops += 1
+                if cointoss(): # remove_instance shared
+                    key = random.choice(shared_keys)
+                    newvalue = self._genvalue(key)
+                    if cointoss():
+                        newvalue = cdict.get(key, newvalue) # reuse old value if present
+                    removed = cdict.remove_instance(key, newvalue)
+                    local_ops += 1
                 if cointoss(): # upsert shared
                     key = random.choice(shared_keys)
                     value, created = cdict.upsert(key, lambda x: x, self._genvalue(key))
@@ -415,6 +449,27 @@ class TestConcurrentDict(unittest.TestCase):
                     except KeyError as exc:
                         self.assertFalse(prev_value,
                                          "KeyError; Expecting key {}".format(prev_value))
+
+                # remove_instance shared
+                if cointoss():
+                    key = random.choice(private_keys)
+                    prev_value = prev_privates.get(key, None) # could be None
+                    new_value = self._genvalue(key)
+                    if cointoss() and prev_value:
+                        new_value = prev_value
+                    removed = cdict.remove_instance(key, new_value)
+                    if removed:
+                        self.assertEqual(new_value, prev_value)
+                        self.assertTrue(prev_value) # Can't be None
+                        prev_value1 = prev_privates.pop(key)
+                        self.assertEqual(prev_value, prev_value1)
+                    else:
+                        self.assertNotEqual(new_value, prev_value)
+                        cur_value = cdict.get(key, None)
+                        self.assertEqual(cur_value, prev_value) # could be None
+
+                    local_ops += 1
+
                 if random.random() < 0.5:
                     private_snapshot = dict() # new one each time, hence pylint disable below
                     def copy_privates(key, value):

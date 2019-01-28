@@ -1,7 +1,11 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
-## January 25, 2018D JMJ: Moved shared definitions to ./comm/common.py
+## January 28, 2018A JMJ: New method ConcurrentDict.remove_instance
+`ConcurrentDict.remove_instance` emulates Java's `ConcurrentHashMap.remove`
+Implemented in `concurrent_helper.py`. Unit tests updated in `test_concurrent_helper.py`. Tests pass.
+
+## January 25, 2018E JMJ: Moved shared definitions to ./comm/common.py
 These definitions were sitting in `robotcomm.py`, but are needed in `channel.py`. But
 `channel.py` must be imported by `robotcomm.py`. To avoid the circular import
 (see "January 22, 2018D" note), I'm moving these definitions to `common.py`
@@ -17,7 +21,7 @@ yet implemented - the checked in `channel.py` is just a skeleton.
 ## January 25, 2018C JMJ: Removed `__len__` from ConcurrentDict
 It was triggered by a Pylint warning in `comm/robotcomm.py` not test
 for a collection to be empty by `len(collection) == 0`. You are supposed to just use
-`not collection`. But I can't do that for ConcurrentDictionaries, and anyway, its 
+`not collection`. But I can't do that for `ConcurrentDict`, and anyway, its 
 questionable to ask what the length is at any instant. So I removed `__len__` and added
 `empty`. The doc tests and unit tests have been changed to reflect this and tests pass.
 
