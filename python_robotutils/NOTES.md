@@ -1,6 +1,23 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 28, 2018D JMJ: Had to disable Pylint protected-access check at several places
+The `Channel` class and `Server` and `Client` classes are all really part of the same implementation and
+sometimes need to reach into each others' protected attributes and members. These attributes and members
+(such as `Channel._server`, and `Channel._handle_received_messages`) do need to be protected as the class 
+(`Channel` in this case) is public, exposed to clients of Robotutils. For now, I explicitly 
+disable the Pylint warnings at each instance, such as:
+```
+    server = chan._server # pylint: disable=protected-access
+    client = chan._client # pylint: disable=protected-access
+    ...
+    elif dgram.dgType == DgEnum.MSG:
+         # pylint: disable=protected-access
+        chan._handle_received_message(dgram, rn)
+```
+There are relatively few of these explicit disables and I'm happy with living with them. Certainly don't 
+want to globally disable this check!
+
 ## January 28, 2018C JMJ: Finished 1st-cut port of robotutils.Channel
 This is `comm/channel.py`. It is a complete port. However, all command and rt-command handling
 is delegated to the 'client' and 'server' objects. Message handling is handled in `Channel`, and 

@@ -10,11 +10,8 @@ from ._commlogging import _logger, _trace
 from . import _commlogmsgtypes as _LMT
 from .. import concurrent_helper
 from . import _protocol
-#from .channel import Channel
+from .channel import Channel
 
-# Temporary...
-class Channel:
-    pass
 
 
 # TODO: Fix these...
@@ -104,6 +101,7 @@ class RobotComm():
         """ MUST be called periodically so that periodic maintenance tasks can be
         done, chiefly handling of re-transmits."""
         if not self.commClosed and self.is_listening():
+            # pylint: disable=protected-access
             self.channels.process_all(lambda name, chan: chan._periodic_work())
 
 
@@ -136,19 +134,22 @@ class RobotComm():
             _trace(_LMT.DROPPING_RECEIVED_MESSAGE,
                    "Unknown channel. channel: %s", dgram.channel)
         else:
+            server = chan._server # pylint: disable=protected-access
+            client = chan._client # pylint: disable=protected-access
             DgEnum = _protocol.DatagramType
             if dgram.dgType == DgEnum.RTCMD:
-                chan._server.handle_received_RTCMD(dgram, rn)
+                server.handle_received_RTCMD(dgram, rn)
             elif dgram.dgType == DgEnum.RTCMDRESP:
-                chan._client.handle_received_RTCMDRESP(dgram, rn)
+                client.handle_received_RTCMDRESP(dgram, rn)
             elif dgram.dgType == DgEnum.MSG:
+                 # pylint: disable=protected-access
                 chan._handle_received_message(dgram, rn)
             elif dgram.dgType == DgEnum.CMD:
-                chan._server.handle_received_CMD(dgram, rn)
+                server.handle_received_CMD(dgram, rn)
             elif dgram.dgType == DgEnum.CMDRESP:
-                chan._client.handle_received_CMDRESP(dgram, rn)
+                client.handle_received_CMDRESP(dgram, rn)
             elif dgram.dgType == DgEnum.CMDRESPACK:
-                chan._server.handle_received_CMDRESPACK(dgram, rn)
+                server.handle_received_CMDRESPACK(dgram, rn)
             else:
                 # we have already validated the message, so shouldn't get here.
                 assert False
