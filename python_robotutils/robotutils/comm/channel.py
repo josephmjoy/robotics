@@ -2,6 +2,7 @@
 This module implements a robotcomm channel.Ported by JMJ
 from the Java implementation (class Channel)
 """
+import time
 
 from ._commlogging import _logger, _trace
 from ..concurrent_helper import ConcurrentDeque
@@ -54,7 +55,8 @@ class Channel: #pylint: disable=too-many-instance-attributes
         including received messages and commands.
         Can be changed on the fly. Pass in None to clear."""
         self.remote_node = node # Could override an existing one. That's ok
-        self._client.bind_to_remote_node(self, node)
+        if self._client:
+            self._client.bind_to_remote_node(self, node)
 
     def start_receiving_messages(self, ) -> None:
         """Starts receiving messages"""
@@ -105,7 +107,8 @@ class Channel: #pylint: disable=too-many-instance-attributes
         # pylint: disable=protected-access # (for _channels access below)
         removed = self._rcomm._channels.remove_instance(self.name, self)
         if removed:
-            self._client.close()
+            if self._client:
+                self._client.close()
             self._closed = True
         else:
             _logger.warning("Channel %s not closed. removed=%s",
@@ -167,7 +170,8 @@ class Channel: #pylint: disable=too-many-instance-attributes
         """Robotcomm-internal method - called when a message arrives for this
         channel"""
         if self._receiveMessages:
-            rm = ReceivedMessage(dgram.msgtype, dgram.body, rn, self)
+            ts = int(1000 * time.time()) # MS since current unix epoch
+            rm = ReceivedMessage(dgram.bodyType, dgram.body, rn, ts, self)
             self._approxRcvdMessages += 1
             self._pendingRecvMessages.appendleft(rm)
 

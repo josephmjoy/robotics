@@ -28,7 +28,7 @@ class RobotComm():
         self.transport = transport
         self.listenLock = threading.Lock()
         self.rand = random.random
-        self.channels = concurrent_helper.ConcurrentDict()
+        self._channels = concurrent_helper.ConcurrentDict()
 
     #
     # Public methods
@@ -44,9 +44,9 @@ class RobotComm():
 
         # We pass the Channel class as the function in the 2nd arg below! It
         # will be supplied with the initializer arguments if/when invoked.
-        chan, created = self.channels.upsert(channelName, Channel, self,
-                                             channelName, self.transport)
-        if created:
+        chan, created = self._channels.upsert(channelName, Channel, self,
+                                              channelName, self.transport)
+        if not created:
             raise ValueError("Channel with name [{}] exists"
                              .format(channelName))
         return chan
@@ -89,10 +89,10 @@ class RobotComm():
         self.stop_listening()
 
         # Close all channels
-        self.channels.process_all(lambda name, chan: chan.close())
+        self._channels.process_all(lambda name, chan: chan.close())
 
         # Channels should pull themselves off the list as they close...
-        assert self.channels.empty()
+        assert self._channels.empty()
 
         self.transport.close()
 
@@ -102,14 +102,14 @@ class RobotComm():
         done, chiefly handling of re-transmits."""
         if not self.commClosed and self.is_listening():
             # pylint: disable=protected-access
-            self.channels.process_all(lambda name, chan: chan._periodic_work())
+            self._channels.process_all(lambda name, chan: chan._periodic_work())
 
 
     def get_channel_statistics(self):
         """Gets an enumeration of channel statistics"""
         stats = []
-        func = lambda name, chan: stats.append(chan.getStats())
-        self.channels.process_all(func)
+        func = lambda name, chan: stats.append(chan.getstats())
+        self._channels.process_all(func)
         return stats
 
 
@@ -128,7 +128,7 @@ class RobotComm():
             _trace(_LMT.DROPPING_RECEIVED_MESSAGE, "Malformed header.")
             return  # ------------ EARLY RETURN ---------------
 
-        chan = self.channels.get(dgram.channel)
+        chan = self._channels.get(dgram.channel)
 
         if not chan:
             _trace(_LMT.DROPPING_RECEIVED_MESSAGE,

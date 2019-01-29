@@ -118,10 +118,6 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
         assert self.client_recv
         self.client_recv = None
 
-    def new_remotenode(self, address) -> DatagramTransport.RemoteNode:
-        """COnstruct and return a new remote node"""
-        return MockRemoteNode(self, address)
-
     def close(self) -> None:
         """Close the transport"""
         self.scheduler.cancel_all()
@@ -135,6 +131,11 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
     #
     # Methods to be used by tests
     #
+
+    def new_remotenode(self, address) -> DatagramTransport.RemoteNode:
+        """COnstruct and return a new remote node"""
+        return MockRemoteNode(self, address)
+
 
     def setTransportCharacteristics(self, failurerate, maxdelay) -> None:
         """Changes transport characteristics: sends datagrams with {failurerate} failure
@@ -322,7 +323,7 @@ def new_message_record(id_, alwaysdrop):
     def random_body():
         """First line in message body is the internal 'id'. Remainder is random junk."""
         extra = random.randint(1, 9)
-        sequence = (hex(random.randint(0, 1<<32)) for _ in range(extra))
+        sequence = (hex(rand32()) for _ in range(extra))
         return hex(id_) + '\n' + '\n'.join(sequence)
 
     def random_type():
@@ -341,29 +342,32 @@ def new_message_record(id_, alwaysdrop):
 class TestRobotComm(unittest.TestCase):
     """Container for RobotComm unit tests"""
 
-    @unittest.skip("Unimplemented")
+    # @unittest.skip("Unimplemented")
     def test_message_basic(self):
         """Sends and receives a single message"""
         transport = MockTransport("localhost")
         rcomm = rc.RobotComm(transport)
         channel = rcomm.new_channel("testChannel")
-        channel.bind_to_remote_node("localhost")
-        rcomm.start_listening()
+        remotenode = transport.new_remotenode("localhost")
+        channel.bind_to_remote_node(remotenode)
+        try:
+            rcomm.start_listening()
 
-        testMessage = "test message"
-        channel.start_receiving_messages()
-        channel.send_message("MYTYPE", testMessage)
+            testMessage = "test message"
+            channel.start_receiving_messages()
+            channel.send_message("MYTYPE", testMessage)
 
-        rm = None
-        while not rm:
-            rm = channel.poll_received_message()
-            time.sleep(0.01)
+            rm = None
+            while not rm:
+                rm = channel.poll_received_message()
+                time.sleep(0.01)
 
-        for stats in rcomm.get_channel_statistics():
-            print(stats)
+            for stats in rcomm.get_channel_statistics():
+                print(stats)
 
-        channel.stop_receiving_messages()
-        rcomm.stop_listening()
-        rcomm.close()
+            channel.stop_receiving_messages()
+        finally:
+            rcomm.stop_listening()
+            rcomm.close()
         self.assertTrue(rm)
-        self.assertEqual(testMessage, rm.message())
+        self.assertEqual(testMessage, rm.message)

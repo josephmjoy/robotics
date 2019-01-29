@@ -1,6 +1,34 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 29, 2018A JMJ: Milestone - simple Robotutils send and receive test works!
+This is `TestRobotComm.test_message_basic` that sends a single message over the test transport
+and verifies the message is received. Far from the light at the end of the tunnel, more like 
+light from a small skylight. But still, a solid milestone!
+
+FYI: To return milliseconds from start of the Unix Epoch as an integer: `int(1000 * time.time())`. This 
+is used for the time stamp in `ReceivedMessage`, and the Python equivalent to Java's `System.currentTimeMillis()`
+
+## January 29, 2018A JMJ: Removing `DatagramTransport.new_remotenode`
+I decided to remove the `new_remotenode` method from the `DatagramTransport` abstract base class.
+This is because `RobotComm` itself does not use it - it would only be the clients of `RobotComm` that
+may (potentially) use it. It will likely turn out that specific implementations of `DatagramTransport` will
+have more appropriate ways to construct remote nodes, perhaps methods that take more than one argument such
+as IP address and port number, or have more than one way to construct remote nodes.
+
+Here is the removed method:
+```
+    @abc.abstractmethod
+    def new_remotenode(self, address): # -> RemoteNode:  but pylint doesn't like it
+        """
+        Creates a new remote node from a string representation of the address
+        WARNING: Depending on the transport and the string representation, this
+        method can block as it attempts to perform network operations.
+        NOTE: Robotcomm never calls this method. This is for the client's benefit.
+        Consider deprecating.
+        """
+```
+
 ## January 28, 2018D JMJ: Had to disable Pylint protected-access check at several places
 The `Channel` class and `Server` and `Client` classes are all really part of the same implementation and
 sometimes need to reach into each others' protected attributes and members. These attributes and members

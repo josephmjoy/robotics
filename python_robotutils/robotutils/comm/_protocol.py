@@ -126,7 +126,7 @@ def datagram_from_str(dgramstr) -> Datagram:
         channel = header[Position.CHANNEL]
         if not channel:
             raise ValueError("Missing channel name")
-        if containschars(channel, _protocol.BAD_FIELD_CHARS):
+        if containschars(channel, BAD_FIELD_CHARS):
             raise ValueError("Channel name has invalid characters")
 
         bodyType = header[Position.BODY_TYPE] or None # convert '' to None
