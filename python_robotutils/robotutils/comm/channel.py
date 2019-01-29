@@ -12,7 +12,6 @@ from . import _protocol
 
 #TODO remove this eventually...
 # pylint: disable=fixme
-# pylint: disable=invalid-name
 
 class Channel: #pylint: disable=too-many-instance-attributes
     """A channel communications object.
@@ -37,14 +36,14 @@ class Channel: #pylint: disable=too-many-instance-attributes
         # self.server = new CommServerImplementation(this, log)
 
         # Receiving messages
-        self._pendingRecvMessages = ConcurrentDeque() # Messages flow left to right
-        self._receiveMessages = False
+        self._recv_message_queue = ConcurrentDeque() # Messages flow left to right
+        self._receive_messages = False
         self._closed = False
 
         # These are purely for statistics reporting
         # They are not incremented atomically, so are approximate
-        self._approxSentMessages = 0
-        self._approxRcvdMessages = 0
+        self._approx_sent_messages = 0
+        self._approx_rcvd_messages = 0
 
     #
     # Public methods
@@ -62,7 +61,7 @@ class Channel: #pylint: disable=too-many-instance-attributes
         """Starts receiving messages"""
         if self._closed:
             raise ValueError("Attempt to start receiving on a closed channel.")
-        self._receiveMessages = True
+        self._receive_messages = True
 
     def send_message(self, msgtype, message, node=None) -> None:
         """Send a message to {node}. If node is unspecified, it will
@@ -81,24 +80,24 @@ class Channel: #pylint: disable=too-many-instance-attributes
             # need to construct and then serialize a datagram!
             dgram = Datagram(DatagramType.MSG, self.name, msgtype,
                              None, None, message)
-            self._approxSentMessages += 1
+            self._approx_sent_messages += 1
             node.send(_protocol.str_from_datagram(dgram))
 
     def poll_received_message(self): #  -> ReceivedMessage:
         """Returns a received message, None otherwise"""
-        if not self._receiveMessages:
+        if not self._receive_messages:
             raise ValueError("Polling when listening is not enabled.")
         if self._closed:
             return None
         try:
-            return self._pendingRecvMessages.pop()
+            return self._recv_message_queue.pop()
         except IndexError:
             pass # nothing in queue
         return None
 
     def stop_receiving_messages(self) -> None:
         """Stops receiving messages. Will drop incoming messages in queue."""
-        self._receiveMessages = False
+        self._receive_messages = False
 
     def close(self) -> None:
         """Closes the channel. Any pending commands and messages may be
@@ -116,9 +115,9 @@ class Channel: #pylint: disable=too-many-instance-attributes
 
     def getstats(self):
         """Returns a tuple-of-tuple containing various statistics counters"""
-        clientStats = clientRtStats = serverStats = None
-        allstats = (self._approxSentMessages, self._approxRcvdMessages,
-                    clientStats, clientRtStats, serverStats)
+        client_stats = client_rtstats = server_stats = None
+        allstats = (self._approx_sent_messages, self._approx_rcvd_messages,
+                    client_stats, client_rtstats, server_stats)
         return ChannelStatistics(self.name, *allstats)
 
     def submit_command(self, cmdtype, command, client_context,
@@ -166,14 +165,15 @@ class Channel: #pylint: disable=too-many-instance-attributes
     # End of public methods
     #
 
-    def _handle_received_message(self, dgram, rn) -> None:
+    def _handle_received_message(self, dgram, remotenode) -> None:
         """Robotcomm-internal method - called when a message arrives for this
         channel"""
-        if self._receiveMessages:
-            ts = int(1000 * time.time()) # MS since current unix epoch
-            rm = ReceivedMessage(dgram.bodyType, dgram.body, rn, ts, self)
-            self._approxRcvdMessages += 1
-            self._pendingRecvMessages.appendleft(rm)
+        if self._receive_messages:
+            timestamp = int(1000 * time.time()) # MS since current unix epoch
+            rmsg = ReceivedMessage(dgram.bodytype, dgram.body, remotenode,
+                                   timestamp, self)
+            self._approx_rcvd_messages += 1
+            self._recv_message_queue.appendleft(rmsg)
 
     def _periodic_work(self):
         """Called internally by Robotcomm to perform periodic work"""

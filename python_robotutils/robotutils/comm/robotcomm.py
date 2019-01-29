@@ -133,18 +133,19 @@ class RobotComm():
             server = chan._server # pylint: disable=protected-access
             client = chan._client # pylint: disable=protected-access
             DgEnum = _protocol.DatagramType
-            if dgram.dgType == DgEnum.RTCMD:
+            dgtype = dgram.dgtype
+            if dgtype == DgEnum.RTCMD:
                 server.handle_received_RTCMD(dgram, remotenode)
-            elif dgram.dgType == DgEnum.RTCMDRESP:
+            elif dgtype == DgEnum.RTCMDRESP:
                 client.handle_received_RTCMDRESP(dgram, remotenode)
-            elif dgram.dgType == DgEnum.MSG:
+            elif dgtype == DgEnum.MSG:
                  # pylint: disable=protected-access
                 chan._handle_received_message(dgram, remotenode)
-            elif dgram.dgType == DgEnum.CMD:
+            elif dgtype == DgEnum.CMD:
                 server.handle_received_CMD(dgram, remotenode)
-            elif dgram.dgType == DgEnum.CMDRESP:
+            elif dgtype == DgEnum.CMDRESP:
                 client.handle_received_CMDRESP(dgram, remotenode)
-            elif dgram.dgType == DgEnum.CMDRESPACK:
+            elif dgtype == DgEnum.CMDRESPACK:
                 server.handle_received_CMDRESPACK(dgram, remotenode)
             else:
                 # we have already validated the message, so shouldn't get here.

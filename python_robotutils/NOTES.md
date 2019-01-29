@@ -1,7 +1,14 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
-## January 29, 2018A JMJ: Milestone - simple Robotutils send and receive test works!
+## January 29, 2018C JMJ: Cleaned up most camel case - > moved to snake case
+It was fairly straightforward. The unittests caught some inter-module mistakes - it seems Pylint does
+not catch badly named attributes if the class in question is external - I suppose that makes sense.
+The following module are almost clean: `_protocol.py, channe.py and robotcomm.py`. They are clean as reported
+by Pylint. However Pylint does not report camel casing in named tuples (for example,
+`ServerStatistics`).
+
+## January 29, 2018B JMJ: Milestone - simple Robotutils send and receive test works!
 This is `TestRobotComm.test_message_basic` that sends a single message over the test transport
 and verifies the message is received. Far from the light at the end of the tunnel, more like 
 light from a small skylight. But still, a solid milestone!

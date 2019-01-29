@@ -28,8 +28,6 @@ from enum import Enum, IntEnum, auto
 from collections import namedtuple
 import string
 
-# TODO: Remove...
-# pylint: disable=invalid-name
 PROTOCOL_SIGNATURE = "3wIC" # About 1 of 10E7 combnations.
 
 #
@@ -69,21 +67,21 @@ BODYTYPE_IDLIST = "IDLIST" # body of CMDRESP is a list of IDs.
 
 
 Datagram = namedtuple('Datagram',
-                      ('dgType', 'channel', 'bodyType', 'cmdId', 'status',
+                      ('dgtype', 'channel', 'bodytype', 'cmd_id', 'status',
                        'body'))
 
 
 def command_pending(dgram):
     """Whether or not the datagram indicates a command is pending"""
-    return (dgram.dgType == DatagramType.CMDRESP
+    return (dgram.dgtype == DatagramType.CMDRESP
             and (dgram.status == CommandStatus.COMPUTING
                  or dgram.status == CommandStatus.QUEUED))
 
 
 def command_completed(dgram):
     """Whether or not the datagram indicates a command is complete"""
-    isresp = (dgram.dgType == DatagramType.CMDRESP
-              or dgram.dgType == DatagramType.RTCMDRESP)
+    isresp = (dgram.dgtype == DatagramType.CMDRESP
+              or dgram.dgtype == DatagramType.RTCMDRESP)
     return isresp and not command_pending(dgram)
 
 
@@ -91,7 +89,7 @@ def command_completed(dgram):
 # Used by parse_message
 _COMMAND_INFO = {
     # pylint: disable=bad-whitespace
-    #                      getCmdId  getStatus
+    #                      getid  getstatus
     DatagramType.MSG:        (False, False),
     DatagramType.CMD:        (True,  False),
     DatagramType.CMDRESP:    (True,  True),
@@ -120,39 +118,39 @@ def datagram_from_str(dgramstr) -> Datagram:
 
     try:
 
-        (header, headerLength) = _extract_header(dgramstr)
-        dgType = DatagramType[header[Position.DG_TYPE]]
-        getCmdId, getStatus = _COMMAND_INFO[dgType]
+        (header, header_length) = _extract_header(dgramstr)
+        dgtype = DatagramType[header[Position.DG_TYPE]]
+        getid, getstatus = _COMMAND_INFO[dgtype]
         channel = header[Position.CHANNEL]
         if not channel:
             raise ValueError("Missing channel name")
         if containschars(channel, BAD_FIELD_CHARS):
             raise ValueError("Channel name has invalid characters")
 
-        bodyType = header[Position.BODY_TYPE] or None # convert '' to None
+        bodytype = header[Position.BODY_TYPE] or None # convert '' to None
 
-        if dgType == DatagramType.CMDRESPACK:
-            if bodyType != BODYTYPE_IDLIST:
+        if dgtype == DatagramType.CMDRESPACK:
+            if bodytype != BODYTYPE_IDLIST:
                 raise ValueError("Unexpected CMDRESPACK message type")
 
-        cmdId = None
-        if getCmdId:
+        cmd_id = None
+        if getid:
             if len(header) <= Position.CMDID:
                 raise ValueError("Malformed header - missing cmd ID")
             try:
-                cmdId = int(header[Position.CMDID], 16) # Id is Hex
+                cmd_id = int(header[Position.CMDID], 16) # Id is Hex
             except ValueError as exp:
                 raise ValueError("Malformed header - invalid cmd ID") from exp
 
         status = None
-        if getStatus:
+        if getstatus:
             if len(header) <= Position.CMDSTATUS:
                 raise ValueError("Malformed header - missing [rt]cmd status")
-            statusStr = header[Position.CMDSTATUS]
-            status = CommandStatus[statusStr]
+            strstatus = header[Position.CMDSTATUS]
+            status = CommandStatus[strstatus]
 
-        body = dgramstr[headerLength+1:] or None # (+1 to skip '\n') could be empty
-        return Datagram(dgType, channel, bodyType, cmdId, status, body)
+        body = dgramstr[header_length+1:] or None # (+1 to skip '\n') could be empty
+        return Datagram(dgtype, channel, bodytype, cmd_id, status, body)
 
     except KeyError as exp:
         raise ValueError("Malformed header") from exp
@@ -161,12 +159,12 @@ def datagram_from_str(dgramstr) -> Datagram:
 def str_from_datagram(dgram, extrabody='') -> str:
     """Converts a message to its on-the-wire form"""
     d = dgram # pylint: disable=invalid-name
-    bodytype = d.bodyType if d.bodyType else ''
+    bodytype = d.bodytype if d.bodytype else ''
     status = d.status.name if d.status else ''
     body = d.body if d.body else ''
-    cmdid = hex(d.cmdId)[2:] if d.cmdId else '' # hex without '0x' prefix
+    cmdid = hex(d.cmd_id)[2:] if d.cmd_id else '' # hex without '0x' prefix
     last = ''.join((status, '\n', body, extrabody))
-    parts = (PROTOCOL_SIGNATURE, d.dgType.name, d.channel, bodytype,
+    parts = (PROTOCOL_SIGNATURE, d.dgtype.name, d.channel, bodytype,
              cmdid, last)
     return ",".join(parts)
 
