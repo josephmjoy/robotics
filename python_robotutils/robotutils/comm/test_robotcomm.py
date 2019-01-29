@@ -14,6 +14,7 @@ import time
 
 from . import robotcomm as rc
 from .. import concurrent_helper as ch
+from .common import DatagramTransport
 
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
@@ -31,7 +32,7 @@ def tracing():
 TransportStats = collections.namedtuple('TransportStats', 'sends recvs forcedrops randomdrops')
 
 #pylint: disable=invalid-name
-class MockRemoteNode(rc.DatagramTransport.RemoteNode):
+class MockRemoteNode(DatagramTransport.RemoteNode):
     """Test remote node implementation"""
 
 
@@ -83,7 +84,7 @@ class MockRemoteNode(rc.DatagramTransport.RemoteNode):
         return self._address
 
 
-class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-attributes
+class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attributes
     """Implements the mock transport used in these tests"""
 
     ALWAYSDROP_TEXT = "TRANSPORT-MUST-DROP"
@@ -117,7 +118,7 @@ class MockTransport(rc.DatagramTransport): # pylint: disable=too-many-instance-a
         assert self.client_recv
         self.client_recv = None
 
-    def new_remotenode(self, address) -> rc.DatagramTransport.RemoteNode:
+    def new_remotenode(self, address) -> DatagramTransport.RemoteNode:
         """COnstruct and return a new remote node"""
         return MockRemoteNode(self, address)
 
