@@ -342,7 +342,6 @@ def new_message_record(id_, alwaysdrop):
 class TestRobotComm(unittest.TestCase):
     """Container for RobotComm unit tests"""
 
-    # @unittest.skip("Unimplemented")
     def test_message_basic(self):
         """Sends and receives a single message"""
         transport = MockTransport("localhost")
