@@ -1,6 +1,26 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 28, 2018C JMJ: Finished 1st-cut port of robotutils.Channel
+This is `comm/channel.py`. It is a complete port. However, all command and rt-command handling
+is delegated to the 'client' and 'server' objects. Message handling is handled in `Channel`, and 
+that is the first comm feature we are going to test end to end on multiple platforms.
+
+At this point, Pylint is happy with `channel.py` except for bad variable naming from the Java port,
+which is disabled until unit tests run. (per "January 15, 2018A" porting guidelines).
+
+## January 28, 2018B JMJ: Policy on read-only public attributes
+There are vigorous discussions on stack overflow re how to expose read-only (or rather, init-only)
+attributes. The simplest and most often suggested method is to simply expose them, not try to hide
+or limit them in any way. Other options are to use decorators, such as `@property`, which, frankly, I think
+is overkill.
+
+So for Robotutils, I have come up with the following guidelines. is to simply
+expose public attributes. They should ONLY be read-only (not settable).  They
+should be initialized in their own section at the beginning  `__init__`, with
+comments identifying them as such.  Also, they should be called out as a list
+of read-only attributes in the class docstring.
+
 ## January 28, 2018A JMJ: New method ConcurrentDict.remove_instance
 `ConcurrentDict.remove_instance` emulates Java's `ConcurrentHashMap.remove`
 Implemented in `concurrent_helper.py`. Unit tests updated in `test_concurrent_helper.py`. Tests pass.

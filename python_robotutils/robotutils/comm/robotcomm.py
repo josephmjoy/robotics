@@ -41,7 +41,7 @@ class RobotComm():
         """Returns a new channel"""
         if self.commClosed:
             raise  ValueError("Robot comm is closed!")
-        if _protocol.containschars(channelName, _protocol.BAD_CHANNEL_CHARS):
+        if _protocol.containschars(channelName, _protocol.BAD_FIELD_CHARS):
             raise ValueError("channel name has invalid characters: [{}]"
                              .format(channelName))
 
@@ -104,7 +104,7 @@ class RobotComm():
         """ MUST be called periodically so that periodic maintenance tasks can be
         done, chiefly handling of re-transmits."""
         if not self.commClosed and self.is_listening():
-            self.channels.process_all(lambda name, chan: chan.periodic_work())
+            self.channels.process_all(lambda name, chan: chan._periodic_work())
 
 
     def get_channel_statistics(self):
@@ -138,17 +138,17 @@ class RobotComm():
         else:
             DgEnum = _protocol.DatagramType
             if dgram.dgType == DgEnum.RTCMD:
-                chan.server.handleReceivedRTCMD(dgram, rn)
+                chan._server.handle_received_RTCMD(dgram, rn)
             elif dgram.dgType == DgEnum.RTCMDRESP:
-                chan.client.handleReceivedRTCMDRESP(dgram, rn)
+                chan._client.handle_received_RTCMDRESP(dgram, rn)
             elif dgram.dgType == DgEnum.MSG:
-                chan.handleReceivedMessage(dgram, rn)
+                chan._handle_received_message(dgram, rn)
             elif dgram.dgType == DgEnum.CMD:
-                chan.server.handleReceivedCMD(dgram, rn)
+                chan._server.handle_received_CMD(dgram, rn)
             elif dgram.dgType == DgEnum.CMDRESP:
-                chan.client.handleReceivedCMDRESP(dgram, rn)
+                chan._client.handle_received_CMDRESP(dgram, rn)
             elif dgram.dgType == DgEnum.CMDRESPACK:
-                chan.server.handleReceivedCMDRESPACK(dgram, rn)
+                chan._server.handle_received_CMDRESPACK(dgram, rn)
             else:
                 # we have already validated the message, so shouldn't get here.
                 assert False

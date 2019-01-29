@@ -101,7 +101,7 @@ _COMMAND_INFO = {
 }
 
 BAD_HEADER_CHARS = frozenset(string.whitespace)
-BAD_CHANNEL_CHARS = frozenset(',' + string.whitespace)
+BAD_FIELD_CHARS = frozenset(',' + string.whitespace) # fields in headers
 
 def datagram_from_str(dgramstr) -> Datagram:
     """Generates a datagram from text. Raises ValueError on errortr1
@@ -126,6 +126,9 @@ def datagram_from_str(dgramstr) -> Datagram:
         channel = header[Position.CHANNEL]
         if not channel:
             raise ValueError("Missing channel name")
+        if containschars(channel, _protocol.BAD_FIELD_CHARS):
+            raise ValueError("Channel name has invalid characters")
+
         bodyType = header[Position.BODY_TYPE] or None # convert '' to None
 
         if dgType == DatagramType.CMDRESPACK:
