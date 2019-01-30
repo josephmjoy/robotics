@@ -17,6 +17,10 @@ from . import robotcomm as rc
 from .. import concurrent_helper as conc
 from .common import DatagramTransport
 
+
+# TODO: track down and fix all the TODOs
+# pylint: disable=fixme
+
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 
@@ -333,14 +337,17 @@ TestMessageRecord = collections.namedtuple('TestMessageRecord', 'id alwaysDrop m
 TestCommandRecord = collections.namedtuple('TestCommandRecord', 'cmdRecord respRecord rt timeout')
 
 
-class StressTester:
+class StressTester: # pylint: disable=too-many-instance-attributes
     """Test engine that instantiates and runs robotcomm stress tests with
     various parameters"""
 
-    def __init__(self, nThreads, transport):
+    # TODO: We need to actually schedule stuff using an executor to get multiple threads
+
+    def __init__(self, nThreads, transport, harness):
         """Initializes the stress tester"""
         self.nThreads = nThreads
         self.transport = transport
+        self.harness = harness
         #self.log = log
         #self.hfLog = log.newLog("HFLOG")
 
@@ -348,6 +355,7 @@ class StressTester:
         self.rand = random.Random()
         self.nextId = conc.AtomicNumber(1)
         self.scheduler = conc.EventScheduler()
+        self.ch = None
         #StructuredLogger.Log log
         #StructuredLogger.Log hfLog; # high frequency (verbose) log
 
@@ -398,7 +406,7 @@ class StressTester:
         """sent a batch of messages over {submissionTimespan} seconds"""
         assert self.rc
         assert self.ch
-        assert alwaysDropRate >= 0 and alwaysDropRate <= 1
+        assert alwaysDropRate <= 1
         assert submissionTimespan >= 0
 
         _trace("SUBMIT", "Beginning to submit %s messages", nMessages)
@@ -427,7 +435,7 @@ class StressTester:
 
         # Poll for received messages at random times
         recvAttempts = max(nMessages / 100, 10)
-        maxReceiveDelay = submissionTimespan + transport.getMaxDelay()
+        maxReceiveDelay = submissionTimespan + self.transport.getMaxDelay()
         for i in range(recvAttempts):
             delay = self.rand.random() * submissionTimespan
             # Special case of i == 0 - we schedule our final receive attempt to
@@ -437,25 +445,26 @@ class StressTester:
                 delay = maxReceiveDelay + 1
             self.scheduler.schedule(delay, receive_all)
 
-        def submitMessages(nMessages, submissionRate, alwaysDropRate):
-            """
-            Stress test sending, receiving and processing of commands.
-                nMessages - number of messages to submit
-                submissionRate - rate of submission per second
-                alwaysDropRate - rate at which datagrams are always dropped by
-                                 the transport
-            """
+
+    def submitMessages(self, nMessages, submissionRate, alwaysDropRate):
+        """
+        Stress test sending, receiving and processing of commands.
+            nMessages - number of messages to submit
+            submissionRate - rate of submission per second
+            alwaysDropRate - rate at which datagrams are always dropped by
+                             the transport
+        """
         BATCH_SPAN_SECONDS = 1.0
         MAX_EXPECTED_TRANSPORT_FAILURES = 1000000
         # If more than LARGE_COUNT messages, there should be NO transport send
         # failures else our tracked messages will start to accumulate and take
         # up too much memory.
-        expectedTransportFailures = nMessages * transport.getFailureRate()
+        expectedTransportFailures = nMessages * self.transport.getFailureRate()
         if expectedTransportFailures > MAX_EXPECTED_TRANSPORT_FAILURES:
             logger.error("Too many transport failures expected %d",
                          int(expectedTransportFailures))
             logger.error("Abandoning test.")
-            self.fail("Too much expected memory consumption to run this test.")
+            self.harness.fail("Too much expected memory consumption to run this test.")
 
         self.ch.start_receiving_ressages()
 
@@ -466,23 +475,23 @@ class StressTester:
                                     alwaysDropRate)
             messagesLeft -= submissionRate
             t1 = time.time()
-            sleepTime = Math.max(BATCH_SPAN_SECONDS * 0.1,
-                                 BATCH_SPAN_SECONDS - (t1 - t0))
+            sleepTime = max(BATCH_SPAN_SECONDS * 0.1,
+                            BATCH_SPAN_SECONDS - (t1 - t0))
             time.sleep(sleepTime)
             self.pruneDroppedMessages()
 
-        timeLeftMillis = (1000 * messagesLeft) / submissionRate
-        submitMessageBatch(messagesLeft, timeLeftMillis, alwaysDropRate)
-        Thread.sleep(timeLeftMillis)
+        timeLeftSeconds = messagesLeft / submissionRate
+        self.submitMessageBatch(messagesLeft, timeLeftSeconds, alwaysDropRate)
+        time.sleep(timeLeftSeconds)
 
         # Having initiated the process of sending all the messages, we now
         # have to wait for ??? and verify that exactly those messages that
         # are expected to be received are received correctly.
-        maxReceiveDelay = transport.getMaxDelay()
+        maxReceiveDelay = self.transport.getMaxDelay()
         _trace("WAITING", "Waiting to receive up to %d messages", nMessages)
         time.sleep(maxReceiveDelay)
         for _ in range(10): # retry 10 times
-            if self.msgMap.size() <= self.transport.getNumRandomDrops():
+            if len(self.msgMap) <= self.transport.getNumRandomDrops():
                 break
             time.sleep(0.250)
             self.purgeAllDroppedMessages()
@@ -494,12 +503,14 @@ class StressTester:
 
     # private
     def processReceivedMessage(self, rm):
-        # Extract id from message.
-        # Look it up - we had better find it in our map.
-        # Verify that we expect to get it - (not alwaysDrop)
-        # Verify we have not already received it.
-        # Verify message type and message body is what we expect.
-        # If all ok, remove this from the hash map.
+        """
+        Extract id from message.
+        Look it up - we had better find it in our map.
+        Verify that we expect to get it - (not alwaysDrop)
+        Verify we have not already received it.
+        Verify message type and message body is what we expect.
+        If all ok, remove this from the hash map.
+        """
         msgType = rm.msgType()
         msgBody = rm.message()
         nli = msgBody.indexOf('\n')
@@ -507,7 +518,7 @@ class StressTester:
         try:
             id_ = int(strId, 16)
             _trace("RECVMSG", "Received message with id %d", id)
-            mr = this.msgMap.get(id_)
+            mr = self.msgMap.get(id_)
             # assertNotEquals(mr, null)
             assert mr
             # assertEquals(mr.msgType, msgType)
@@ -518,29 +529,53 @@ class StressTester:
             assert not mr.alwaysDrop
             self.msgMap.remove_instance(id_, mr)
         except Exception as e:
-            _logger.exception("error attempting to parse received message")
+            logger.exception("error attempting to parse received message")
+            raise e
 
-    # private 
+    # private
     def finalSendMessageValidation(self):
-        # Verify that the count of messages that still remain in our map
-        # is exactly equal to the number of messages dropped by the transport - i.e.,
-        # they were never received.
+        """
+        Verify that the count of messages that still remain in our map
+        is exactly equal to the number of messages dropped by the transport - i.e.,
+        they were never received.
+        """
         randomDrops = self.transport.getNumRandomDrops()
         forceDrops = self.transport.getNumForceDrops()
-        mapSize = len(self.msgMap.size)
-        _logger.info("Final verification. ForceDrops: %d RandomDrops: %d, MISSING: %d",
-                     forceDrops, randomDrops, (mapSize - randomDrops))
+        mapSize = len(self.msgMap)
+        logger.info("Final verification. ForceDrops: %d RandomDrops: %d, MISSING: %d",
+                    forceDrops, randomDrops, (mapSize - randomDrops))
 
         if randomDrops != mapSize:
             # We will fail this test later, but do some logging here...
-            _logger.info("Drop queue size: %d",  self.droppedMsgs.size())
+            logger.info("Drop queue size: %d", len(self.droppedMsgs))
 
             def logmr(id_, mr):
-                _logger.info("missing mr id: %s  drop: %d", mr.id,  mr.alwaysDrop)
-            
+                logger.info("missing mr id: %s  drop: %d", id_, mr.alwaysDrop)
+
             self.msgMap.process_all(logmr)
 
-        assert randomDrops ==  mapSize
+        assert randomDrops == mapSize
+
+    def cleanup(self):
+        """Cleanup our queues and maps so we can do another test"""
+        self.msgMap.clear()
+        self.droppedMsgs.clear()
+        # TODO: enable
+        #self.cmdMap.clear()
+        #self.cmdCliSubmitQueue.clear()
+        #self.cmdSvrComputeQueue.clear()
+        #self.droppedCommands.clear()
+
+        #self.ch.stop_receiving_messages()
+        #self.ch.stop_receiving_commands()
+
+
+    def close(self):
+        """Close the stress tester"""
+        # TODO: self.exPool.shutdownNow()
+        self.cleanup()
+        self.scheduler.cancel_all()
+        self.scheduler.stop(block=True)
 
 
 def new_message_record(id_, alwaysdrop):
