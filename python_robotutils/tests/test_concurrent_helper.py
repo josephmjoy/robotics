@@ -257,9 +257,11 @@ class TestConcurrentDict(unittest.TestCase):
         # pylint: disable=invalid-name
         # (for all the v's)
 
-        for k, v in kvdata:
+        for (i, kv) in enumerate(kvdata):
+            k, v = kv
             cdict.set(k, -v)
             cdict.set(k, v)
+            self.assertEqual(i+1, len(cdict))
 
         # These items should always be found
         for k, v in kvdata:
@@ -470,7 +472,9 @@ class TestConcurrentDict(unittest.TestCase):
 
                     local_ops += 1
 
-                if random.random() < 0.5:
+                if random.random() < 0.1:
+                    len(cdict) # just exercise len
+                    cdict.empty() # just exercise empty
                     private_snapshot = dict() # new one each time, hence pylint disable below
                     def copy_privates(key, value):
                         """Collect all private kv pairs into prev_kvs"""

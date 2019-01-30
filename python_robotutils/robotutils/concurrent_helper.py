@@ -161,6 +161,8 @@ class ConcurrentDict:
     >>> cd.set('b', 2)
     >>> cd.get('b')
     2
+    >>> len(cd)
+    2
     >>> cd.get('c', 42)
     42
     >>> cd.process_all(lambda k, y: print(k, y))
@@ -272,6 +274,11 @@ class ConcurrentDict:
         """Returns True if the dictionary is empty at this instant, False otherwise."""
         with self._lock:
             return not self._dict
+
+    def __len__(self):
+        """Returns a snapshot of the number of items in the dictionary."""
+        with self._lock:
+            return len(self._dict)
 
     def process_all(self, func):
         """Applies {func}(key, value) to a snapshot of all elements.

@@ -42,11 +42,11 @@ def getsome(func, maxnum=None, *, sentinel=None):
         pass
 
 
-def trace(*args, **kwargs):
+def _trace(*args, **kwargs):
     """simply call debug"""
     logger.debug(args, kwargs)
 
-def tracing():
+def _tracing():
     """ Whether to trace or not"""
     return True
 
@@ -70,14 +70,12 @@ class MockRemoteNode(DatagramTransport.RemoteNode):
         """Sends {msg} over transport"""
         self._transport.numsends.next()
         if self._force_drop(msg):
-            if tracing():
-                trace("TRANSPORT FORCEDROP:\n[%s]", msg)
+            _trace("TRANSPORT FORCEDROP:\n[%s]", msg)
             self._transport.numforcedrops.next()
             return # **************** EARLY RETURN *****
 
         if self._nonforce_drop():
-            if tracing():
-                trace("TRANSPORT: RANDDROP\n[%s]", msg)
+            _trace("TRANSPORT: RANDDROP\n[%s]", msg)
             self._transport.numrandomdrops.next()
             return # **************** EARLY RETURN *****
 
@@ -222,8 +220,7 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
 
         if self.client_recv:
             self.numrecvs.next()
-            if tracing():
-                trace("TRANSPORT RECV:\n[{}]\n", s)
+            _trace("TRANSPORT RECV:\n[{}]\n", s)
             self.client_recv(s, self.loopbacknode)
         else:
             self.numforcedrops.next()
@@ -347,12 +344,9 @@ class StressTester:
         #self.log = log
         #self.hfLog = log.newLog("HFLOG")
 
-        # Init executor.
-        self.exPool = Executors.newFixedThreadPool(nThreads)
-
         # Protected
-        self.rand = new Random()
-        self.nextId = new AtomicLong(1)
+        self.rand = random.Random()
+        self.nextId = conc.AtomicNumber(1)
         self.scheduler = conc.EventScheduler()
         #StructuredLogger.Log log
         #StructuredLogger.Log hfLog; # high frequency (verbose) log
@@ -364,20 +358,20 @@ class StressTester:
         # self.cmdSvrComputeQueue = conc.ConcurrentDeque()
         # self.droppedCommands = conc.ConcurrentDeque()
         # self.droppedResponses = conc.ConcurrentDeque()
-        self.rc = RobotComm(transport)
+        self.rc = rc.RobotComm(transport)
 
 
-    def open():
+    def open(self):
         """Starts listening, etc."""
         # StructuredLogger.Log rcLog = log.newLog("RCOMM")
         # rcLog.pauseTracing()
-        remotenode = transport.new_remotenode("localhost")
-        self.ch = rc.newChannel("testChannel")
+        remotenode = self.transport.new_remotenode("localhost")
+        self.ch = self.rc.new_channel("testChannel")
         self.ch.bind_to_remote_node(remotenode) # TODO: change to bind_destination
         self.rc.start_listening()
 
     # private
-    def pruneDroppedMessages() -> None:
+    def pruneDroppedMessages(self) -> None:
         """Keep count of dropped messages by removing the older
         half of them if their number grows larger than DROP_TRIGGER"""
         DROP_TRIGGER = 1000
@@ -389,17 +383,17 @@ class StressTester:
             _trace("PURGE", "Purging about %s force-dropped messages",
                    dropCount)
             for mr in getsome(self.droppedMsgs.pop, dropCount):
-                    self.msgMap.remove_instance(mr.id, mr) # O(log(n))
+                self.msgMap.remove_instance(mr.id, mr) # O(log(n))
 
     # private
-    def purgeAllDroppedMessages() -> None:
+    def purgeAllDroppedMessages(self) -> None:
         """Remove all dropped messages (at least the ones that were in the
         queue when we entered this method)."""
         for mr in getsome(self.droppedMsgs.pop):
-                self.msgMap.remove_instance(mr.id, mr); # O(log(n))
+            self.msgMap.remove_instance(mr.id, mr) # O(log(n))
 
     # private
-    def submitMessageBatch(nMessages, submissionTimespan,
+    def submitMessageBatch(self, nMessages, submissionTimespan,
                            alwaysDropRate) -> None:
         """sent a batch of messages over {submissionTimespan} seconds"""
         assert self.rc
@@ -409,33 +403,33 @@ class StressTester:
 
         _trace("SUBMIT", "Beginning to submit %s messages", nMessages)
 
-        def delayed_send(id_, msgTYpe, msgBody):
+        def delayed_send(id_, msgType, msgBody):
             def really_send():
                 _trace("SEND", "Sending message with id %d", id_)
                 self.ch.send_message(msgType, msgBody)
-            delay = rand.random() * submissionTimespan # seconds
+            delay = self.rand.random() * submissionTimespan # seconds
             self.scheduler.schedule(delay, really_send)
 
         # Send messages at random times
         for _ in range(nMessages):
-            id_ = nextId.next()
-            alwaysDrop = rand.random() < alwaysDropRate
-            mr = MessageRecord(id_, alwaysDrop)
+            id_ = self.nextId.next()
+            alwaysDrop = self.rand.random() < alwaysDropRate
+            mr = TestMessageRecord(id_, alwaysDrop)
             self.msgMap.set(id_, mr)
             if alwaysDrop:
                 self.droppedMsgs.appendleft(mr)
-            delayed_send(id_, mr.msgTYpe, mr.msgBody)
+            delayed_send(id_, mr.msgType, mr.msgBody)
 
         def receive_all():
             # Pick up all messages received so far and verify them...
-            for rm in getsome(ch.poll_received_messages):
+            for rm in getsome(self.ch.poll_received_messages):
                 self.processReceivedMessage(rm)
 
         # Poll for received messages at random times
         recvAttempts = max(nMessages / 100, 10)
         maxReceiveDelay = submissionTimespan + transport.getMaxDelay()
         for i in range(recvAttempts):
-            delay = rand.random() * submissionTimespan
+            delay = self.rand.random() * submissionTimespan
             # Special case of i == 0 - we schedule our final receive attempt to
             # be AFTER the last packet is actually sent by the transport (after
             # a potential delay)
@@ -447,8 +441,8 @@ class StressTester:
             """
             Stress test sending, receiving and processing of commands.
                 nMessages - number of messages to submit
-                submissionRate - rate of submission per second 
-                alwaysDropRate - rate at which datagrams are always dropped by 
+                submissionRate - rate of submission per second
+                alwaysDropRate - rate at which datagrams are always dropped by
                                  the transport
             """
         BATCH_SPAN_SECONDS = 1.0
@@ -458,46 +452,95 @@ class StressTester:
         # up too much memory.
         expectedTransportFailures = nMessages * transport.getFailureRate()
         if expectedTransportFailures > MAX_EXPECTED_TRANSPORT_FAILURES:
-            logger.error("Too many transport failures expected %d", 
-                    (int) expectedTransportFailures)
+            logger.error("Too many transport failures expected %d",
+                         int(expectedTransportFailures))
             logger.error("Abandoning test.")
             self.fail("Too much expected memory consumption to run this test.")
 
         self.ch.start_receiving_ressages()
 
-        try:
-            messagesLeft = nMessages
-            while messagesLeft >= submissionRate:
-                t0 = time.time() # UTC, seconds
-                self.submitMessageBatch(submissionRate, BATCH_SPAN_SECONDS,
-                                        alwaysDropRate)
-                messagesLeft -= submissionRate
-                t1 = time.time()
-                sleepTime = Math.max(BATCH_SPAN_SECONDS * 0.1,
-                                     BATCH_SPAN_SECONDS - (t1 - t0))
-                time.sleep(sleepTime)
-                self.pruneDroppedMessages()
+        messagesLeft = nMessages
+        while messagesLeft >= submissionRate:
+            t0 = time.time() # UTC, seconds
+            self.submitMessageBatch(submissionRate, BATCH_SPAN_SECONDS,
+                                    alwaysDropRate)
+            messagesLeft -= submissionRate
+            t1 = time.time()
+            sleepTime = Math.max(BATCH_SPAN_SECONDS * 0.1,
+                                 BATCH_SPAN_SECONDS - (t1 - t0))
+            time.sleep(sleepTime)
+            self.pruneDroppedMessages()
 
-            int timeLeftMillis = (1000 * messagesLeft) / submissionRate
-            submitMessageBatch(messagesLeft, timeLeftMillis, alwaysDropRate)
-            Thread.sleep(timeLeftMillis)
+        timeLeftMillis = (1000 * messagesLeft) / submissionRate
+        submitMessageBatch(messagesLeft, timeLeftMillis, alwaysDropRate)
+        Thread.sleep(timeLeftMillis)
 
-            # Having initiated the process of sending all the messages, we now
-            # have to wait for ??? and verify that exactly those messages that
-            # are expected to be received are received correctly.
-            maxReceiveDelay = transport.getMaxDelay()
-            _trace("WAITING", "Waiting to receive up to %d messages",  nMessages)
-            time.sleep(maxReceiveDelay)
-            retryCount = 10
-            while (retryCount-- > 0 
-                   and self.msgMap.size() > self.transport.getNumRandomDrops()):
-                time.sleep(0.250)
-                self.purgeAllDroppedMessages()
+        # Having initiated the process of sending all the messages, we now
+        # have to wait for ??? and verify that exactly those messages that
+        # are expected to be received are received correctly.
+        maxReceiveDelay = transport.getMaxDelay()
+        _trace("WAITING", "Waiting to receive up to %d messages", nMessages)
+        time.sleep(maxReceiveDelay)
+        for _ in range(10): # retry 10 times
+            if self.msgMap.size() <= self.transport.getNumRandomDrops():
+                break
+            time.sleep(0.250)
+            self.purgeAllDroppedMessages()
 
         # Now we do final validation.
         self.finalSendMessageValidation()
 
         self.cleanup()
+
+    # private
+    def processReceivedMessage(self, rm):
+        # Extract id from message.
+        # Look it up - we had better find it in our map.
+        # Verify that we expect to get it - (not alwaysDrop)
+        # Verify we have not already received it.
+        # Verify message type and message body is what we expect.
+        # If all ok, remove this from the hash map.
+        msgType = rm.msgType()
+        msgBody = rm.message()
+        nli = msgBody.indexOf('\n')
+        strId = nli < 0 if msgBody else msgBody.substring(0, nli)
+        try:
+            id_ = int(strId, 16)
+            _trace("RECVMSG", "Received message with id %d", id)
+            mr = this.msgMap.get(id_)
+            # assertNotEquals(mr, null)
+            assert mr
+            # assertEquals(mr.msgType, msgType)
+            assert mr.msgType == msgType
+            # assertEquals(mr.msgBody, msgBody)
+            assert mr.msgBody == msgBody
+            # assertFalse(mr.alwaysDrop)
+            assert not mr.alwaysDrop
+            self.msgMap.remove_instance(id_, mr)
+        except Exception as e:
+            _logger.exception("error attempting to parse received message")
+
+    # private 
+    def finalSendMessageValidation(self):
+        # Verify that the count of messages that still remain in our map
+        # is exactly equal to the number of messages dropped by the transport - i.e.,
+        # they were never received.
+        randomDrops = self.transport.getNumRandomDrops()
+        forceDrops = self.transport.getNumForceDrops()
+        mapSize = len(self.msgMap.size)
+        _logger.info("Final verification. ForceDrops: %d RandomDrops: %d, MISSING: %d",
+                     forceDrops, randomDrops, (mapSize - randomDrops))
+
+        if randomDrops != mapSize:
+            # We will fail this test later, but do some logging here...
+            _logger.info("Drop queue size: %d",  self.droppedMsgs.size())
+
+            def logmr(id_, mr):
+                _logger.info("missing mr id: %s  drop: %d", mr.id,  mr.alwaysDrop)
+            
+            self.msgMap.process_all(logmr)
+
+        assert randomDrops ==  mapSize
 
 
 def new_message_record(id_, alwaysdrop):

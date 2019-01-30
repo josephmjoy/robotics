@@ -116,6 +116,24 @@ To fix, do not define functions in loops. Instead delegate it to a function outs
 Each invocation of `makefunc` creates a fresh instance of local variable i (not to be confused with
 the list comprehension index i)
 
+[UPDATE] Here's another option, keeping the function inside the loop, but using default initialization of
+input parameters (`i=i`), so that the function can be called without any parameters. 
+It could have been `x=i ... return x*x` too.
+```
+def func1():
+    allfuncs = []
+    for i in range(10):
+        def func2(i=i): # was func2() which has the bug
+            return i*i
+        allfuncs.append(func2)
+    return allfuncs
+
+funcs = func1()
+for f in funcs:
+    print(f())
+```
+Without the `i=i`, the code prints 10 81s. Another option is to use `functools.partial`.
+
 ## January 29, 2018D JMJ: Python equivalent of Java's System.currentTimeMillis
 
 `System.currentTimeMillis()` (in milliseconds, long) -> `time.time()` (in seconds, float) - both UT
