@@ -11,12 +11,36 @@ import random
 import logging
 import collections
 import time
+import itertools
 
 from . import robotcomm as rc
-from .. import concurrent_helper as ch
+from .. import concurrent_helper as conc
 from .common import DatagramTransport
 
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+
+
+def getsome(func, maxnum=None, *, sentinel=None):
+    """A generator that returns up to {maxum} things. It
+    will return less if {func}():
+     - raises an IndexError exception
+     - raises a StopIteration exception
+     - returns the sentinel value.
+    >>> for x in getsome((x for x in range(10)).__next__, 5):
+    ...     print(x, end=' ')
+    0 1 2 3 4
+    >>>
+    """
+    try:
+        iter_ = range(maxnum) if maxnum is not None else itertools.count()
+        for _ in iter_:
+            value = func()
+            if value == sentinel:
+                return
+            yield value
+    except (IndexError, StopIteration):
+        pass
+
 
 def trace(*args, **kwargs):
     """simply call debug"""
@@ -92,17 +116,16 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
     def __init__(self, local_address):
         """Initialize MockTransport. {local_address}" can be any string."""
         self.loopbacknode = MockRemoteNode(self, local_address)
-        self.recvqueue = ch.ConcurrentDeque()
-        self.transport_timer = None
-        self.numsends = ch.AtomicNumber(0)
-        self.numrecvs = ch.AtomicNumber(0)
-        self.numforcedrops = ch.AtomicNumber(0)
-        self.numrandomdrops = ch.AtomicNumber(0)
+        self.recvqueue = conc.ConcurrentDeque()
+        self.numsends = conc.AtomicNumber(0)
+        self.numrecvs = conc.AtomicNumber(0)
+        self.numforcedrops = conc.AtomicNumber(0)
+        self.numrandomdrops = conc.AtomicNumber(0)
         self.closed = False
         self.failurerate = 0
         self.maxdelay = 0
         self.client_recv = None # set in start_listening
-        self.scheduler = ch.EventScheduler()
+        self.scheduler = conc.EventScheduler()
 
     #
     # DatagramTransport methods
@@ -125,8 +148,6 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
         self.scheduler.stop(block=True)
         # print("Scheduler stopped")
         self.closed = True
-        if self.transport_timer:
-            self.transport_timer.cancel()
 
     #
     # Methods to be used by tests
@@ -139,7 +160,7 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
 
     def setTransportCharacteristics(self, failurerate, maxdelay) -> None:
         """Changes transport characteristics: sends datagrams with {failurerate} failure
-        rate, and {maxdelay} max delay per packet."""
+        rate, and {maxdelay} seconds max delay per packet."""
         assert 0 <= failurerate <= 1
         assert maxdelay >= 0
         self.failurerate = failurerate
@@ -234,9 +255,9 @@ class TestMockTransport(unittest.TestCase):
             # force drop
             return msg + MockTransport.ALWAYSDROP_TEXT
 
-        messages = {genmsg(i): ch.AtomicNumber(0) for i in range(msgcount)}
-        recvcount = ch.AtomicNumber(0)
-        errcount = ch.AtomicNumber(0) # count of unexpected messages recvd
+        messages = {genmsg(i): conc.AtomicNumber(0) for i in range(msgcount)}
+        recvcount = conc.AtomicNumber(0)
+        errcount = conc.AtomicNumber(0) # count of unexpected messages recvd
 
         def receivemsg(msg, node):
             # print("Received message [{}] from {}".format(msg, node))
@@ -282,9 +303,9 @@ class TestMockTransport(unittest.TestCase):
         """Sends a bunch of messages with random transport failures."""
         msgcount = 10000
         failurerate = 0.3
-        maxdelay = 1
+        maxdelay = 1 # seconds
 
-        recvcount = ch.AtomicNumber(0)
+        recvcount = conc.AtomicNumber(0)
         messages = {'msg-' + str(i) for i in range(msgcount)}
         transport = MockTransport(self.LOCAL_ADDRESS)
         transport.setTransportCharacteristics(failurerate, maxdelay)
@@ -314,6 +335,171 @@ TestMessageRecord = collections.namedtuple('TestMessageRecord', 'id alwaysDrop m
 # Keeps track of a command and expected response
 TestCommandRecord = collections.namedtuple('TestCommandRecord', 'cmdRecord respRecord rt timeout')
 
+
+class StressTester:
+    """Test engine that instantiates and runs robotcomm stress tests with
+    various parameters"""
+
+    def __init__(self, nThreads, transport):
+        """Initializes the stress tester"""
+        self.nThreads = nThreads
+        self.transport = transport
+        #self.log = log
+        #self.hfLog = log.newLog("HFLOG")
+
+        # Init executor.
+        self.exPool = Executors.newFixedThreadPool(nThreads)
+
+        # Protected
+        self.rand = new Random()
+        self.nextId = new AtomicLong(1)
+        self.scheduler = conc.EventScheduler()
+        #StructuredLogger.Log log
+        #StructuredLogger.Log hfLog; # high frequency (verbose) log
+
+        self.msgMap = conc.ConcurrentDict()
+        self.droppedMsgs = conc.ConcurrentDeque()
+        # self.cmdMap = conc.ConcurrentDict()
+        # self.cmdCliSubmitQueue = conc.ConcurrentDeque()
+        # self.cmdSvrComputeQueue = conc.ConcurrentDeque()
+        # self.droppedCommands = conc.ConcurrentDeque()
+        # self.droppedResponses = conc.ConcurrentDeque()
+        self.rc = RobotComm(transport)
+
+
+    def open():
+        """Starts listening, etc."""
+        # StructuredLogger.Log rcLog = log.newLog("RCOMM")
+        # rcLog.pauseTracing()
+        remotenode = transport.new_remotenode("localhost")
+        self.ch = rc.newChannel("testChannel")
+        self.ch.bind_to_remote_node(remotenode) # TODO: change to bind_destination
+        self.rc.start_listening()
+
+    # private
+    def pruneDroppedMessages() -> None:
+        """Keep count of dropped messages by removing the older
+        half of them if their number grows larger than DROP_TRIGGER"""
+        DROP_TRIGGER = 1000
+        # Remember that the message map and queue of dropped messages are
+        # concurrently modified so sizes are estimates.
+        sizeEst = len(self.droppedMsgs) # warning: O(n) operation
+        if sizeEst > DROP_TRIGGER:
+            dropCount = sizeEst / 2
+            _trace("PURGE", "Purging about %s force-dropped messages",
+                   dropCount)
+            for mr in getsome(self.droppedMsgs.pop, dropCount):
+                    self.msgMap.remove_instance(mr.id, mr) # O(log(n))
+
+    # private
+    def purgeAllDroppedMessages() -> None:
+        """Remove all dropped messages (at least the ones that were in the
+        queue when we entered this method)."""
+        for mr in getsome(self.droppedMsgs.pop):
+                self.msgMap.remove_instance(mr.id, mr); # O(log(n))
+
+    # private
+    def submitMessageBatch(nMessages, submissionTimespan,
+                           alwaysDropRate) -> None:
+        """sent a batch of messages over {submissionTimespan} seconds"""
+        assert self.rc
+        assert self.ch
+        assert alwaysDropRate >= 0 and alwaysDropRate <= 1
+        assert submissionTimespan >= 0
+
+        _trace("SUBMIT", "Beginning to submit %s messages", nMessages)
+
+        def delayed_send(id_, msgTYpe, msgBody):
+            def really_send():
+                _trace("SEND", "Sending message with id %d", id_)
+                self.ch.send_message(msgType, msgBody)
+            delay = rand.random() * submissionTimespan # seconds
+            self.scheduler.schedule(delay, really_send)
+
+        # Send messages at random times
+        for _ in range(nMessages):
+            id_ = nextId.next()
+            alwaysDrop = rand.random() < alwaysDropRate
+            mr = MessageRecord(id_, alwaysDrop)
+            self.msgMap.set(id_, mr)
+            if alwaysDrop:
+                self.droppedMsgs.appendleft(mr)
+            delayed_send(id_, mr.msgTYpe, mr.msgBody)
+
+        def receive_all():
+            # Pick up all messages received so far and verify them...
+            for rm in getsome(ch.poll_received_messages):
+                self.processReceivedMessage(rm)
+
+        # Poll for received messages at random times
+        recvAttempts = max(nMessages / 100, 10)
+        maxReceiveDelay = submissionTimespan + transport.getMaxDelay()
+        for i in range(recvAttempts):
+            delay = rand.random() * submissionTimespan
+            # Special case of i == 0 - we schedule our final receive attempt to
+            # be AFTER the last packet is actually sent by the transport (after
+            # a potential delay)
+            if i == 0:
+                delay = maxReceiveDelay + 1
+            self.scheduler.schedule(delay, receive_all)
+
+        def submitMessages(nMessages, submissionRate, alwaysDropRate):
+            """
+            Stress test sending, receiving and processing of commands.
+                nMessages - number of messages to submit
+                submissionRate - rate of submission per second 
+                alwaysDropRate - rate at which datagrams are always dropped by 
+                                 the transport
+            """
+        BATCH_SPAN_SECONDS = 1.0
+        MAX_EXPECTED_TRANSPORT_FAILURES = 1000000
+        # If more than LARGE_COUNT messages, there should be NO transport send
+        # failures else our tracked messages will start to accumulate and take
+        # up too much memory.
+        expectedTransportFailures = nMessages * transport.getFailureRate()
+        if expectedTransportFailures > MAX_EXPECTED_TRANSPORT_FAILURES:
+            logger.error("Too many transport failures expected %d", 
+                    (int) expectedTransportFailures)
+            logger.error("Abandoning test.")
+            self.fail("Too much expected memory consumption to run this test.")
+
+        self.ch.start_receiving_ressages()
+
+        try:
+            messagesLeft = nMessages
+            while messagesLeft >= submissionRate:
+                t0 = time.time() # UTC, seconds
+                self.submitMessageBatch(submissionRate, BATCH_SPAN_SECONDS,
+                                        alwaysDropRate)
+                messagesLeft -= submissionRate
+                t1 = time.time()
+                sleepTime = Math.max(BATCH_SPAN_SECONDS * 0.1,
+                                     BATCH_SPAN_SECONDS - (t1 - t0))
+                time.sleep(sleepTime)
+                self.pruneDroppedMessages()
+
+            int timeLeftMillis = (1000 * messagesLeft) / submissionRate
+            submitMessageBatch(messagesLeft, timeLeftMillis, alwaysDropRate)
+            Thread.sleep(timeLeftMillis)
+
+            # Having initiated the process of sending all the messages, we now
+            # have to wait for ??? and verify that exactly those messages that
+            # are expected to be received are received correctly.
+            maxReceiveDelay = transport.getMaxDelay()
+            _trace("WAITING", "Waiting to receive up to %d messages",  nMessages)
+            time.sleep(maxReceiveDelay)
+            retryCount = 10
+            while (retryCount-- > 0 
+                   and self.msgMap.size() > self.transport.getNumRandomDrops()):
+                time.sleep(0.250)
+                self.purgeAllDroppedMessages()
+
+        # Now we do final validation.
+        self.finalSendMessageValidation()
+
+        self.cleanup()
+
+
 def new_message_record(id_, alwaysdrop):
     """Creates and returns a new test message record"""
 
@@ -334,10 +520,6 @@ def new_message_record(id_, alwaysdrop):
     return TestMessageRecord(id=id_, alwaysDrop=alwaysdrop,
                              msgType=random_type(), msgBody=body)
 
-
-# class StressTester:
-#     """Test engine that instantiates and runs robotcomm stress tests with
-#     various parameters"""
 
 class TestRobotComm(unittest.TestCase):
     """Container for RobotComm unit tests"""

@@ -14,7 +14,7 @@ Instead of:
 	    pass
 ```
 
-or ...
+Or ...
 ```
 	for _ in range(maxnum):
 	    value = somefunc()
@@ -23,7 +23,7 @@ or ...
             process(value)
 ```
 
-we now have
+We now have
 ```
 	for value in getsome(somefunc, maxnum, sentinel):
 	    process(value)
