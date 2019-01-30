@@ -1,6 +1,125 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## January 29, 2018G JMJ: Wrote helper method `getsome`
+Implemented a generator that calls a supplied function multiple times, up to a maximum number of times.
+This replaces a common case where one uses a `try-except` and or while loop with sentinel check.
+Instead of:
+```
+	try:
+	    for _ in range(maxnum):
+	        value = somefunc()
+                process(value)
+	except IndexError:
+	    pass
+```
+
+or ...
+```
+	for _ in range(maxnum):
+	    value = somefunc()
+	    if value == sentinel:
+	        break
+            process(value)
+```
+
+we now have
+```
+	for value in getsome(somefunc, maxnum, sentinel):
+	    process(value)
+```
+
+Pretty cool! Note that `somefunc` must take no arguments in this implementation.
+
+The code is below, currently residing in `test_robotcomm.py`.
+
+```
+def getsome(func, maxnum, sentinel=None):
+    """A generator that returns up to {maxum} things. It
+    will return less if {func}():
+     - raises an IndexError exception
+     - raises a StopIteration exception
+     - returns the sentinel value.
+    >>> for x in getsome((x for x in range(10)).__next__, 5):
+    ...     print(x, end=' ')
+    0 1 2 3 4
+    >>>
+    """
+    try:
+        for _ in range(maxnum):
+            value = func()
+            if value == sentinel:
+                return
+            yield value
+    except (IndexError, StopIteration):
+        pass
+```
+
+## January 29, 2018F JMJ: Performance cost of nested functions
+
+Great discussion on whether or not nested functions are "compiled":
+	https://stackoverflow.com/questions/6020532/are-python-inner-functions-compiled
+Also good examples of calling `dis.dis(function)`, using `timeit`, and reporting the `id` of objects.
+Short answer: they are _parsed_ when the module is parsed, creating a code object. However a function
+object is created each time the outer function is called. This function object includes any referenced
+outer objects and globals. A profile of a very simple outer and inner function showed that inner functions
+incur a 50% penalty if the bodies are essentially empty. This is very little but could be an issue for
+doing this in very performance critical situations. 
+
+Here's an example of calling `dis.dis`:
+```
+>>> def outer():
+	def inner(i): return i+42
+	return inner(32)
+
+>>> dis.dis(outer)
+  2           0 LOAD_CONST               1 (<code object inner at 0x00000214F03AD0C0, file "<pyshell#61>", line 2>)
+              2 LOAD_CONST               2 ('outer.<locals>.inner')
+              4 MAKE_FUNCTION            0
+              6 STORE_FAST               0 (inner)
+
+  3           8 LOAD_FAST                0 (inner)
+             10 LOAD_CONST               3 (32)
+             12 CALL_FUNCTION            1
+             14 RETURN_VALUE
+
+Disassembly of <code object inner at 0x00000214F03AD0C0, file "<pyshell#61>", line 2>:
+  2           0 LOAD_FAST                0 (i)
+              2 LOAD_CONST               1 (42)
+              4 BINARY_ADD
+              6 RETURN_VALUE
+>>> 
+```
+
+
+## January 29, 2018E JMJ: Do not define nested functions within loops!
+
+Got caught by defining a deferred function in a loop in `TestTransport.submitMessageBatch`. 
+Examine the following:
+```
+	>>> funcs = [lambda: i*i for i in range(10)]
+	>>> for f in funcs: print(f(), end=' ')
+	81 81 81 81 81 81 81 81 81 81
+```
+I had forgotten that it is a _reference_, not copy of any variables that are included in the closure. So by the
+time the functions are actually invoked, this shared variable (i) has it's final value (9). This is
+_different_ than Java's closure, which always makes a copy (and insists that the variables are final). And I seem to
+remember that JavaScript behaves similarly to Python.
+
+To fix, do not define functions in loops. Instead delegate it to a function outside the loop:
+```
+	>>> def makefunc(i): return lambda: i*i
+	>>> funcs = [makefunc(i) for i in range(10)]
+	>>> for f in funcs: print(f(), end=' ')
+	0 1 4 9 16 25 36 49 64 81
+```
+Each invocation of `makefunc` creates a fresh instance of local variable i (not to be confused with
+the list comprehension index i)
+
+## January 29, 2018D JMJ: Python equivalent of Java's System.currentTimeMillis
+
+`System.currentTimeMillis()` (in milliseconds, long) -> `time.time()` (in seconds, float) - both UT
+
 ## January 29, 2018C JMJ: Cleaned up most camel case - > moved to snake case
 It was fairly straightforward. The unittests caught some inter-module mistakes - it seems Pylint does
 not catch badly named attributes if the class in question is external - I suppose that makes sense.
