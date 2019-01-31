@@ -6,7 +6,7 @@ I implemented class `ConcurrentInvoke` to make sure that concurrently executed t
 and there is a way to stop future executions of concurrent tasks. This came up writing comm tests, where
 I wanted to execute certain functions in a different thread context, so was using a `ThreadPoolExecutor`, but 
 the problem is that exceptions thrown in the context of the executor are hidden unless the future (returned
-by `executor.submit` is checked for exceptions. In the case where we simply want to run the task in a
+by `executor.submit`) is checked for exceptions. In the case where we simply want to run the task in a
 different thread's context, we don't track these futures so never know if an exception was thrown.
 
 `ConcurrentInvoke.invoke` or `ConcurrentInvoke.tagged_invoke` are equivalent to `Executor.submit`, however

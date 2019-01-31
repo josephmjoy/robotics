@@ -12,6 +12,7 @@ import logging
 import collections
 import time
 import itertools
+import concurrent.futures
 
 from . import robotcomm as rc
 from .. import concurrent_helper as conc
@@ -30,6 +31,7 @@ def getsome(func, maxnum=None, *, sentinel=None):
      - raises an IndexError exception
      - raises a StopIteration exception
      - returns the sentinel value.
+    If {maxnum} is not specified it defaults to infinity
     >>> for x in getsome((x for x in range(10)).__next__, 5):
     ...     print(x, end=' ')
     0 1 2 3 4
@@ -341,26 +343,24 @@ class StressTester: # pylint: disable=too-many-instance-attributes
     """Test engine that instantiates and runs robotcomm stress tests with
     various parameters"""
 
-    # TODO: We need to actually schedule stuff using an executor to get multiple threads
-
     def __init__(self, nThreads, transport, harness):
         """Initializes the stress tester"""
+        MAX_WORKERS = 1 # thread pool thread count
         self.nThreads = nThreads
         self.transport = transport
         self.harness = harness
-        #self.log = log
-        #self.hfLog = log.newLog("HFLOG")
 
         # Protected
         self.rand = random.Random()
         self.nextId = conc.AtomicNumber(1)
         self.scheduler = conc.EventScheduler()
-        self.ch = None
-        #StructuredLogger.Log log
-        #StructuredLogger.Log hfLog; # high frequency (verbose) log
+        self.executor = concurrent.futures.ThreadPoolExecutor(MAX_WORKERS)
+        self.invoker = conc.ConcurrentInvoker(self.executor, logger)
+        self.ch = None # set in open
 
         self.msgMap = conc.ConcurrentDict()
         self.droppedMsgs = conc.ConcurrentDeque()
+        # TODO: implement
         # self.cmdMap = conc.ConcurrentDict()
         # self.cmdCliSubmitQueue = conc.ConcurrentDeque()
         # self.cmdSvrComputeQueue = conc.ConcurrentDeque()
@@ -371,11 +371,9 @@ class StressTester: # pylint: disable=too-many-instance-attributes
 
     def open(self):
         """Starts listening, etc."""
-        # StructuredLogger.Log rcLog = log.newLog("RCOMM")
-        # rcLog.pauseTracing()
         remotenode = self.transport.new_remotenode("localhost")
         self.ch = self.rc.new_channel("testChannel")
-        self.ch.bind_to_remote_node(remotenode) # TODO: change to bind_destination
+        self.ch.bind_to_remote_node(remotenode) # TODO: change to set_destination
         self.rc.start_listening()
 
     # private
@@ -387,7 +385,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         # concurrently modified so sizes are estimates.
         sizeEst = len(self.droppedMsgs) # warning: O(n) operation
         if sizeEst > DROP_TRIGGER:
-            dropCount = sizeEst / 2
+            dropCount = sizeEst // 2
             _trace("PURGE", "Purging about %s force-dropped messages",
                    dropCount)
             for mr in getsome(self.droppedMsgs.pop, dropCount):
@@ -409,12 +407,12 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         assert alwaysDropRate <= 1
         assert submissionTimespan >= 0
 
-        _trace("SUBMIT", "Beginning to submit %s messages", nMessages)
+        _trace("SUBMIT", "Beginning to submit %d messages", nMessages)
 
         def delayed_send(id_, msgType, msgBody):
             def really_send():
                 _trace("SEND", "Sending message with id %d", id_)
-                self.ch.send_message(msgType, msgBody)
+                self.invoker.invoke(self.ch.send_message, msgType, msgBody)
             delay = self.rand.random() * submissionTimespan # seconds
             self.scheduler.schedule(delay, really_send)
 
@@ -434,7 +432,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
                 self.processReceivedMessage(rm)
 
         # Poll for received messages at random times
-        recvAttempts = max(nMessages / 100, 10)
+        recvAttempts = max(nMessages // 100, 10)
         maxReceiveDelay = submissionTimespan + self.transport.getMaxDelay()
         for i in range(recvAttempts):
             delay = self.rand.random() * submissionTimespan
@@ -513,6 +511,8 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         """
         msgType = rm.msgType()
         msgBody = rm.message()
+        # TODO: fix Java string stuff...
+        error
         nli = msgBody.indexOf('\n')
         strId = nli < 0 if msgBody else msgBody.substring(0, nli)
         try:
@@ -560,22 +560,21 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         """Cleanup our queues and maps so we can do another test"""
         self.msgMap.clear()
         self.droppedMsgs.clear()
+        self.ch.stop_receiving_messages()
+
         # TODO: enable
         #self.cmdMap.clear()
         #self.cmdCliSubmitQueue.clear()
         #self.cmdSvrComputeQueue.clear()
         #self.droppedCommands.clear()
-
-        #self.ch.stop_receiving_messages()
         #self.ch.stop_receiving_commands()
-
 
     def close(self):
         """Close the stress tester"""
-        # TODO: self.exPool.shutdownNow()
         self.cleanup()
         self.scheduler.cancel_all()
         self.scheduler.stop(block=True)
+        self.executor.shutdown(wait=True)
 
 
 def new_message_record(id_, alwaysdrop):
@@ -597,7 +596,6 @@ def new_message_record(id_, alwaysdrop):
     body = MockTransport.ALWAYSDROP_TEXT if alwaysdrop else random_body()
     return TestMessageRecord(id=id_, alwaysDrop=alwaysdrop,
                              msgType=random_type(), msgBody=body)
-
 
 class TestRobotComm(unittest.TestCase):
     """Container for RobotComm unit tests"""
