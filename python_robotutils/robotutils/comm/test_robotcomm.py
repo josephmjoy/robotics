@@ -420,7 +420,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         for _ in range(nMessages):
             id_ = self.nextId.next()
             alwaysDrop = self.rand.random() < alwaysDropRate
-            mr = TestMessageRecord(id_, alwaysDrop)
+            mr = new_message_record(id_, alwaysDrop)
             self.msgMap.set(id_, mr)
             if alwaysDrop:
                 self.droppedMsgs.appendleft(mr)
@@ -466,7 +466,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             logger.error("Abandoning test.")
             self.harness.fail("Too much expected memory consumption to run this test.")
 
-        self.ch.start_receiving_ressages()
+        self.ch.start_receiving_messages()
 
         messagesLeft = nMessages
         while messagesLeft >= submissionRate:
@@ -491,7 +491,8 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         _trace("WAITING", "Waiting to receive up to %d messages", nMessages)
         time.sleep(maxReceiveDelay)
         for _ in range(10): # retry 10 times
-            if len(self.msgMap) <= self.transport.getNumRandomDrops():
+            stats = self.transport.getStats()
+            if len(self.msgMap) <= stats.randomdrops:
                 break
             time.sleep(0.250)
             self.purgeAllDroppedMessages()
@@ -536,8 +537,9 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         is exactly equal to the number of messages dropped by the transport -
         i.e., they were never received.
         """
-        randomDrops = self.transport.getNumRandomDrops()
-        forceDrops = self.transport.getNumForceDrops()
+        stats = self.transport.getStats()
+        randomDrops = stats.randomdrops
+        forceDrops = stats.forcedrops
         mapSize = len(self.msgMap)
         msg = "Final verification ForceDrops: %d RandomDrops: %d MISSING: %d"
         logger.info(msg, forceDrops, randomDrops, (mapSize - randomDrops))
@@ -629,7 +631,7 @@ class TestRobotComm(unittest.TestCase):
         self.assertTrue(rm)
         self.assertEqual(testMessage, rm.message)
 
-    def test_stress_send_and_receive_messages_trivial(self):
+    def test_xyz_stress_send_and_receive_messages_trivial(self):
         """Sends a single message with no failures or delays; single thread"""
         nThreads = 1
         nMessages = 1
@@ -640,7 +642,10 @@ class TestRobotComm(unittest.TestCase):
         transport = MockTransport("localhost")
         stresser = StressTester(self, nThreads, transport)
         stresser.open()
-        transport.setTransportCharacteristics(transportFailureRate,
-                                              maxTransportDelay)
-        stresser.submitMessages(nMessages, messageRate, dropRate)
-        stresser.close()
+        try:
+            transport.setTransportCharacteristics(transportFailureRate,
+                                                  maxTransportDelay)
+            stresser.submitMessages(nMessages, messageRate, dropRate)
+        finally:
+            stresser.close()
+            transport.close()
