@@ -344,9 +344,8 @@ class StressTester: # pylint: disable=too-many-instance-attributes
     """Test engine that instantiates and runs robotcomm stress tests with
     various parameters"""
 
-    def __init__(self, nThreads, transport, harness):
+    def __init__(self, harness, nThreads, transport):
         """Initializes the stress tester"""
-        MAX_WORKERS = 1 # thread pool thread count
         self.nThreads = nThreads
         self.transport = transport
         self.harness = harness
@@ -355,7 +354,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         self.rand = random.Random()
         self.nextId = conc.AtomicNumber(1)
         self.scheduler = conc.EventScheduler()
-        self.executor = concurrent.futures.ThreadPoolExecutor(MAX_WORKERS)
+        self.executor = concurrent.futures.ThreadPoolExecutor(nThreads)
         self.invoker = conc.ConcurrentInvoker(self.executor, logger)
         self.ch = None # set in open
 
@@ -629,3 +628,19 @@ class TestRobotComm(unittest.TestCase):
             rcomm.close()
         self.assertTrue(rm)
         self.assertEqual(testMessage, rm.message)
+
+    def test_stress_send_and_receive_messages_trivial(self):
+        """Sends a single message with no failures or delays; single thread"""
+        nThreads = 1
+        nMessages = 1
+        messageRate = 10000
+        dropRate = 0
+        transportFailureRate = 0
+        maxTransportDelay = 0 # seconds
+        transport = MockTransport("localhost")
+        stresser = StressTester(self, nThreads, transport)
+        stresser.open()
+        transport.setTransportCharacteristics(transportFailureRate,
+                                              maxTransportDelay)
+        stresser.submitMessages(nMessages, messageRate, dropRate)
+        stresser.close()
