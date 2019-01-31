@@ -13,6 +13,10 @@ from .context import concurrent_helper as ch
 
 # pylint: disable=invalid-name
 
+def cointoss():
+    """Tosses a fair coin"""
+    return random.randint(0, 1)
+
 class TestAtomicNumber(unittest.TestCase):
     """Container for AtomicNumber tests"""
 
@@ -378,8 +382,6 @@ class TestConcurrentDict(unittest.TestCase):
         prev_privates = dict() # keeps track of previous values
         local_ops = 0
 
-        def cointoss():
-            return random.randint(0, 1)
 
         try:
             for _ in range(num_iterations):
@@ -582,3 +584,54 @@ class TestEventScheduler(unittest.TestCase):
         print("scheduler CANCEL: count={}/{}".format(count, numevents))
         self.assertTrue(scheduler.healthy())
         self.assertGreater(count, 0)
+
+
+class TestConcurrentInvoker(unittest.TestCase):
+    """Container for ConcurrentInvoker tests"""
+
+    def test_concurrent_invoker_noerrors(self):
+        """Tests ConcurrentInvoker with no exceptions"""
+        self._runtest(no_exceptions=True)
+
+    def test_concurrent_invoker_with_errors(self):
+        """Tests ConcurrentInvoker with random exceptions"""
+        self._runtest(no_exceptions=False)
+
+    def _runtest(self, no_exceptions):
+        executor = concurrent.futures.ThreadPoolExecutor()
+        invoker = ch.ConcurrentInvoker(executor)
+
+        NUM_INVOCATIONS = 1000
+        ok_sum = ch.AtomicNumber(0)
+        except_count = ch.AtomicNumber(0)
+
+        def myfunc(i):
+            if no_exceptions or cointoss():
+                ok_sum.add(i)
+            else:
+                msg = "Purposeful exception in myfunc({})".format(i)
+                except_count.next()
+                raise ValueError(msg)
+
+        for i in range(NUM_INVOCATIONS):
+            if cointoss():
+                invoker.tagged_invoke(i, myfunc, i+1)
+            else:
+                invoker.invoke(myfunc, i+1)
+
+        executor.shutdown(wait=True)
+
+        if no_exceptions:
+            self.assertEqual(except_count.value(), 0)
+
+        sum_1_to_n = (NUM_INVOCATIONS * (NUM_INVOCATIONS+1)) // 2
+        # print("ok_sum: ", ok_sum.value())
+        # print("exept_count: ", except_count.value())
+        if except_count.value() == 0:
+            # No exceptions raised
+            self.assertEqual(ok_sum.value(), sum_1_to_n)
+            self.assertFalse(invoker.exceptions)
+        else:
+            # At least 1 exception raised
+            self.assertLess(ok_sum.value(), sum_1_to_n)
+            self.assertTrue(invoker.exceptions)

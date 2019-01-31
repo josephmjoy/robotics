@@ -11,10 +11,10 @@ import logging
 
 _NO_DEFAULT = object() # To check if an optional parameter was specified in selected method calls
 
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+_logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 def trace(*args, **kwargs):
     """simply call debug"""
-    logger.debug(*args, **kwargs)
+    _logger.debug(*args, **kwargs)
     #print(*args, **kwargs)
 
 def tracing():
@@ -23,7 +23,7 @@ def tracing():
 
 def critical(*args, **kwargs):
     """Wrapper to log critical error messages"""
-    logger.critical(*args, **kwargs)
+    _logger.critical(*args, **kwargs)
 
 class AtomicNumber:
     """Supports various atomic operations on numbers
@@ -338,8 +338,8 @@ class EventScheduler:
 
 
     def start(self):
-        """Starts the scheduler. It starts a background thread in which context the
-        scheduling is done"""
+        """Starts the scheduler. It starts a background thread in which context
+        the scheduling is done"""
 
         def threadfn():
             done = False
@@ -366,7 +366,7 @@ class EventScheduler:
                     self._event_exception = True
                     # This would log an ERROR message with details about the exception.
                     # By default this prints to stderr, so we get to reports of this error
-                    logger.exception("EventScheduler: Client's threadfn threw exception")
+                    _logger.exception("EventScheduler: Client's threadfn threw exception")
                     break  # Get out of the loop
             trace("Exiting threadfn")
 
@@ -414,6 +414,54 @@ class EventScheduler:
         """ Returns if the scheduler is stopped or running OK. If
         a client event handler threw an exception it returns True."""
         return not self._event_exception
+
+
+class ConcurrentInvoker:
+    """For invoking a function in a different context and logging errors.
+    Invocation is supressed if an earlier error occurred. A list of exceptions is
+    available in self.exceptions (up to about MAX_EXCEPTIONS)"""
+
+    # (Approximate) max exceptions to save in self.exceptions. It is
+    # technically approximate because of concurrent execution
+    MAX_EXCEPTIONS = 5
+
+    def __init__(self, executor, logger=None):
+        """Initialize the invoker"""
+        self._executor = executor
+        self._logger = logger
+        self.exceptions = []
+
+    def invoke(self, func, *args, **kwargs) -> None:
+        """Invoke {func(*args, **kwargs)} in a different execution context.
+        Invocation is suppressed if an earlier exception occurred. If an
+        exception is raised by invoking {func}, the exception may be
+        added to list {self.exceptions} and future invocations will be supressed."""
+        self.tagged_invoke(None, func, *args, **kwargs)
+
+    def tagged_invoke(self, tag, func, *args, **kwargs) -> None:
+        """Same as invoke, with the addition that {tag} is logged to help
+        distinguish one invocation of {func} from another."""
+
+        prefix = str(tag)+ ', ' if tag else ''
+
+        def rootfunc():
+            if self.exceptions:
+                if self._logger:
+                    msg = "invocation(%s%s): SUPPRESSED because of earlier exception"
+                    self._logger.error(msg, prefix, func.__name__)
+                return
+            try:
+                func(*args, **kwargs)
+            except Exception as exp:
+                if len(self.exceptions) < ConcurrentInvoker.MAX_EXCEPTIONS:
+                    self.exceptions.append(exp)
+                if self._logger:
+                    self._logger.error("Invocation(%s%s) raised exception",
+                                       prefix, func.__name__, exc_info=True)
+                raise exp
+
+        self._executor.submit(rootfunc)
+
 
 if __name__ == '__main__':
     import doctest
