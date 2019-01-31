@@ -244,6 +244,7 @@ This code cannot yet be tested because it simply delegates work to channels and 
 yet implemented - the checked in `channel.py` is just a skeleton.
 
 ## January 25, 2018C JMJ: Removed `__len__` from ConcurrentDict
+[UPDATE: Jan 30, 2018: `__len__` was added back - was needed for `RobotComm` tests]
 It was triggered by a Pylint warning in `comm/robotcomm.py` not test
 for a collection to be empty by `len(collection) == 0`. You are supposed to just use
 `not collection`. But I can't do that for `ConcurrentDict`, and anyway, its 

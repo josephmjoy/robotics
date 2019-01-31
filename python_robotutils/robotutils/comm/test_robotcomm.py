@@ -59,7 +59,8 @@ def _tracing():
 
 
 
-TransportStats = collections.namedtuple('TransportStats', 'sends recvs forcedrops randomdrops')
+TransportStats = collections.namedtuple('TransportStats',
+                                        'sends recvs forcedrops randomdrops')
 
 #pylint: disable=invalid-name
 class MockRemoteNode(DatagramTransport.RemoteNode):
@@ -428,8 +429,10 @@ class StressTester: # pylint: disable=too-many-instance-attributes
 
         def receive_all():
             # Pick up all messages received so far and verify them...
-            for rm in getsome(self.ch.poll_received_messages):
-                self.processReceivedMessage(rm)
+            def process():
+                for rm in getsome(self.ch.poll_received_messages):
+                    self.processReceivedMessage(rm)
+            self.invoker.invoke(process)
 
         # Poll for received messages at random times
         recvAttempts = max(nMessages // 100, 10)
@@ -511,39 +514,34 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         """
         msgType = rm.msgType()
         msgBody = rm.message()
-        # TODO: fix Java string stuff...
-        error
-        nli = msgBody.indexOf('\n')
-        strId = nli < 0 if msgBody else msgBody.substring(0, nli)
         try:
+            nli = msgBody.index('\n')
+            strId = msgBody[nli+1:]
             id_ = int(strId, 16)
             _trace("RECVMSG", "Received message with id %d", id)
             mr = self.msgMap.get(id_)
-            # assertNotEquals(mr, null)
-            assert mr
-            # assertEquals(mr.msgType, msgType)
-            assert mr.msgType == msgType
-            # assertEquals(mr.msgBody, msgBody)
-            assert mr.msgBody == msgBody
-            # assertFalse(mr.alwaysDrop)
-            assert not mr.alwaysDrop
+            self.harness.assertTrue(mr)
+            self.harness.assertEqual(mr.msgType, msgType)
+            self.harness.assertEqual(mr.msgBody, msgBody)
+            self.harness.assertFalse(mr.alwaysDrop)
             self.msgMap.remove_instance(id_, mr)
         except Exception as e:
             logger.exception("error attempting to parse received message")
             raise e
 
+
     # private
     def finalSendMessageValidation(self):
         """
         Verify that the count of messages that still remain in our map
-        is exactly equal to the number of messages dropped by the transport - i.e.,
-        they were never received.
+        is exactly equal to the number of messages dropped by the transport -
+        i.e., they were never received.
         """
         randomDrops = self.transport.getNumRandomDrops()
         forceDrops = self.transport.getNumForceDrops()
         mapSize = len(self.msgMap)
-        logger.info("Final verification. ForceDrops: %d RandomDrops: %d, MISSING: %d",
-                    forceDrops, randomDrops, (mapSize - randomDrops))
+        msg = "Final verification ForceDrops: %d RandomDrops: %d MISSING: %d"
+        logger.info(msg, forceDrops, randomDrops, (mapSize - randomDrops))
 
         if randomDrops != mapSize:
             # We will fail this test later, but do some logging here...
@@ -554,10 +552,12 @@ class StressTester: # pylint: disable=too-many-instance-attributes
 
             self.msgMap.process_all(logmr)
 
-        assert randomDrops == mapSize
+        self.harness.assertEqual(randomDrops, mapSize)
+
 
     def cleanup(self):
         """Cleanup our queues and maps so we can do another test"""
+        self.harness.assertFalse(self.invoker.exceptions) # no exceptions
         self.msgMap.clear()
         self.droppedMsgs.clear()
         self.ch.stop_receiving_messages()
@@ -584,7 +584,8 @@ def new_message_record(id_, alwaysdrop):
         return random.randint(0, 1<<32)
 
     def random_body():
-        """First line in message body is the internal 'id'. Remainder is random junk."""
+        """First line in message body is the internal 'id'. Remainder is random
+        junk."""
         extra = random.randint(1, 9)
         sequence = (hex(rand32()) for _ in range(extra))
         return hex(id_) + '\n' + '\n'.join(sequence)
