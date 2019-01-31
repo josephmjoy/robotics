@@ -17,12 +17,14 @@ import concurrent.futures
 from . import robotcomm as rc
 from .. import concurrent_helper as conc
 from .common import DatagramTransport
+from ._commlogging import _logger, _trace
 
 
 # TODO: track down and fix all the TODOs
 # pylint: disable=fixme
 
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+#logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logging.basicConfig(level=9)
 
 
 def getsome(func, maxnum=None, *, sentinel=None):
@@ -46,16 +48,6 @@ def getsome(func, maxnum=None, *, sentinel=None):
             yield value
     except (IndexError, StopIteration):
         pass
-
-
-def _trace(*args, **kwargs):
-    """simply call debug"""
-    logger.debug(args, kwargs)
-
-def _tracing():
-    """ Whether to trace or not"""
-    return True
-
 
 
 
@@ -355,7 +347,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         self.nextId = conc.AtomicNumber(1)
         self.scheduler = conc.EventScheduler()
         self.executor = concurrent.futures.ThreadPoolExecutor(nThreads)
-        self.invoker = conc.ConcurrentInvoker(self.executor, logger)
+        self.invoker = conc.ConcurrentInvoker(self.executor, _logger)
         self.ch = None # set in open
 
         self.msgMap = conc.ConcurrentDict()
@@ -461,9 +453,9 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         # up too much memory.
         expectedTransportFailures = nMessages * self.transport.getFailureRate()
         if expectedTransportFailures > MAX_EXPECTED_TRANSPORT_FAILURES:
-            logger.error("Too many transport failures expected %d",
+            _logger.error("Too many transport failures expected %d",
                          int(expectedTransportFailures))
-            logger.error("Abandoning test.")
+            _logger.error("Abandoning test.")
             self.harness.fail("Too much expected memory consumption to run this test.")
 
         self.ch.start_receiving_messages()
@@ -526,7 +518,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             self.harness.assertFalse(mr.alwaysDrop)
             self.msgMap.remove_instance(id_, mr)
         except Exception as e:
-            logger.exception("error attempting to parse received message")
+            _logger.exception("error attempting to parse received message")
             raise e
 
 
@@ -542,14 +534,14 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         forceDrops = stats.forcedrops
         mapSize = len(self.msgMap)
         msg = "Final verification ForceDrops: %d RandomDrops: %d MISSING: %d"
-        logger.info(msg, forceDrops, randomDrops, (mapSize - randomDrops))
+        _logger.info(msg, forceDrops, randomDrops, (mapSize - randomDrops))
 
         if randomDrops != mapSize:
             # We will fail this test later, but do some logging here...
-            logger.info("Drop queue size: %d", len(self.droppedMsgs))
+            _logger.info("Drop queue size: %d", len(self.droppedMsgs))
 
             def logmr(id_, mr):
-                logger.info("missing mr id: %s  drop: %d", id_, mr.alwaysDrop)
+                _logger.info("missing mr id: %s  drop: %d", id_, mr.alwaysDrop)
 
             self.msgMap.process_all(logmr)
 
@@ -633,6 +625,7 @@ class TestRobotComm(unittest.TestCase):
 
     def test_xyz_stress_send_and_receive_messages_trivial(self):
         """Sends a single message with no failures or delays; single thread"""
+        _trace("MAIN", "FOO")
         nThreads = 1
         nMessages = 1
         messageRate = 10000
