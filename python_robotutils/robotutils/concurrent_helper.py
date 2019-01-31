@@ -404,7 +404,7 @@ class EventScheduler:
         with self._lock: # we don't NEED to lock, but locking anyway
             self._quit = True
             self._event.set() # wake up background thread if necessary
-        if block:
+        if block and self._thread:
             trace("stop: waiting for thread to complete")
             # This works even if the thread has exited prematurely
             self._thread.join()
