@@ -382,7 +382,7 @@ class EventScheduler:
         """Schedule event {func} to run after waiting {delay} from the point this
     call was made OR the scheduler was started, whichever happened later."""
         with self._lock:
-            if not self._quit and not self._event_exception:
+            if self._thread and not self._quit and not self._event_exception:
                 self._scheduler.enter(delay, priority=0, action=func) # will not block
                 self._event.set() # wake up background thread if necessary
             else:
