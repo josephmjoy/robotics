@@ -1,6 +1,18 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+
+## February 1, 2018B JMJ: Set background thread's daemon attribute to True
+Tests used to block - requiring me to kill the entire bash session - if the main thread hit an assertion failure,
+including test failure. `CTRL-C` had no effect. This is because `concurrent_helper.EventScheduler` keeps
+a background thread alive and the process would hang waiting for that thread to exit, which it would never
+do because the scheduler's `close` method was not called.
+
+The fix is simply to set the `daemon` property of the background thread to `True` before starting it.
+Works great - now my comm unit tests no longer hang on exceptions.
+
+Reference: https://docs.python.org/3/library/threading.html#threading.Thread.daemon
+
 ## February 1, 2018A JMJ: Implemented LevelSpecificLogger
 This replaces earlier notes on logging:
 	January 31, 2018B

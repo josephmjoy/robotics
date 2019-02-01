@@ -375,6 +375,7 @@ class EventScheduler:
                 raise ValueError("Scheduler seems already started")
             else:
                 self._thread = threading.Thread(target=threadfn)
+                self._thread.daemon = True
                 self._thread.start()
 
 
