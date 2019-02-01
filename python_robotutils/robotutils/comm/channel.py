@@ -102,7 +102,7 @@ class Channel: #pylint: disable=too-many-instance-attributes
     def close(self) -> None:
         """Closes the channel. Any pending commands and messages may be
         dropped"""
-        _trace("REMOVING_CHANNEL", "name: %s", self.name)
+        _trace("REMOVING_CHANNEL name: %s", self.name)
         # pylint: disable=protected-access # (for _channels access below)
         removed = self._rcomm._channels.remove_instance(self.name, self)
         if removed:

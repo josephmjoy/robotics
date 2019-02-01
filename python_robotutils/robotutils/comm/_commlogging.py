@@ -12,8 +12,7 @@ _logger = logging.getLogger(LOGNAME) # pylint: disable=invalid-name
 #
 # Definitions pulled from Java robotutils.StructuredLogger
 #
-_TAG_TYPE = '_ty:' # Message type
-_TAG_DEF_MSG = '_msg:' # Default key form essage contents
+TAG_MSG = '_msg: ' # Message type
 
 
 def _tracing() -> bool:
@@ -22,21 +21,13 @@ def _tracing() -> bool:
     return _logger.isEnabledFor(TRACELEVEL)
 
 
-def _trace(msgtype, msg, *args, **kwargs) -> None:
-    """Trace message. Tracing analog to logger.debug, etc"""
+def _trace(msg, *args, **kwargs) -> None:
+    """Trace message. Tracing analog to logger.debug, etc. It prefixes
+    the message with '_ty: '. So the first word is expected to be the message
+    type."""
     if _tracing():
-        assert _validtag(msgtype)
         # There MUST be a space after ':' for YAML-like parsing to work.
-        msg = " ".join((_TAG_TYPE, msgtype, _TAG_DEF_MSG, msg))
-        # Generated examples: _ty: WARN_DROP _msg: Packet dropped
-        # Generated examples: _ty: POINT _msg: x: 29.1 y: 40
-        # In the above case `_msg` would be empty
+        msg = TAG_MSG + msg
+        # Generated examples: _ty: WARN_DROP Packet dropped
+        # Generated examples: _ty: POINT x: 29.1 y: 40
         _logger.log(TRACELEVEL, msg, *args, **kwargs)
-
-
-def _validtag(tag):
-    """Return True iff {tag} is valid: contains no whitespace or ':'"""
-    for char in tag:
-        if char in ': \t\r\n\f':
-            return False
-    return True

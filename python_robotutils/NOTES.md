@@ -1,21 +1,41 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
-## January 31, 2018G JMJ: New class concurrent_helper.ConcurrentInvoke
-I implemented class `ConcurrentInvoke` to make sure that concurrently executed tasks properly log exceptions
-and there is a way to stop future executions of concurrent tasks. This came up writing comm tests, where
-I wanted to execute certain functions in a different thread context, so was using a `ThreadPoolExecutor`, but 
-the problem is that exceptions thrown in the context of the executor are hidden unless the future (returned
-by `executor.submit`) is checked for exceptions. In the case where we simply want to run the task in a
-different thread's context, we don't track these futures so never know if an exception was thrown.
+## January 31, 2018B JMJ: Simplifying the `_trace` method
+It used to be that `_trace` took an extra (and first) argument recording message type,
+which was inserted with a `_ty: ` prefix. There were several places in the code where this
+first argument was forgotten, only caught at runtime. Also it was somewhat tedious to add
+this extra parameter. I considered inserting a `_ty: ` prefix any, assuming the
+message starts with a word that could be interpreted as the message type. Unfortunately
+that doesn't require a boundary between that first word and subsequent text. To keep things
+simple, the new `_trace` simply prefixes `_msg: `. There is no type value. A future
+trace method (`trace2`?) could add a type. Let's actually use trace output in
+programs that analyze logs before imposing this extra burden. The plan for now is to
+simply follow the convention that the first word in trace messages is a kind of type. Perhaps
+post-processing of logs can promote that to a type. For example: `"DROP_SEND dropping send because
+transport closing"`. Perhaps we can standardize on these tags - for now they are not
+specified formally - perhaps comments can list the current list of pseudo-message-types.
 
-`ConcurrentInvoke.invoke` or `ConcurrentInvoke.tagged_invoke` are equivalent to `Executor.submit`, however
-they will save away a bounded number (`ConcurrentInvoke.MAX_EXCEPTIONS`) of exceptions for later analysis,
-AND they will suppress invocations if a past exception has occurred. Additionally, if a logger is supplied
-in the constructor, the details of the exception are logged.
 
-`ConcurrentInvoke` has been implemented, along with unit test class `TestConcurrentInvoker`. Tests pass and Pylint
-score remains 10.0
+## January 31, 2018A JMJ: New class concurrent_helper.ConcurrentInvoke
+I implemented class `ConcurrentInvoke` to make sure that concurrently executed
+tasks properly log exceptions and there is a way to stop future executions of
+concurrent tasks. This came up writing comm tests, where I wanted to execute
+certain functions in a different thread context, so was using a
+`ThreadPoolExecutor`, but the problem is that exceptions thrown in the context
+of the executor are hidden unless the future (returned by `executor.submit`) is
+checked for exceptions. In the case where we simply want to run the task in a
+different thread's context, we don't track these futures so never know if an
+exception was thrown.
+
+`ConcurrentInvoke.invoke` or `ConcurrentInvoke.tagged_invoke` are equivalent to
+`Executor.submit`, however they will save away a bounded number
+(`ConcurrentInvoke.MAX_EXCEPTIONS`) of exceptions for later analysis, AND they
+will suppress invocations if a past exception has occurred. Additionally, if a
+logger is supplied in the constructor, the details of the exception are logged.
+
+`ConcurrentInvoke` has been implemented, along with unit test class
+`TestConcurrentInvoker`. Tests pass and Pylint score remains 10.0
 
 ## January 29, 2018G JMJ: Wrote helper method `getsome`
 Implemented a generator that calls a supplied function multiple times, up to a maximum number of times.

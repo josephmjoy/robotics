@@ -69,12 +69,12 @@ class MockRemoteNode(DatagramTransport.RemoteNode):
         """Sends {msg} over transport"""
         self._transport.numsends.next()
         if self._force_drop(msg):
-            _trace("TRANSPORT FORCEDROP:\n[%s]", msg)
+            _trace("TRANSPORT_FORCEDROP\n[%s]", msg)
             self._transport.numforcedrops.next()
             return # **************** EARLY RETURN *****
 
         if self._nonforce_drop():
-            _trace("TRANSPORT: RANDDROP\n[%s]", msg)
+            _trace("TRANSPORT_RANDDROP\n[%s]", msg)
             self._transport.numrandomdrops.next()
             return # **************** EARLY RETURN *****
 
@@ -219,7 +219,7 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
 
         if self.client_recv:
             self.numrecvs.next()
-            _trace("TRANSPORT RECV:\n[{}]\n", s)
+            _trace("TRANSPORT_RECV:\n[%s]\n", s)
             self.client_recv(s, self.loopbacknode)
         else:
             self.numforcedrops.next()
@@ -346,6 +346,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         self.rand = random.Random()
         self.nextId = conc.AtomicNumber(1)
         self.scheduler = conc.EventScheduler()
+        self.scheduler.start()
         self.executor = concurrent.futures.ThreadPoolExecutor(nThreads)
         self.invoker = conc.ConcurrentInvoker(self.executor, _logger)
         self.ch = None # set in open
@@ -378,7 +379,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         sizeEst = len(self.droppedMsgs) # warning: O(n) operation
         if sizeEst > DROP_TRIGGER:
             dropCount = sizeEst // 2
-            _trace("PURGE", "Purging about %s force-dropped messages",
+            _trace("PURGE Purging about %s force-dropped messages",
                    dropCount)
             for mr in getsome(self.droppedMsgs.pop, dropCount):
                 self.msgMap.remove_instance(mr.id, mr) # O(log(n))
@@ -399,13 +400,14 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         assert alwaysDropRate <= 1
         assert submissionTimespan >= 0
 
-        _trace("SUBMIT", "Beginning to submit %d messages", nMessages)
+        _trace("SUBMIT Beginning to submit %d messages", nMessages)
 
         def delayed_send(id_, msgType, msgBody):
             def really_send():
-                _trace("SEND", "Sending message with id %d", id_)
+                _trace("SEND Sending message with id %d", id_)
                 self.invoker.invoke(self.ch.send_message, msgType, msgBody)
             delay = self.rand.random() * submissionTimespan # seconds
+            _trace("SCHEDULING_SEND delay: %f", delay)
             self.scheduler.schedule(delay, really_send)
 
         # Send messages at random times
@@ -416,12 +418,13 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             self.msgMap.set(id_, mr)
             if alwaysDrop:
                 self.droppedMsgs.appendleft(mr)
+            _trace("PRE_SCHEDULING_SEND id: %d", id_)
             delayed_send(id_, mr.msgType, mr.msgBody)
 
         def receive_all():
             # Pick up all messages received so far and verify them...
             def process():
-                for rm in getsome(self.ch.poll_received_messages):
+                for rm in getsome(self.ch.poll_received_message):
                     self.processReceivedMessage(rm)
             self.invoker.invoke(process)
 
@@ -454,7 +457,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         expectedTransportFailures = nMessages * self.transport.getFailureRate()
         if expectedTransportFailures > MAX_EXPECTED_TRANSPORT_FAILURES:
             _logger.error("Too many transport failures expected %d",
-                         int(expectedTransportFailures))
+                          int(expectedTransportFailures))
             _logger.error("Abandoning test.")
             self.harness.fail("Too much expected memory consumption to run this test.")
 
@@ -480,7 +483,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         # have to wait for ??? and verify that exactly those messages that
         # are expected to be received are received correctly.
         maxReceiveDelay = self.transport.getMaxDelay()
-        _trace("WAITING", "Waiting to receive up to %d messages", nMessages)
+        _trace("WAITING Waiting to receive up to %d messages", nMessages)
         time.sleep(maxReceiveDelay)
         for _ in range(10): # retry 10 times
             stats = self.transport.getStats()
@@ -510,7 +513,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             nli = msgBody.index('\n')
             strId = msgBody[nli+1:]
             id_ = int(strId, 16)
-            _trace("RECVMSG", "Received message with id %d", id)
+            _trace("RECVMSG Received message with id %d", id)
             mr = self.msgMap.get(id_)
             self.harness.assertTrue(mr)
             self.harness.assertEqual(mr.msgType, msgType)
@@ -625,7 +628,6 @@ class TestRobotComm(unittest.TestCase):
 
     def test_xyz_stress_send_and_receive_messages_trivial(self):
         """Sends a single message with no failures or delays; single thread"""
-        _trace("MAIN", "FOO")
         nThreads = 1
         nMessages = 1
         messageRate = 10000

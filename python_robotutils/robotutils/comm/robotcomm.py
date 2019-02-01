@@ -7,7 +7,6 @@ import random
 
 from ._commlogging import _logger, _trace
 
-from . import _commlogmsgtypes as _LMT
 from .. import concurrent_helper
 from . import _protocol
 from .channel import Channel
@@ -121,14 +120,13 @@ class RobotComm():
             dgram = _protocol.datagram_from_str(msg)
             assert dgram
         except ValueError:
-            _trace(_LMT.DROPPING_RECEIVED_MESSAGE, "Malformed header.")
+            _trace("DROP_RECV Malformed header.")
             return  # ------------ EARLY RETURN ---------------
 
         chan = self._channels.get(dgram.channel)
 
         if not chan:
-            _trace(_LMT.DROPPING_RECEIVED_MESSAGE,
-                   "Unknown channel. channel: %s", dgram.channel)
+            _trace("DROP_RECV Unknown channel. channel: %s", dgram.channel)
         else:
             server = chan._server # pylint: disable=protected-access
             client = chan._client # pylint: disable=protected-access
