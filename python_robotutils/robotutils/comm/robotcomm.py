@@ -4,13 +4,17 @@ from the Java implementation (class RobotComm)
 """
 import threading
 import random
+import logging
 
-from ._commlogging import _logger, _trace
-
+from .. import logging_helper
 from .. import concurrent_helper
 from . import _protocol
 from .channel import Channel
 
+_LOGNAME = "robotutils.comm"
+_LOGGER = logging.getLogger(_LOGNAME)
+_TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
+_INFO = logging_helper.LevelSpecificLogger(logging.INFO, _LOGGER)
 
 class RobotComm():
     """The top-level class for robotcomm"""
@@ -55,7 +59,7 @@ class RobotComm():
                 start = True
                 self.listening = True
         if start:
-            _logger.info("STARTING LISTENING")
+            _INFO("STARTING LISTENING")
             self.transport.start_listening(self._listen_handler)
 
 
@@ -67,7 +71,7 @@ class RobotComm():
                 self.listening = False
                 stop = True
         if stop:
-            _logger.info("STOPPING LISTENING")
+            _INFO("STOPPING LISTENING")
             self.transport.stop_listening()
 
 
@@ -120,13 +124,13 @@ class RobotComm():
             dgram = _protocol.datagram_from_str(msg)
             assert dgram
         except ValueError:
-            _trace("DROP_RECV Malformed header.")
+            _TRACE("DROP_RECV Malformed header.")
             return  # ------------ EARLY RETURN ---------------
 
         chan = self._channels.get(dgram.channel)
 
         if not chan:
-            _trace("DROP_RECV Unknown channel. channel: %s", dgram.channel)
+            _TRACE("DROP_RECV Unknown channel. channel: %s", dgram.channel)
         else:
             server = chan._server # pylint: disable=protected-access
             client = chan._client # pylint: disable=protected-access

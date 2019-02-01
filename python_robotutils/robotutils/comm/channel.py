@@ -3,12 +3,18 @@ This module implements a robotcomm channel.Ported by JMJ
 from the Java implementation (class Channel)
 """
 import time
+import logging
 
-from ._commlogging import _logger, _trace
 from ..concurrent_helper import ConcurrentDeque
 from .common import ChannelStatistics, ReceivedMessage
 from ._protocol import Datagram, DatagramType
 from . import _protocol
+
+from .. import logging_helper
+
+_LOGNAME = "robotutils.comm.channel"
+_LOGGER = logging.getLogger(_LOGNAME)
+_TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 
 #TODO remove this eventually...
 # pylint: disable=fixme
@@ -74,7 +80,7 @@ class Channel: #pylint: disable=too-many-instance-attributes
         if _protocol.containschars(msgtype, _protocol.BAD_FIELD_CHARS):
             raise ValueError("Invalid message type: [{}]".format(msgtype))
         if self._closed:
-            _trace("Dropping message because channel %s closed", self.name)
+            _TRACE("Dropping message because channel %s closed", self.name)
         else:
             # TODO: We should directly generate the on-the-wire format - no
             # need to construct and then serialize a datagram!
@@ -102,7 +108,7 @@ class Channel: #pylint: disable=too-many-instance-attributes
     def close(self) -> None:
         """Closes the channel. Any pending commands and messages may be
         dropped"""
-        _trace("REMOVING_CHANNEL name: %s", self.name)
+        _TRACE("REMOVING_CHANNEL name: %s", self.name)
         # pylint: disable=protected-access # (for _channels access below)
         removed = self._rcomm._channels.remove_instance(self.name, self)
         if removed:
@@ -110,7 +116,7 @@ class Channel: #pylint: disable=too-many-instance-attributes
                 self._client.close()
             self._closed = True
         else:
-            _logger.warning("Channel %s not closed. removed=%s",
+            _LOGGER.warning("Channel %s not closed. removed=%s",
                             self.name, removed)
 
     def getstats(self):

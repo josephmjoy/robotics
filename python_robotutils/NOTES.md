@@ -26,6 +26,18 @@ loggers.
 
 This code is checked in as `robotutils/logging_helper.py`
 
+Following is typical module-level initialization:
+```
+import logging
+...
+from .. import logging_helper
+
+_LOGNAME = "robotutils.comm.channel"
+_LOGGER = logging.getLogger(_LOGNAME)
+_TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
+```
+Existing code under `robotutils/comm` has been updated to this new scheme.
+
 ## January 31, 2018B JMJ: Simplifying the `_trace` method
 It used to be that `_trace` took an extra (and first) argument recording message type,
 which was inserted with a `_ty: ` prefix. There were several places in the code where this
