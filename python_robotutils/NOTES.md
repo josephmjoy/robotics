@@ -1,6 +1,31 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## February 1, 2018A JMJ: Implemented LevelSpecificLogger
+This replaces earlier notes on logging:
+	January 31, 2018B
+	January 25, 2018B
+	January 22, 2018A
+
+This is a more streamlined and also customizable approach compared to what was suggested in the above
+design notes. Note use of `__call__` so that the specialized logger object can have methods but also be
+invoked directly. Note also use of polymorphism when specifying the underlying logger object.
+```
+	trace = LevelSpecificLogger(TRACELEVEL, "comm") # by name
+	trace.pause()
+	assert not trace.enabled()
+	trace.resume()
+	if trace.enabled(): trace("This is a trace message. i=%d", 42)
+	logger  = logging.getLogger("comm")
+	dbglog = LevelSpecificLogger(logging.DEBUG, logger) # by logger
+	dbglog("This is a debug message")
+```
+It is up to individual modules to decide whether to define global, per-class, or per-instance
+loggers (or some combination of all three). Most modules should define module-level level-specific
+loggers.
+
+This code is checked in as `robotutils/logging_helper.py`
+
 ## January 31, 2018B JMJ: Simplifying the `_trace` method
 It used to be that `_trace` took an extra (and first) argument recording message type,
 which was inserted with a `_ty: ` prefix. There were several places in the code where this
