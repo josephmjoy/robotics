@@ -27,7 +27,10 @@ _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 # pylint: disable=fixme
 
 #logger = logging.getLogger(__name__) # pylint: disable=invalid-name
-logging.basicConfig(level=9)
+#_LOGLEVEL = logging_helper.TRACELEVEL
+_LOGLEVEL = logging.ERROR
+
+logging.basicConfig(level=_LOGLEVEL)
 
 
 def getsome(func, maxnum=None, *, sentinel=None):
@@ -131,6 +134,7 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
         self.maxdelay = 0
         self.client_recv = None # set in start_listening
         self.scheduler = conc.EventScheduler()
+        _MTTRACE.pause() # transport tracing paused by default
 
     #
     # DatagramTransport methods
@@ -410,9 +414,8 @@ class StressTester: # pylint: disable=too-many-instance-attributes
 
         _TRACE("SUBMIT Beginning to submit %d messages", nMessages)
 
-        def delayed_send(id_, msgType, msgBody):
+        def delayed_send(msgType, msgBody):
             def really_send():
-                _TRACE("SEND Sending message with id %d", id_)
                 self.invoker.invoke(self.ch.send_message, msgType, msgBody)
             delay = self.rand.random() * submissionTimespan # seconds
             _TRACE("SCHEDULING_SEND delay: %f", delay)
@@ -426,8 +429,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             self.msgMap.set(id_, mr)
             if alwaysDrop:
                 self.droppedMsgs.appendleft(mr)
-            _TRACE("PRE_SCHEDULING_SEND id: %d", id_)
-            delayed_send(id_, mr.msgType, mr.msgBody)
+            delayed_send(mr.msgType, mr.msgBody)
 
         def receive_all():
             # Pick up all messages received so far and verify them...
@@ -459,6 +461,9 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         """
         BATCH_SPAN_SECONDS = 1.0
         MAX_EXPECTED_TRANSPORT_FAILURES = 1000000
+        _LOGGER.info("Submitting %d messages. rate: %d: alwaysDropRate: %d",
+                     nMessages, submissionRate, alwaysDropRate)
+                     
         # If more than LARGE_COUNT messages, there should be NO transport send
         # failures else our tracked messages will start to accumulate and take
         # up too much memory.
@@ -515,17 +520,21 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         Verify message type and message body is what we expect.
         If all ok, remove this from the hash map.
         """
-        msgType = rm.msgType()
-        msgBody = rm.message()
+        msgType = rm.msgtype
+        msgBody = rm.message
         try:
-            nli = msgBody.index('\n')
-            strId = msgBody[nli+1:]
+            try:
+                nli = msgBody.index('\n')
+                strId = msgBody[:nli]
+            except IndexError:
+                strId = msgBody
             id_ = int(strId, 16)
-            _TRACE("RECVMSG Received message with id %d", id)
+            _TRACE("RECVMSG Received message with id %d", id_)
             mr = self.msgMap.get(id_)
             self.harness.assertTrue(mr)
-            self.harness.assertEqual(mr.msgType, msgType)
-            self.harness.assertEqual(mr.msgBody, msgBody)
+            # Need to convert empty strings to None for 2 comparisions below
+            self.harness.assertEqual(mr.msgType or None, msgType)
+            self.harness.assertEqual(mr.msgBody or None, msgBody)
             self.harness.assertFalse(mr.alwaysDrop)
             self.msgMap.remove_instance(id_, mr)
         except Exception as e:
@@ -561,7 +570,6 @@ class StressTester: # pylint: disable=too-many-instance-attributes
 
     def cleanup(self):
         """Cleanup our queues and maps so we can do another test"""
-        self.harness.assertFalse(self.invoker.exceptions) # no exceptions
         self.msgMap.clear()
         self.droppedMsgs.clear()
         self.ch.stop_receiving_messages()
@@ -634,7 +642,8 @@ class TestRobotComm(unittest.TestCase):
         self.assertTrue(rm)
         self.assertEqual(testMessage, rm.message)
 
-    def test_xyz_stress_send_and_receive_messages_trivial(self):
+    # @unittest.skip('temporary')
+    def test_stress_send_and_receive_messages_trivial(self):
         """Sends a single message with no failures or delays; single thread"""
         nThreads = 1
         nMessages = 1
@@ -645,10 +654,9 @@ class TestRobotComm(unittest.TestCase):
         transport = MockTransport("localhost")
         stresser = StressTester(self, nThreads, transport)
         stresser.open()
-        try:
-            transport.setTransportCharacteristics(transportFailureRate,
-                                                  maxTransportDelay)
-            stresser.submitMessages(nMessages, messageRate, dropRate)
-        finally:
-            stresser.close()
-            transport.close()
+        transport.setTransportCharacteristics(transportFailureRate,
+                                              maxTransportDelay)
+        stresser.submitMessages(nMessages, messageRate, dropRate)
+        self.assertFalse(stresser.invoker.exceptions) # no exceptions
+        stresser.close()
+        transport.close()

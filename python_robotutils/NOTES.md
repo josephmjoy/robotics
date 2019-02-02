@@ -2,6 +2,14 @@
 
 
 
+## February 2, 2018A JMJ: Milestone. Robotcomm send/receive message stress tests pass for basic cases
+Successfully sent and received 10,000 messages over the mock transport with 'trivial' settings
+of a 1-thread worker pool and no delays! The fixes were just in how different fields of a received 
+message were interpreted by the tests - no fixes in the actual Robotcomm implementation.
+
+Logging is paying dividends in debugging, especially logging of call stack on exceptions in the
+background threads, by `ConcurrentInvoker`. Also helpful to be able to set log levels.
+
 ## February 1, 2018B JMJ: Set background thread's daemon attribute to True
 Tests used to block - requiring me to kill the entire bash session - if the main thread hit an assertion failure,
 including test failure. `CTRL-C` had no effect. This is because `concurrent_helper.EventScheduler` keeps
