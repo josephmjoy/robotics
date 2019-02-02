@@ -1,6 +1,21 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## February 2, 2018A JMJ: Robotcomm send/receive message stress tests pass for more complex cases
+Can successfully send 100,000 messages, with 10 threads and random delays and drops. The max rate of
+submission on my Elitebook seems to be about 5000 per second - this is less than 1/10th the rate of the 
+Java version - which can handle about 100,000 messages per second. Nevertheless, this is a
+great state of affairs as it is testing all the most complex library usage including concurrent
+executors, timers and concurrent data structures.
+
+There is an issue (perhaps a testk issue) that if the rate of message submission is set to too high AND there
+are too many messages (>  	, that
+the test quits early and complains that some messages did not go through. This does not reproduce if the rate
+is kept below 5000/second.  For reference, on my Elitebook, sending 20K messages at a rate of 10K/sec works,
+but it fails if the rate is bumped up to 20K/sec. Sending 50K at 10K/sec also fails.
+
+This failure persists even if `TestHarness.submitMessages` waits for much longer before calling
+`finalSendMessageValidation` - so this issue needs to be investigated.
 
 ## February 2, 2018A JMJ: Milestone. Robotcomm send/receive message stress tests pass for basic cases
 Successfully sent and received 10,000 messages over the mock transport with 'trivial' settings

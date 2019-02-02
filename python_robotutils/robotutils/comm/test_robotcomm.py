@@ -561,7 +561,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             _LOGGER.info("Drop queue size: %d", len(self.droppedMsgs))
 
             def logmr(id_, mr):
-                _LOGGER.info("missing mr id: %s  drop: %d", id_, mr.alwaysDrop)
+                _TRACE("missing mr id: %s  drop: %d", id_, mr.alwaysDrop)
 
             self.msgMap.process_all(logmr)
 
@@ -647,10 +647,48 @@ class TestRobotComm(unittest.TestCase):
         """Sends a single message with no failures or delays; single thread"""
         nThreads = 1
         nMessages = 1
-        messageRate = 10000
+        messageRate = 1000
         dropRate = 0
         transportFailureRate = 0
         maxTransportDelay = 0 # seconds
+        transport = MockTransport("localhost")
+        stresser = StressTester(self, nThreads, transport)
+        stresser.open()
+        transport.setTransportCharacteristics(transportFailureRate,
+                                              maxTransportDelay)
+        stresser.submitMessages(nMessages, messageRate, dropRate)
+        self.assertFalse(stresser.invoker.exceptions) # no exceptions
+        stresser.close()
+        transport.close()
+
+
+    def test_stress_send_and_receive_messages_short(self):
+        """Sends 1000 messages with delays and drops; 10 threads"""
+        nThreads = 10
+        nMessages = 1000
+        messageRate = 5000 # About the max on a decent laptop
+        dropRate = 0.1
+        transportFailureRate = 0.1
+        maxTransportDelay = 0.25 # seconds
+        transport = MockTransport("localhost")
+        stresser = StressTester(self, nThreads, transport)
+        stresser.open()
+        transport.setTransportCharacteristics(transportFailureRate,
+                                              maxTransportDelay)
+        stresser.submitMessages(nMessages, messageRate, dropRate)
+        self.assertFalse(stresser.invoker.exceptions) # no exceptions
+        stresser.close()
+        transport.close()
+
+
+    def test_stress_send_and_receive_messages_medium(self):
+        """Sends 10000 messages with delays and drops; 10 threads"""
+        nThreads = 10
+        nMessages = 10000
+        messageRate = 5000 # About the max on a decent laptop
+        dropRate = 0.1
+        transportFailureRate = 0.1
+        maxTransportDelay = 1.5 # seconds
         transport = MockTransport("localhost")
         stresser = StressTester(self, nThreads, transport)
         stresser.open()
