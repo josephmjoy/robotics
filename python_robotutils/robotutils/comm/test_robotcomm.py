@@ -407,6 +407,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
     # private
     def batch_submit_messages(self, nmessages, submission_timespan,
                               alwaysdrop_rate) -> None:
+        # pylint: disable=too-many-locals
         """sent a batch of messages over {submissionTimespan} seconds"""
         assert self.rcomm
         assert self.chan
@@ -414,6 +415,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         assert submission_timespan >= 0
 
         _LOGGER.info("SUBMIT Beginning to submit %d messages", nmessages)
+
 
         def delayed_send(msgtype, msgbody):
             def really_send():
@@ -455,6 +457,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
 
     BATCH_SPAN_SECONDS = 1.0
     MAX_EXPECTED_TRANSPORT_FAILURES = 1000000
+
 
     def submit_messages(self, nmessages, submission_rate, alwaysdrop_rate):
         """
@@ -513,6 +516,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         self.final_send_message_validation()
 
         self.cleanup()
+
 
     # private
     def process_received_message(self, rmsg):
