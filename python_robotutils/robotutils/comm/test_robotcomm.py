@@ -25,6 +25,7 @@ _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 
 # TODO: track down and fix all the TODOs
 # pylint: disable=fixme
+# pylint: disable=invalid-name
 
 #_LOGLEVEL = logging_helper.TRACELEVEL
 _LOGLEVEL = logging.ERROR
@@ -63,7 +64,6 @@ TransportStats = collections.namedtuple('TransportStats',
 # Mock transport tracing
 _MTTRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGNAME+'.transport')
 
-#pylint: disable=invalid-name
 class MockRemoteNode(DatagramTransport.RemoteNode):
     """Test remote node implementation"""
 
@@ -227,13 +227,13 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
     # Private methods
     #
 
-    def _receive_data(self, s) -> None:
+    def _receive_data(self, txt) -> None:
         """Internally handle a received message"""
 
         if self.client_recv:
             self.numrecvs.next()
-            _MTTRACE("RECV:\n[%s]\n", s)
-            self.client_recv(s, self.loopbacknode)
+            _MTTRACE("RECV:\n[%s]\n", txt)
+            self.client_recv(txt, self.loopbacknode)
         else:
             self.numforcedrops.next()
 
@@ -362,7 +362,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         self.scheduler.start()
         self.executor = concurrent.futures.ThreadPoolExecutor(nthreads)
         self.invoker = conc.ConcurrentInvoker(self.executor, _LOGGER)
-        self.ch = None # set in open
+        self.chan = None # set in open
 
         self.msgmap = conc.ConcurrentDict()
         self.droppedmsgs = conc.ConcurrentDeque()
@@ -372,15 +372,15 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         # self.cmdSvrComputeQueue = conc.ConcurrentDeque()
         # self.droppedCommands = conc.ConcurrentDeque()
         # self.droppedResponses = conc.ConcurrentDeque()
-        self.rc = rc.RobotComm(transport)
+        self.rcomm = rc.RobotComm(transport)
 
 
     def open(self):
         """Starts listening, etc."""
         remotenode = self.transport.new_remotenode("localhost")
-        self.ch = self.rc.new_channel("testChannel")
-        self.ch.bind_to_remote_node(remotenode) # TODO: change to set_destination
-        self.rc.start_listening()
+        self.chan = self.rcomm.new_channel("testChannel")
+        self.chan.bind_to_remote_node(remotenode) # TODO: change to set_destination
+        self.rcomm.start_listening()
 
     # private
     def prune_dropped_messages(self) -> None:
@@ -394,22 +394,22 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             dropcount = sizeest // 2
             _TRACE("PURGE Purging about %s force-dropped messages",
                    dropcount)
-            for mr in getsome(self.droppedmsgs.pop, dropcount):
-                self.msgmap.remove_instance(mr.id, mr) # O(log(n))
+            for mrec in getsome(self.droppedmsgs.pop, dropcount):
+                self.msgmap.remove_instance(mrec.id, mrec) # O(log(n))
 
     # private
     def purce_all_dropped_messages(self) -> None:
         """Remove all dropped messages (at least the ones that were in the
         queue when we entered this method)."""
-        for mr in getsome(self.droppedmsgs.pop):
-            self.msgmap.remove_instance(mr.id, mr) # O(log(n))
+        for mrec in getsome(self.droppedmsgs.pop):
+            self.msgmap.remove_instance(mrec.id, mrec) # O(log(n))
 
     # private
     def batch_submit_messages(self, nmessages, submission_timespan,
                               alwaysdrop_rate) -> None:
         """sent a batch of messages over {submissionTimespan} seconds"""
-        assert self.rc
-        assert self.ch
+        assert self.rcomm
+        assert self.chan
         assert alwaysdrop_rate <= 1
         assert submission_timespan >= 0
 
@@ -417,7 +417,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
 
         def delayed_send(msgtype, msgbody):
             def really_send():
-                self.invoker.invoke(self.ch.send_message, msgtype, msgbody)
+                self.invoker.invoke(self.chan.send_message, msgtype, msgbody)
             delay = self.rand.random() * submission_timespan # seconds
             _TRACE("SCHEDULING_SEND delay: %f", delay)
             self.scheduler.schedule(delay, really_send)
@@ -426,17 +426,17 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         for _ in range(nmessages):
             id_ = self.nextid.next()
             alwaysdrop = self.rand.random() < alwaysdrop_rate
-            mr = new_message_record(id_, alwaysdrop)
-            self.msgmap.set(id_, mr)
+            mrec = new_message_record(id_, alwaysdrop)
+            self.msgmap.set(id_, mrec)
             if alwaysdrop:
-                self.droppedmsgs.appendleft(mr)
-            delayed_send(mr.msgtype, mr.msgbody)
+                self.droppedmsgs.appendleft(mrec)
+            delayed_send(mrec.msgtype, mrec.msgbody)
 
         def receive_all():
             # Pick up all messages received so far and verify them...
             def process():
-                for rm in getsome(self.ch.poll_received_message):
-                    self.process_received_message(rm)
+                for rmsg in getsome(self.chan.poll_received_message):
+                    self.process_received_message(rmsg)
             self.invoker.invoke(process)
 
         # Poll for received messages at random times
@@ -476,17 +476,17 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             _LOGGER.error("Abandoning test.")
             self.harness.fail("Too much expected memory consumption to run this test.")
 
-        self.ch.start_receiving_messages()
+        self.chan.start_receiving_messages()
 
         messagesleft = nmessages
         while messagesleft >= submission_rate:
-            t0 = time.time() # UTC, seconds
+            time0 = time.time() # UTC, seconds
             self.batch_submit_messages(submission_rate, BATCH_SPAN_SECONDS,
                                        alwaysdrop_rate)
             messagesleft -= submission_rate
-            t1 = time.time()
+            time1 = time.time()
             sleeptime = max(BATCH_SPAN_SECONDS * 0.1,
-                            BATCH_SPAN_SECONDS - (t1 - t0))
+                            BATCH_SPAN_SECONDS - (time1 - time0))
             time.sleep(sleeptime)
             self.prune_dropped_messages()
 
@@ -514,17 +514,17 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         self.cleanup()
 
     # private
-    def process_received_message(self, rm):
+    def process_received_message(self, rmsg):
         """
         Extract id from message.
         Look it up - we had better find it in our map.
-        Verify that we expect to get it - (not alwaysDrop)
+        Verify that we expect to get it - (not alwaysdrop)
         Verify we have not already received it.
         Verify message type and message body is what we expect.
         If all ok, remove this from the hash map.
         """
-        msgtype = rm.msgtype
-        msgbody = rm.message
+        msgtype = rmsg.msgtype
+        msgbody = rmsg.message
         try:
             try:
                 nli = msgbody.index('\n')
@@ -533,16 +533,16 @@ class StressTester: # pylint: disable=too-many-instance-attributes
                 strid = msgbody
             id_ = int(strid, 16)
             _TRACE("RECVMSG Received message with id %d", id_)
-            mr = self.msgmap.get(id_)
-            self.harness.assertTrue(mr)
+            mrec = self.msgmap.get(id_)
+            self.harness.assertTrue(mrec)
             # Need to convert empty strings to None for 2 comparisions below
-            self.harness.assertEqual(mr.msgtype or None, msgtype)
-            self.harness.assertEqual(mr.msgbody or None, msgbody)
-            self.harness.assertFalse(mr.alwaysdrop)
-            self.msgmap.remove_instance(id_, mr)
-        except Exception as e:
+            self.harness.assertEqual(mrec.msgtype or None, msgtype)
+            self.harness.assertEqual(mrec.msgbody or None, msgbody)
+            self.harness.assertFalse(mrec.alwaysdrop)
+            self.msgmap.remove_instance(id_, mrec)
+        except Exception as exp:
             _LOGGER.exception("error attempting to parse received message")
-            raise e
+            raise exp
 
 
     # private
@@ -564,8 +564,8 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             _LOGGER.info("Drop queue size: %d", len(self.droppedmsgs))
 
             if _TRACE.enabled():
-                def logmr(id_, mr):
-                    _TRACE("missing mr id: %s  drop: %d", id_, mr.alwaysDrop)
+                def logmr(id_, mrec):
+                    _TRACE("missing mr id: %s  drop: %d", id_, mrec.alwaysdrop)
                 self.msgmap.process_all(logmr)
 
         self.harness.assertEqual(randomdrops, mapsize)
@@ -575,7 +575,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         """Cleanup our queues and maps so we can do another test"""
         self.msgmap.clear()
         self.droppedmsgs.clear()
-        self.ch.stop_receiving_messages()
+        self.chan.stop_receiving_messages()
 
         # TODO: enable
         #self.cmdMap.clear()
@@ -630,9 +630,9 @@ class TestRobotComm(unittest.TestCase):
             channel.start_receiving_messages()
             channel.send_message("MYTYPE", testmessage)
 
-            rm = None
-            while not rm:
-                rm = channel.poll_received_message()
+            rmsg = None
+            while not rmsg:
+                rmsg = channel.poll_received_message()
                 time.sleep(0.01)
 
             for stats in rcomm.get_channel_statistics():
@@ -642,8 +642,8 @@ class TestRobotComm(unittest.TestCase):
         finally:
             rcomm.stop_listening()
             rcomm.close()
-        self.assertTrue(rm)
-        self.assertEqual(testmessage, rm.message)
+        self.assertTrue(rmsg)
+        self.assertEqual(testmessage, rmsg.message)
 
     # @unittest.skip('temporary')
     def test_stress_send_and_receive_messages_trivial(self):
