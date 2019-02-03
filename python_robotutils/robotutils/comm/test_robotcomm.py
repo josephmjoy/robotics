@@ -25,7 +25,6 @@ _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 
 # TODO: track down and fix all the TODOs
 # pylint: disable=fixme
-# pylint: disable=invalid-name
 
 #_LOGLEVEL = logging_helper.TRACELEVEL
 _LOGLEVEL = logging.ERROR
@@ -382,15 +381,16 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         self.chan.bind_to_remote_node(remotenode) # TODO: change to set_destination
         self.rcomm.start_listening()
 
+    DROP_TRIGGER = 1000
+
     # private
     def prune_dropped_messages(self) -> None:
         """Keep count of dropped messages by removing the older
         half of them if their number grows larger than DROP_TRIGGER"""
-        DROP_TRIGGER = 1000
         # Remember that the message map and queue of dropped messages are
         # concurrently modified so sizes are estimates.
         sizeest = len(self.droppedmsgs) # warning: O(n) operation
-        if sizeest > DROP_TRIGGER:
+        if sizeest > self.DROP_TRIGGER:
             dropcount = sizeest // 2
             _TRACE("PURGE Purging about %s force-dropped messages",
                    dropcount)
@@ -453,6 +453,9 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             self.scheduler.schedule(delay, receive_all)
 
 
+    BATCH_SPAN_SECONDS = 1.0
+    MAX_EXPECTED_TRANSPORT_FAILURES = 1000000
+
     def submit_messages(self, nmessages, submission_rate, alwaysdrop_rate):
         """
         Stress test sending, receiving and processing of commands.
@@ -461,8 +464,6 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             alwaysdrop_rate - rate at which datagrams are always dropped by
                              the transport
         """
-        BATCH_SPAN_SECONDS = 1.0
-        MAX_EXPECTED_TRANSPORT_FAILURES = 1000000
         _LOGGER.info("Submitting %d messages. rate: %d: alwaysDropRate: %d",
                      nmessages, submission_rate, alwaysdrop_rate)
 
@@ -470,7 +471,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         # failures else our tracked messages will start to accumulate and take
         # up too much memory.
         expected_transport_failures = nmessages * self.transport.get_failure_rate()
-        if expected_transport_failures > MAX_EXPECTED_TRANSPORT_FAILURES:
+        if expected_transport_failures > self.MAX_EXPECTED_TRANSPORT_FAILURES:
             _LOGGER.error("Too many transport failures expected %d",
                           int(expected_transport_failures))
             _LOGGER.error("Abandoning test.")
@@ -481,12 +482,12 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         messagesleft = nmessages
         while messagesleft >= submission_rate:
             time0 = time.time() # UTC, seconds
-            self.batch_submit_messages(submission_rate, BATCH_SPAN_SECONDS,
+            self.batch_submit_messages(submission_rate, self.BATCH_SPAN_SECONDS,
                                        alwaysdrop_rate)
             messagesleft -= submission_rate
             time1 = time.time()
-            sleeptime = max(BATCH_SPAN_SECONDS * 0.1,
-                            BATCH_SPAN_SECONDS - (time1 - time0))
+            sleeptime = max(self.BATCH_SPAN_SECONDS * 0.1,
+                            self.BATCH_SPAN_SECONDS - (time1 - time0))
             time.sleep(sleeptime)
             self.prune_dropped_messages()
 
