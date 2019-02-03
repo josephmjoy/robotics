@@ -1,6 +1,17 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## February 3, 2018B JMJ: Converted camel casing to snake casing in test_robotcomm.py
+Visual Studio Code was a big help in renaming - works great for local variables and method calls. It may
+not catch all cases of the latter - if the type of the object can't be discerned. But overall it is a
+huge help. It is essential, however, to have good tests in place because Pylint will not catch 
+cases of calling methods if it can't find the implementation of the corresponding classes. Also it doesn't seem
+to verify named tuples.
+
+All tests pass. I haven't yet disabled `invalid-name` as there are other naming issues still to be resolved
+(chiefly, 1 2 letter names).
+
+
 ## February 3, 2018A JMJ: Investigating why Robotcomm send/receive are failing under high stress - RESOLVED
 The problem was first mentioned in the 'February 2, 2018A' note.
 The problem has been resolved (discussion below) and we can now batch send 300K messages with random drops
