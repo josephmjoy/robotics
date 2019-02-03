@@ -1,6 +1,59 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## February 3, 2018A JMJ: Investigating why Robotcomm send/receive are failing under high stress - RESOLVED
+The problem was first mentioned in the 'February 2, 2018A' note.
+The problem has been resolved (discussion below) and we can now batch send 300K messages with random drops
+and delays.
+
+Sending 100K with delay of 1 second fails, even if we wait for 260 seconds. 8 messages are reported missing.
+This is with `ConcurrentInvoker` temporarily disabled - so not using the executor thread pool (to help isolate the problem).
+At the rate of 5K messages/sec, we expect to 100K messages to take 20 seconds. But it fails
+after waiting for 260 seconds. So those 8 messages are unaccounted for.
+
+What worked: the mock transport could send a million messages with delays and force-drops (no random drops), with
+every message accounted for - it does this at about 10K messages per second.
+
+The open question is why transport failures are failing if there is delay (even just 0.1sec) - sending 40K messages,
+when I can send 300K with NO delay - when also the transport tests are fine sending a million messages with delays.
+
+Works:
+300K, no delay: takes about 30 seconds. So 10K/sec
+20K, 0.01 delay - about 2.5 seconds
+20K, 0.1 delay - about 3 seconds
+20K, 1.0 delay  about 4.5 seconds
+20K, 10.0 delay  about 13.5
+50K, 0 delay - about 4.8 seconds
+
+Doesn't work:
+50K, 0.1 delay - bails after 35 seconds with 105 missing
+50K, 0.01 delay - bails after 35 seconds with 295 missing
+
+Occasionally:
+30K, 0.01 delay - about 3 seconds OCCASIONALLY, else bails
+30K, 0.1 delay - about 3 seconds OCCASIONALLY, else bails
+30K, 1.0 delay - about 6 seconds, else bails after 33 second s with 23, 51 missing
+
+Summary:
+30K is when issues start to happen with any non-zero delay. 20K is fine with any delay (up to 10 sec tested).
+Only a small number of messages (typically under 100) go missing.
+
+Resolution:
+`submitMessageBatch` schedules a bunch of deferred calls to poll the receive message queue. It takes 
+special care to schedule a 'final' call (the `if i == 0` case below). It was scheduling this
+call just 1 second after the submission time span. I changed this to 10 seconds and now things
+work - up to 300K messages, sent with up to 1 second transmission and with random and force drops.
+```
+extra_delay = 10 # TODO: need to compute this more carefully
+            if i == 0:
+                delay = maxReceiveDelay + extra_delay
+            self.scheduler.schedule(delay, receive_all)
+```
+So it's a test bug. The proper fix for this is to properly schedule the final poll message - or keep
+retrying when waiting to exit test in `submitMessage` - which currently waits up to a fixed amount
+of time for missing messages to be accounted for. This timeout scheme needs to be refined to work
+even on slow processors, and with any number of messages. That is TBD.
+
 ## February 2, 2018A JMJ: Robotcomm send/receive message stress tests pass for more complex cases
 Can successfully send 100,000 messages, with 10 threads and random delays and drops. The max rate of
 submission on my Elitebook seems to be about 5000 per second - this is less than 1/10th the rate of the 

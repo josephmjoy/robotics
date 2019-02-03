@@ -26,7 +26,6 @@ _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 # TODO: track down and fix all the TODOs
 # pylint: disable=fixme
 
-#logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 #_LOGLEVEL = logging_helper.TRACELEVEL
 _LOGLEVEL = logging.ERROR
 
@@ -169,11 +168,13 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
 
     def setTransportCharacteristics(self, failurerate, maxdelay) -> None:
         """Changes transport characteristics: sends datagrams with {failurerate} failure
-        rate, and {maxdelay} seconds max delay per packet."""
+        rate, and {maxdelay} seconds max delay per packet. {maxdelay} value less than
+        0.001 is considered to be 0, i.e., no delay.
+        """
         assert 0 <= failurerate <= 1
         assert maxdelay >= 0
         self.failurerate = failurerate
-        self.maxdelay = maxdelay
+        self.maxdelay = 0 if maxdelay < 0.001 else maxdelay # note 0 is an integer
 
     def healthy(self) -> bool:
         """Returns if the underlying transport is healthy, i.e., can still send/recv messages."""
@@ -185,7 +186,7 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
 
     def noDelays(self) -> bool:
         """Returns True IFF the transport should never delay"""
-        return self.maxdelay == 0
+        return self.maxdelay == 0 # maxdelay was inited int(0) if 'close to 0'
 
 
     def getStats(self) -> TransportStats:
@@ -412,7 +413,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         assert alwaysDropRate <= 1
         assert submissionTimespan >= 0
 
-        _TRACE("SUBMIT Beginning to submit %d messages", nMessages)
+        _LOGGER.info("SUBMIT Beginning to submit %d messages", nMessages)
 
         def delayed_send(msgType, msgBody):
             def really_send():
@@ -446,8 +447,9 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             # Special case of i == 0 - we schedule our final receive attempt to
             # be AFTER the last packet is actually sent by the transport (after
             # a potential delay)
+            extra_delay = 10 # TODO: need to compute this more carefully
             if i == 0:
-                delay = maxReceiveDelay + 1
+                delay = maxReceiveDelay + extra_delay
             self.scheduler.schedule(delay, receive_all)
 
 
@@ -463,7 +465,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         MAX_EXPECTED_TRANSPORT_FAILURES = 1000000
         _LOGGER.info("Submitting %d messages. rate: %d: alwaysDropRate: %d",
                      nMessages, submissionRate, alwaysDropRate)
-                     
+
         # If more than LARGE_COUNT messages, there should be NO transport send
         # failures else our tracked messages will start to accumulate and take
         # up too much memory.
@@ -496,13 +498,14 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         # have to wait for ??? and verify that exactly those messages that
         # are expected to be received are received correctly.
         maxReceiveDelay = self.transport.getMaxDelay()
-        _TRACE("WAITING Waiting to receive up to %d messages", nMessages)
+        _LOGGER.info("WAITING Waiting to receive up to %d messages", nMessages)
         time.sleep(maxReceiveDelay)
-        for _ in range(10): # retry 10 times
+        for _ in range(120): # retry for 1 minute
             stats = self.transport.getStats()
             if len(self.msgMap) <= stats.randomdrops:
+                _LOGGER.info("Breaking out. msgMap: %d", len(self.msgMap))
                 break
-            time.sleep(0.250)
+            time.sleep(0.5)
             self.purgeAllDroppedMessages()
 
         # Now we do final validation.
@@ -560,10 +563,10 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             # We will fail this test later, but do some logging here...
             _LOGGER.info("Drop queue size: %d", len(self.droppedMsgs))
 
-            def logmr(id_, mr):
-                _TRACE("missing mr id: %s  drop: %d", id_, mr.alwaysDrop)
-
-            self.msgMap.process_all(logmr)
+            if _TRACE.enabled():
+                def logmr(id_, mr):
+                    _TRACE("missing mr id: %s  drop: %d", id_, mr.alwaysDrop)
+                self.msgMap.process_all(logmr)
 
         self.harness.assertEqual(randomDrops, mapSize)
 
@@ -689,6 +692,24 @@ class TestRobotComm(unittest.TestCase):
         dropRate = 0.1
         transportFailureRate = 0.1
         maxTransportDelay = 1.5 # seconds
+        transport = MockTransport("localhost")
+        stresser = StressTester(self, nThreads, transport)
+        stresser.open()
+        transport.setTransportCharacteristics(transportFailureRate,
+                                              maxTransportDelay)
+        stresser.submitMessages(nMessages, messageRate, dropRate)
+        self.assertFalse(stresser.invoker.exceptions) # no exceptions
+        stresser.close()
+        transport.close()
+
+    def test_stress_send_and_receive_messages_xyz(self):
+        """Working send-and-receive messages"""
+        nThreads = 1
+        nMessages = 0 # Working: 100000
+        messageRate = 10000000
+        dropRate = 0.1
+        transportFailureRate = 0.1
+        maxTransportDelay = 1 # 0.1 # 1 fails at 40K # seconds
         transport = MockTransport("localhost")
         stresser = StressTester(self, nThreads, transport)
         stresser.open()
