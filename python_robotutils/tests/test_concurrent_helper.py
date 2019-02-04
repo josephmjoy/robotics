@@ -655,8 +655,22 @@ class TestCountDownLatch(unittest.TestCase):
         self.assertTrue(ret)
 
     def test_countdownlatch_stress_trivial(self):
-        """Tests with multiple threads counting down and waiting"""
-        self._check_timeouts(max_workers=2, initial_count=2, max_timeout=2)
+        """Test single thread counting down and waiting from 1"""
+        count = 1
+        self._check_timeouts(max_workers=1, initial_count=count, max_timeout=1)
+        self._check_termination(max_workers=1, initial_count=count, max_timeout=1)
+
+    def test_countdownlatch_stress_singlethreaded(self):
+        """Tests single thread counting counting down and waiting from N"""
+        count = 5
+        self._check_timeouts(max_workers=1, initial_count=count, max_timeout=0.2)
+        self._check_termination(max_workers=1, initial_count=count, max_timeout=0.2)
+
+    def test_countdownlatch_stress_mutithreaded(self):
+        """Tests single thread counting counting down and waiting from N"""
+        count = 20
+        self._check_timeouts(max_workers=10, initial_count=count, max_timeout=0.5)
+        self._check_termination(max_workers=10, initial_count=count, max_timeout=0.5)
 
     @staticmethod
     def _do_count_down(latch, delay):
@@ -664,16 +678,17 @@ class TestCountDownLatch(unittest.TestCase):
         time.sleep(delay)
         latch.count_down()
 
-    def _do_wait(self, latch, timeout):
+    def _do_wait(self, latch, timeout, expect_timeout):
         """Waits for {latch} to count down to 0"""
         start = time.time()
         ret = latch.wait(timeout)
         delta = time.time() - start
-        print("delta: {}   timeout: {}".format(delta, timeout))
+        # print("delta: {}   timeout: {}".format(delta, timeout))
+
         if timeout is None:
             # Only way to return with None timeout is on success
             self.assertTrue(ret)
-        else:
+        elif expect_timeout:
             self.assertAlmostEqual(delta, timeout, 1) # Correct to 0.1 second
 
     def _check_timeouts(self, *, max_workers, initial_count, max_timeout):
@@ -686,23 +701,47 @@ class TestCountDownLatch(unittest.TestCase):
         # Check timeouts for accuracy
         for _ in range(initial_count):
             timeout = random.random()*max_timeout
-            invoker.invoke(self._do_wait, latch, timeout)
+            invoker.invoke(self._do_wait, latch, timeout, expect_timeout=True)
+
+        # print("waiting for executor to shut down")
         executor.shutdown(wait=True)
-        self.assertEqual(len(invoker.exceptions), 0)
+        # print("Executor shut down")
+
+        self._verify_no_exceptions(invoker)
+        executor.shutdown(wait=True)
+        self._verify_no_exceptions(invoker)
 
     def _check_termination(self, *, max_workers, initial_count, max_timeout):
         """Checks for eventual termination when waiting for countdown latches"""
         executor = concurrent.futures.ThreadPoolExecutor(max_workers)
         invoker = ch.ConcurrentInvoker(executor)
         latch = ch.CountDownLatch(initial_count)
+        assert max_workers > 0
+        num_block_for_ever = 0
 
         for _ in range(initial_count):
-            # First wait for a bit,
-            # then concurrently, count down and wait for latch to go to 0
+            # [Concurrently] sleep for a bit and then count down ...
             delay = random.random()*max_timeout
-            timeout = None if cointoss() else random.random()*max_timeout
             invoker.invoke(self._do_count_down, latch, delay)
-            invoker.invoke(self._do_wait, latch, timeout)
 
+            # [Concurrently] Wait for latch to go to 0...
+            # We may block for ever, but only if there is at least one
+            # worker thread left to make progress on counting down.
+            can_block_for_ever = num_block_for_ever < max_workers - 1
+            timeout = random.random()*max_timeout
+            if can_block_for_ever and random.random() < 0.25:
+                timeout = None # block for ever
+                num_block_for_ever += 1
+            invoker.invoke(self._do_wait, latch, timeout, expect_timeout=False)
+
+        # print("waiting for executor to shut down")
         executor.shutdown(wait=True)
+        # print("Executor shut down")
+
+        self._verify_no_exceptions(invoker)
+
+    def _verify_no_exceptions(self, invoker):
+        #print("exceptions: ", invoker.exceptions)
+        for exp in invoker.exceptions:
+            print(exp)
         self.assertEqual(len(invoker.exceptions), 0)

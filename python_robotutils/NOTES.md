@@ -2,6 +2,15 @@
 
 
 
+## February 4, 2018A JMJ: Added stress tests for CountDownLatch
+
+The stress tests are in class `test_concurrent_helper.TestCountDownLatch`. They verify timeout accuracy
+and test concurrent invocations of count down and wait. The tests pass.
+
+Note:
+ThreadPoolExecutor does not kill running background tasks even if the main thread is exiting. Nice explanation 
+here: https://stackoverflow.com/questions/49992329/the-workers-in-threadpoolexecutor-is-not-really-daemon
+
 ## February 3, 2018C JMJ: Implemented concurrent_helper.CountDownLatch
 This is the Python version of Java's CountDownLatch. There are some suggestions online, such as
 http://www.madhur.co.in/blog/2015/11/02/countdownlatch-python.html
