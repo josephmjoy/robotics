@@ -4,10 +4,11 @@ queues, dictionaries and counters.
 Author: JMJ
 """
 
-import threading
 import collections
-import sched
 import logging
+import time
+import threading
+import sched
 
 _NO_DEFAULT = object() # To check if an optional parameter was specified in selected method calls
 
@@ -462,6 +463,73 @@ class ConcurrentInvoker:
                 raise exp
 
         self._executor.submit(rootfunc)
+
+
+class CountDownLatch():
+    """Emulation of Java's CountDownLatch.
+        >>> latch = CountDownLatch(2)
+        >>> latch.wait(0.01) # Haven't counted down to 0; should timeout.
+        False
+        >>> latch.count_down()
+        >>> latch.wait(0.01) # Haven't counted down to 0; should timeout.
+        False
+        >>> latch.count_down()
+        >>> latch.wait(0.01) # We've counted down to 0; should succeed
+        True
+        >>> latch.wait() # We've counted down to 0; should succeed
+        True
+    """
+
+    def __init__(self, count):
+        """Initializes the latch with the specified count"""
+        self.count = count
+        self.cond = threading.Condition()
+
+    def count_down(self) -> None:
+        """Counts down by 1. Count MUST be greater than 1 else
+        a ValueError exception is thrown"""
+        with self.cond:
+            if self.count < 1:
+                raise ValueError("Attempt to count down below 0")
+            self.count -= 1
+            if self.count <= 0:
+                self.cond.notifyAll()
+
+    def wait(self, timeout=None) -> bool:
+        """Waits until the count goes to zero, or until the timeout expires.
+        If {timeout} is None, there is no timeout.
+        Return value: True unless timeout expired, in which case it returns False.
+        Note: timer resolution is time.time(), but also based on thread scheduling
+        latencies.
+        """
+
+        if timeout is None:
+            # simple case of infinite timeout
+            with self.cond:
+                while self.count > 0:
+                    self.cond.wait()
+                return True  # -------- EARLY RETURN --------
+
+        timeleft = timeout
+        timed_out = False
+        with self.cond:
+            # {{Inv: timeout not hit and count > 0}}
+            start = time.time()
+            while not timed_out and self.count > 0:
+                signalled = self.cond.wait(timeleft)
+                if signalled:
+                    if  self.count > 0:
+                        # Oops - we were signaled, but the
+                        # count is still not 0. We'll have to
+                        # try again. Update time left
+                        delta = time.time() - start
+                        timeleft = timeout - delta
+                        timed_out = timeleft <= 0
+                else:
+                    # We timed out.
+                    timed_out = True
+
+        return not timed_out
 
 
 if __name__ == '__main__':

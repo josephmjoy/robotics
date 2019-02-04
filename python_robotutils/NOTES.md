@@ -1,6 +1,14 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+
+## February 3, 2018C JMJ: Implemented concurrent_helper.CountDownLatch
+This is the Python version of Java's CountDownLatch. There are some suggestions online, such as
+http://www.madhur.co.in/blog/2015/11/02/countdownlatch-python.html
+The one I implemented also supports timeout. Code is `robotutils.concurrent_helper.CountDownLatch`. It has
+a basic doctest. Unit tests are in `test_concurrent_helper.TestCountDownLatch`.
+At this point basic tests pass and Pylint is happy.
+
 ## February 3, 2018B JMJ: Converted camel casing to snake casing in test_robotcomm.py
 Visual Studio Code was a big help in renaming - works great for local variables and method calls. It may
 not catch all cases of the latter - if the type of the object can't be discerned. But overall it is a

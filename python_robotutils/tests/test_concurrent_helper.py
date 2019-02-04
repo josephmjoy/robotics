@@ -635,3 +635,78 @@ class TestConcurrentInvoker(unittest.TestCase):
             # At least 1 exception raised
             self.assertLess(ok_sum.value(), sum_1_to_n)
             self.assertTrue(invoker.exceptions)
+
+
+class TestCountDownLatch(unittest.TestCase):
+    """Container for CountDownLatch tests"""
+
+    def test_countdownlatch_trivial(self):
+        """Basic test - single threaded"""
+        latch = ch.CountDownLatch(2)
+        ret = latch.wait(0.01) # Haven't counted down to 0; should timeout.
+        self.assertFalse(ret)
+        latch.count_down()
+        ret = latch.wait(0.01) # Haven't counted down to 0; should timeout.
+        self.assertFalse(ret)
+        latch.count_down()
+        ret = latch.wait(0.01) # We've counted down to 0; should succeed
+        self.assertTrue(ret)
+        ret = latch.wait() # We've counted down to 0; should succeed
+        self.assertTrue(ret)
+
+    def test_countdownlatch_stress_trivial(self):
+        """Tests with multiple threads counting down and waiting"""
+        self._check_timeouts(max_workers=2, initial_count=2, max_timeout=2)
+
+    def test_countdownlatch_stress_trivial(self):
+        """Tests with multiple threads counting down and waiting"""
+        self._check_timeouts(max_workers=2, initial_count=2, max_timeout=2)
+
+    @staticmethod
+    def _do_count_down(latch, delay):
+        """Counts down {latch} after waiting {delay} seconds"""
+        time.sleep(delay)
+        latch.count_down()
+
+    def _do_wait(self, latch, timeout):
+        """Waits for {latch} to count down to 0"""
+        start = time.time()
+        ret = latch.wait(timeout)
+        delta = time.time() - start
+        print("delta: {}   timeout: {}".format(delta, timeout))
+        if timeout is None:
+            # Only way to return with None timeout is on success
+            self.assertTrue(ret)
+        else:
+            self.assertAlmostEqual(delta, timeout, 1) # Correct to 0.1 second
+
+    def _check_timeouts(self, *, max_workers, initial_count, max_timeout):
+        """Checks that waiting for a latch times out with sufficient accuracy."""
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers)
+        invoker = ch.ConcurrentInvoker(executor)
+        latch = ch.CountDownLatch(initial_count)
+
+
+        # Check timeouts for accuracy
+        for _ in range(initial_count):
+            timeout = random.random()*max_timeout
+            invoker.invoke(self._do_wait, latch, timeout)
+        executor.shutdown(wait=True)
+        self.assertEqual(len(invoker.exceptions), 0)
+
+    def _check_termination(self, *, max_workers, initial_count, max_timeout):
+        """Checks for eventual termination when waiting for countdown latches"""
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers)
+        invoker = ch.ConcurrentInvoker(executor)
+        latch = ch.CountDownLatch(initial_count)
+
+        for _ in range(initial_count):
+            # First wait for a bit,
+            # then concurrently, count down and wait for latch to go to 0
+            delay = random.random()*max_timeout
+            timeout = None if cointoss() else random.random()*max_timeout
+            invoker.invoke(self._do_count_down, latch, delay)
+            invoker.invoke(self._do_wait, latch, timeout)
+
+        executor.shutdown(wait=True)
+        self.assertEqual(len(invoker.exceptions), 0)
