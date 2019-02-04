@@ -658,10 +658,6 @@ class TestCountDownLatch(unittest.TestCase):
         """Tests with multiple threads counting down and waiting"""
         self._check_timeouts(max_workers=2, initial_count=2, max_timeout=2)
 
-    def test_countdownlatch_stress_trivial(self):
-        """Tests with multiple threads counting down and waiting"""
-        self._check_timeouts(max_workers=2, initial_count=2, max_timeout=2)
-
     @staticmethod
     def _do_count_down(latch, delay):
         """Counts down {latch} after waiting {delay} seconds"""
