@@ -6,14 +6,24 @@
 Note that there is a `socketserver.UDPServer` class. We can't and don't want to use it because Robotutil's
 `DatagramTransport` is simple message passing, so this is just FYI.
 
-Things seem simpler than Java:
-- create a socket
-- bind if you want to listen
-- issue blocking listens
-- close when done.
+It's not a port, it's a re-implementation because the socket APIs are different.
+- The returned 'node' is simply a tuple: `(host-address, port)` - that is directly
+taken by `socket.sendto` and that is a parameter to the handler called by `socket.recvfrom`.
+No cache of nodes is maintained. The tuple reported by `socket.recvfrom` is directly passed as the `node`
+parameter to the datagram receive message handler.
+- `UdpTransport.new_remote_node` takes an optional parameter `lookup_dns` that defaults to `False`. If
+  `True` it will lookup DNS. So we punt whether or not to lookup DNS to the client, which is a good thing.
+- All exceptions when sending or in the receive handlers' background thread are caught. A count of send
+exceptions is kept and an error is logged for the first exception in send. Exceptions in send and 
+in the receive thread always generate trace messages.
+- Over-the-wire format is UTF-8 encoding of the string message.
+- As with the Java version, the socket is created on demand - when listening is enabled or when the first
+ send is attempted. Also, if listening is stopped, the socket is closed. A subsequent send will generate a new
+ socket.
 
-One can't really 'stop listening' independently of closing the socket. I suppose one could close the socket
-and if necessary create a new one.
+At this point, tests are not written, but `comm_helper` compiles with no Pylint errors (not counting
+the ones explicitly disabled, in particular the catching of all exceptions when sending and in the
+listen thread.
 
 ## February 4, 2018C JMJ: Design Note - Eliminating `DatagramTransport.RemoteNode`
 Rationale: `RemoteNode` has two methods: `send` and `address`. `node.send(...)` can be
