@@ -66,9 +66,11 @@ class UdpTransport(DatagramTransport):
                         _TRACE("RECV_PKT_DATA [%s] from %s", msg, str(node))
                     handler(msg, node)
 
-            except Exception: # pylint: disable=broad-except
-                if _TRACE.enabled() or not self._listen_thread:
+            except Exception as exp: # pylint: disable=broad-except
+                if self._listen_thread:
                     _LOGGER.exception("Error in socket.recvfrom or handler")
+                else:
+                    _TRACE("Expected exception ending listen. exp: %s", exp)
 
         with self.lock:
             if self._listen_thread:
@@ -79,7 +81,7 @@ class UdpTransport(DatagramTransport):
             self._listen_thread = thread
 
         _TRACE("Starting background listen thread %s", str(thread))
-        thread.run()
+        thread.start()
 
 
     def stop_listening(self) -> None:

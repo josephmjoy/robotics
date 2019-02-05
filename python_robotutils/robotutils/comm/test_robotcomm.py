@@ -23,13 +23,14 @@ _LOGNAME = "test"
 _LOGGER = logging.getLogger(_LOGNAME)
 _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 
+# Uncomment one of these to set the global trace level for ALL unit tests, not
+# just the ones in this file.
+#logging.basicConfig(level=logging.INFO)
+#logging.basicConfig(level=logging_helper.TRACELEVEL)
+
 # TODO: track down and fix all the TODOs
 # pylint: disable=fixme
 
-#_LOGLEVEL = logging_helper.TRACELEVEL
-_LOGLEVEL = logging.ERROR
-
-logging.basicConfig(level=_LOGLEVEL)
 
 
 def getsome(func, maxnum=None, *, sentinel=None):

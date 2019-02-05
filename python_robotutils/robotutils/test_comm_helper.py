@@ -4,8 +4,8 @@ Ported from Java CommUtilsTest
 Author: JMJ
 '''
 
-import unittest
 import logging
+import unittest
 
 from . import concurrent_helper as conc
 from . import logging_helper
@@ -14,10 +14,11 @@ from .comm_helper import UdpTransport
 _LOGNAME = "test"
 _LOGGER = logging.getLogger(_LOGNAME)
 _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
-_LOGLEVEL = logging_helper.TRACELEVEL
-#_LOGLEVEL = logging.INFO
 
-logging.basicConfig(level=_LOGLEVEL)
+# Uncomment one of these to set the global trace level for ALL unit tests, not
+# just the ones in this file.
+#logging.basicConfig(level=logging.INFO)
+#logging.basicConfig(level=logging_helper.TRACELEVEL)
 
 SERVER_IP_ADDRESS = "127.0.0.1"
 SERVER_PORT = 41899 + 3
@@ -35,7 +36,7 @@ class CommUtilsTest(unittest.TestCase):
         server = UdpTransport(MAX_PACKET_SIZE,
                               local_host=SERVER_IP_ADDRESS,
                               local_port=SERVER_PORT)
-        count = 100
+        count = 3
         latch = conc.CountDownLatch(count)
 
         def process_message(msg, node):
@@ -51,11 +52,11 @@ class CommUtilsTest(unittest.TestCase):
             _TRACE("Client sent message [{}]".format(msg))
             # time.sleep(0.1)
 
-        print("Waiting for all messages to arrive...")
+        _LOGGER.info("Waiting for all messages to arrive...")
         if latch.wait(1):
-            print("Done waiting for all {} messages to arrive.".format(count))
+            _LOGGER.info("Done waiting for all %d messages to arrive.", count)
         else:
-            print("TIMED OUT waiting for all {} messages to arrive.".format(count))
+            _LOGGER.info("TIMED OUT waiting for all %d messages to arrive.", count)
 
         client.close()
         server.close()

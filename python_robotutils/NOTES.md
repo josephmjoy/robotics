@@ -1,12 +1,15 @@
 # Design and Development Notes for Python port of Robotutils.
 
-
-
-
 ## February 5, 2018C JMJ: Start of unit test for the UDP transport
-It's `test_comm_helper.py`. Haven't run it yet - just got Pylint to be happy.
+It's `test_comm_helper.py`. 
 It creates a client and a server. The client sends a bunch of messages and the server verifies
 it receives messages. Not much validation (yet) - just that there are no send errors.
+
+The basic test is working. There was a logging issue I hadn't realized. `logging.basicConfig` is global,
+so various unit test modules were calling it, and `unittest discover` was loading all these modules to
+discover tests - in the process one of them would win and set the log level, while subsequent test
+modules would be ignored. The fix (for now) is to comment out the call to `logging.basicConfig` by
+default and only enable it for debugging a particular test module.
 
 ## February 5, 2018B JMJ: Importing a lower-level module
 `from .comm.common import DatagramTransport` Allows `comm_helper.py` to import `DatagramTransport`
