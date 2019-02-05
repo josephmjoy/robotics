@@ -1,5 +1,13 @@
 # Design and Development Notes for Python port of Robotutils.
 
+## February 5, 2018D JMJ: First cut of port of EchoServer
+Lives in `robotutils/comm_helper`. No tests for it, and anyways, haven't ported `EchoClient` yet.
+The Java version blocked; the Python version is non-blocking - the caller must repeatedly call `periodic_work`.
+There are pros and cons to both approaches, but I feel that this non-blocking version is more 
+straightforward because it doesn't require the client to create a new thread and interrupt it to end. Instead
+the client can run a loop (with potentially multiple echo clients and servers) and simply quit when it wants to as
+none of the methods are blocking.
+
 ## February 5, 2018C JMJ: Start of unit test for the UDP transport
 It's `test_comm_helper.py`. 
 It creates a client and a server. The client sends a bunch of messages and the server verifies
@@ -281,6 +289,7 @@ We now have
 Pretty cool! Note that `somefunc` must take no arguments in this implementation.
 
 The code is below, currently residing in `test_robotcomm.py`.
+[UPDATE: Code moved to `robotcom/_utils.py` because it's now being used by `comm_helper.EchoServer`]
 
 ```
 def getsome(func, maxnum, sentinel=None):

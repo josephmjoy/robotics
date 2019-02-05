@@ -10,6 +10,7 @@ import unittest
 from . import concurrent_helper as conc
 from . import logging_helper
 from .comm_helper import UdpTransport
+from . import _utils
 
 _LOGNAME = "test"
 _LOGGER = logging.getLogger(_LOGNAME)

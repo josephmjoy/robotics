@@ -8,9 +8,11 @@ import socket
 import threading
 
 from . import logging_helper
+from . import _utils
 from .comm.common import DatagramTransport
+from .comm.robotcomm import RobotComm
 
-_LOGNAME = "robotutils.udp"
+_LOGNAME = "robotutils.commutils"
 _LOGGER = logging.getLogger(_LOGNAME)
 _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 
@@ -125,7 +127,6 @@ class UdpTransport(DatagramTransport):
             elif _TRACE.enabled():
                 _TRACE("Exception raised during send. Exp={%s}", str(exp))
 
-
     #
     # Other public methods
     #
@@ -159,11 +160,84 @@ class UdpTransport(DatagramTransport):
             sock = self._sock
         return sock
 
-
     @staticmethod
     def _make_sock_address(host, port) -> object:
-        """returns a (IP-address, port) tuple needed for socket.bind or socket.sendto.
-        No DNS resolution is attemptd on {host}"""
+        """returns a (IP-address, port) tuple needed for socket.bind or
+        socket.sendto.  No DNS resolution is attemptd on {host}"""
         assert host
         assert port
         return (host, port)
+
+
+class EchoServer:
+    """Implements a simple robotcomm echo server that echos messages, commands
+    and rt-commands
+    """
+
+    def __init__(self, hostname, port, channel_names,
+                 *, recv_bufsize=1024, server_name='server'):
+        """
+        Creates an echo server.
+        Positional parameters:
+            hostname, port - local host name and port associated with this
+            server channel_names - array of channel names
+        Optional keyword-only parameters:
+            server_name - name to associate with this server. For logging
+                purposes only.
+            recv_bufSize - Size in bytes of the internal buffer used to receive
+                incoming data. If it is too small, data will be truncated.
+        """
+        self.transport = UdpTransport(recv_bufsize, local_host=hostname,
+                                      local_port=port)
+        self.rcomm = RobotComm(self.transport)
+        self.channels = [self.rcomm.new_channel(name) for name in channel_names]
+        self.server_name = server_name
+
+
+    def start(self) -> None:
+        """Starts the server. It does not block. Rather it relies on the client
+        repeatedly calling periodic_work to do its work.
+        """
+        _LOGGER.info("Starting server %s", self.server_name)
+        for chan in self.channels:
+            chan.start_receiving_commands()
+            chan.start_receiving_messages()
+            def rt_handler(cmd): # Echo back RT commands
+                cmd.respond(cmd.msgtype, cmd.message)
+            chan.startReceivingRtCommands(rt_handler)
+
+        self.rcomm.start_listening()
+
+
+    def periodic_work(self):
+        """Perform periodic work"""
+        self.rcomm.periodic_work()
+        for chan in self.channels:
+
+            cmd = chan.poll_received_command()
+            for cmd in _utils.getsome(chan.poll_received_command):
+                # Echo received command.
+                cmd.respond(cmd.msgtype, cmd.message)
+
+            for msg in _utils.getsome(chan.poll_received_message):
+                # Echo received message.
+                chan.send_message(msg.msgtype, msg.message, msg.remote_node)
+
+
+    def stop(self) -> None:
+        """ Stops a running server. Will block until the server is stopped. This call
+        * must be called by a different thread from the one that is running, obviously.
+        *   Will also close the server.
+        """
+        _LOGGER.info("Stopping server %s", self.server_name)
+        self.rcomm.stop_listening()
+        for chan in self.channels:
+            chan.stop_receiving_commands()
+            chan.stop_receiving_messages()
+            chan.stop_receiving_rtcommands()
+
+        for stats in self.rcomm.get_channel_statistics():
+            _LOGGER.info("CHANNEL_STATS %s", str(stats))
+
+        self.rcomm.close()
+        self.transport.close()

@@ -11,9 +11,9 @@ import random
 import logging
 import collections
 import time
-import itertools
 import concurrent.futures
 
+from .. import _utils
 from . import robotcomm as rc
 from .. import concurrent_helper as conc
 from .. import logging_helper
@@ -33,36 +33,13 @@ _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 
 
 
-def getsome(func, maxnum=None, *, sentinel=None):
-    """A generator that returns up to {maxum} things. It
-    will return less if {func}():
-     - raises an IndexError exception
-     - raises a StopIteration exception
-     - returns the sentinel value.
-    If {maxnum} is not specified it defaults to infinity
-    >>> for x in getsome((x for x in range(10)).__next__, 5):
-    ...     print(x, end=' ')
-    0 1 2 3 4
-    >>>
-    """
-    try:
-        iter_ = range(maxnum) if maxnum is not None else itertools.count()
-        for _ in iter_:
-            value = func()
-            if value == sentinel:
-                return
-            yield value
-    except (IndexError, StopIteration):
-        pass
-
-
-
 TransportStats = collections.namedtuple('TransportStats',
                                         'sends recvs forcedrops randomdrops')
 
 
 # Mock transport tracing
-_MTTRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGNAME+'.transport')
+_MTTRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL,
+                                              _LOGNAME+'.transport')
 
 
 class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attributes
@@ -149,9 +126,10 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
 
 
     def set_transport_characteristics(self, failurerate, maxdelay) -> None:
-        """Changes transport characteristics: sends datagrams with {failurerate} failure
-        rate, and {maxdelay} seconds max delay per packet. {maxdelay} value less than
-        0.001 is considered to be 0, i.e., no delay.
+        """Changes transport characteristics: sends datagrams with
+        {failurerate} failure rate, and {maxdelay} seconds max delay per
+        packet. {maxdelay} value less than 0.001 is considered to be 0, i.e.,
+        no delay.
         """
         assert 0 <= failurerate <= 1
         assert maxdelay >= 0
@@ -159,7 +137,9 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
         self.maxdelay = 0 if maxdelay < 0.001 else maxdelay # note 0 is an integer
 
     def healthy(self) -> bool:
-        """Returns if the underlying transport is healthy, i.e., can still send/recv messages."""
+        """Returns if the underlying transport is healthy, i.e., can still
+        send/recv messages.
+        """
         return self.scheduler.healthy()
 
     def zero_failures(self) -> bool:
@@ -314,11 +294,13 @@ class TestMockTransport(unittest.TestCase):
 
 
 # Keeps track of a single test message
-TestMessageRecord = collections.namedtuple('TestMessageRecord', 'id alwaysdrop msgtype msgbody')
+TestMessageRecord = collections.namedtuple('TestMessageRecord',
+                                           'id alwaysdrop msgtype msgbody')
 
 
 # Keeps track of a command and expected response
-TestCommandRecord = collections.namedtuple('TestCommandRecord', 'cmdrecord resprecord rt timeout')
+TestCommandRecord = collections.namedtuple('TestCommandRecord',
+                                           'cmdrecord resprecord rt timeout')
 
 
 class StressTester: # pylint: disable=too-many-instance-attributes
@@ -371,14 +353,14 @@ class StressTester: # pylint: disable=too-many-instance-attributes
             dropcount = sizeest // 2
             _TRACE("PURGE Purging about %s force-dropped messages",
                    dropcount)
-            for mrec in getsome(self.droppedmsgs.pop, dropcount):
+            for mrec in _utils.getsome(self.droppedmsgs.pop, dropcount):
                 self.msgmap.remove_instance(mrec.id, mrec) # O(log(n))
 
     # private
     def purce_all_dropped_messages(self) -> None:
         """Remove all dropped messages (at least the ones that were in the
         queue when we entered this method)."""
-        for mrec in getsome(self.droppedmsgs.pop):
+        for mrec in _utils.getsome(self.droppedmsgs.pop):
             self.msgmap.remove_instance(mrec.id, mrec) # O(log(n))
 
     # private
@@ -414,7 +396,7 @@ class StressTester: # pylint: disable=too-many-instance-attributes
         def receive_all():
             # Pick up all messages received so far and verify them...
             def process():
-                for rmsg in getsome(self.chan.poll_received_message):
+                for rmsg in _utils.getsome(self.chan.poll_received_message):
                     self.process_received_message(rmsg)
             self.invoker.invoke(process)
 
