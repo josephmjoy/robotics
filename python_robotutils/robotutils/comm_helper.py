@@ -22,14 +22,17 @@ class UdpTransport(DatagramTransport):
     # For setting up a server at a known address and port.
     def __init__(self, recv_bufsize, *, local_host=None, local_port=None):
         """For clients - ask system to pick local address and port.
-        {local_address} is the DNS name or IP address. If not specified, the
-        system will pick the default address. {local_port} is the port number.
-        If unspecifid, the system will pick an ephemeral port.
+        {local_host} is the local DNS name or IP address. If not specified, the
+        system will pick the default address.
+        {local_port} is the port number.  If unspecifid, the system will pick an
+        ephemeral port. However, a port must be specified if `start_listening`
+        is going to be called.
         """
         self.lock = threading.Lock()
         self._listen_thread = None # background listening thread
         self._sock = None # Created on demand.
-        self._local_address = self._make_sock_address(local_host, local_port)
+        self._local_host = local_host if local_host is not None else 'localhost'
+        self._local_port = local_port # could be None
         self.recv_bufsize = recv_bufsize
         self._send_errors = 0 # Count of send errors - serialized via self.lock
 
@@ -43,15 +46,24 @@ class UdpTransport(DatagramTransport):
         handler(msg: str, rn: RemoteNode) -- see ABC DatagramTransportation
         for documentation."""
 
+        if self._local_port is None:
+            raise ValueError("Attempting to listen with local port set to None")
+        address = self._make_sock_address(self._local_host, self._local_port)
+        sock = self._getsocket()
+        _TRACE("Binding socket to address %s", address)
+        sock.bind(address)
+
         def listen_threadfn():
             try:
                 while self._listen_thread:
-                    _TRACE("RECV_WAIT Waiting to receive UDP packet...")
+                    if _TRACE.enabled():
+                        _TRACE("RECV_WAIT Waiting to receive UDP packet...")
                     data, node = self._sock.recvfrom(self.recv_bufsize)
                     # We directly get the remote node in our 'node' format, which
                     # is (host, port), so don't need to call self.new_remote_node
                     msg = data.decode('utf-8')
-                    _TRACE("RECV_PKT_DATA [%s] from %s", msg, str(node))
+                    if _TRACE.enabled():
+                        _TRACE("RECV_PKT_DATA [%s] from %s", msg, str(node))
                     handler(msg, node)
 
             except Exception: # pylint: disable=broad-except
@@ -98,7 +110,8 @@ class UdpTransport(DatagramTransport):
         messages"""
         try:
             sock = self._getsocket()
-            _TRACE("SEND_PKT_DATA msg=[%s] dest=[%s]", msg, str(destination))
+            if _TRACE.enabled():
+                _TRACE("SEND_PKT_DATA msg=[%s] dest=[%s]", msg, str(destination))
             sock.sendto(msg.encode('utf8'), destination)
         except Exception as exp: # pylint: disable=broad-except
             with self.lock:
@@ -149,4 +162,6 @@ class UdpTransport(DatagramTransport):
     def _make_sock_address(host, port) -> object:
         """returns a (IP-address, port) tuple needed for socket.bind or socket.sendto.
         No DNS resolution is attemptd on {host}"""
+        assert host
+        assert port
         return (host, port)

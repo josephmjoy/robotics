@@ -3,6 +3,11 @@
 
 
 
+## February 5, 2018C JMJ: Start of unit test for the UDP transport
+It's `test_comm_helper.py`. Haven't run it yet - just got Pylint to be happy.
+It creates a client and a server. The client sends a bunch of messages and the server verifies
+it receives messages. Not much validation (yet) - just that there are no send errors.
+
 ## February 5, 2018B JMJ: Importing a lower-level module
 `from .comm.common import DatagramTransport` Allows `comm_helper.py` to import `DatagramTransport`
 from `./comm/common.py`. At some point the various public things under `comm` should be exposed directly
