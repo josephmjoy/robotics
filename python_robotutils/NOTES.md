@@ -2,7 +2,13 @@
 
 
 
-## February 4, 2018C JMJ: Thoughts on porting the UDP Transport
+
+## February 5, 2018B JMJ: Importing a lower-level module
+`from .comm.common import DatagramTransport` Allows `comm_helper.py` to import `DatagramTransport`
+from `./comm/common.py`. At some point the various public things under `comm` should be exposed directly
+as its own attributes instead of referencing sub modules like `common`, `channel` and `robotcomm`.
+
+## February 5, 2018A JMJ: Thoughts on porting the UDP Transport
 Note that there is a `socketserver.UDPServer` class. We can't and don't want to use it because Robotutil's
 `DatagramTransport` is simple message passing, so this is just FYI.
 

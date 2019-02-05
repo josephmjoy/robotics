@@ -7,12 +7,8 @@ import logging
 import socket
 import threading
 
-from .comm import common
-#from common import DatagramTransport
-
 from . import logging_helper
-
-DatagramTransport = common.DatagramTransport
+from .comm.common import DatagramTransport
 
 _LOGNAME = "robotutils.udp"
 _LOGGER = logging.getLogger(_LOGNAME)
