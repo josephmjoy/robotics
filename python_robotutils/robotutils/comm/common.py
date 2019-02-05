@@ -7,6 +7,12 @@ class DatagramTransport(abc.ABC):
     """
     Interface for a datagram transport that is provided to an instance of
     RobotComm to provide the underlying raw communication.
+
+    NOTE TO IMPLEMENTORS: The destination/remote node object is opaque
+    to the clinents, however there are two requirements for this object:
+    1. It must support str to obtain a text representation of the address
+    2. It must be suitable for use as a key or set element, hence immutable.
+       Strings and tuples work well for this.
     """
 
     @abc.abstractmethod

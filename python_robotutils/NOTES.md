@@ -26,6 +26,16 @@ these can be directly returned as a node object.
 Successfully removed `RemoteNode` and got existing unit tests to pass. It was an easy exercise, underscoring
 the fact that it was unnecessary.
 
+Added this note to `DatagramTransport` docstring:
+
+```
+    NOTE TO IMPLEMENTORS: The destination/remote node object is opaque
+    to the clinents, however there are two requirements for this object:
+    1. It must support str to obtain a text representation of the address
+    2. It must be suitable for use as a key or set element, hence immutable.
+       Strings and tuples work well for this.
+```
+
 
 
 ## February 4, 2018A JMJ: Added stress tests for CountDownLatch
