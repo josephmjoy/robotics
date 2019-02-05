@@ -63,56 +63,6 @@ TransportStats = collections.namedtuple('TransportStats',
 # Mock transport tracing
 _MTTRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGNAME+'.transport')
 
-class MockRemoteNode(DatagramTransport.RemoteNode):
-    """Test remote node implementation"""
-
-
-    def __init__(self, transport, address):
-        """Construct a node under {transport} with the specified {address}"""
-        self._transport = transport
-        self._address = address
-
-
-    def send(self, msg) -> None:
-        """Sends {msg} over transport"""
-        self._transport.numsends.next()
-        if self._force_drop(msg):
-            _MTTRACE("SEND_FORCEDROP\n[%s]", msg)
-            self._transport.numforcedrops.next()
-            return # **************** EARLY RETURN *****
-
-        if self._nonforce_drop():
-            _MTTRACE("SEND_RANDDROP\n[%s]", msg)
-            self._transport.numrandomdrops.next()
-            return # **************** EARLY RETURN *****
-
-        _MTTRACE("SEND_SENDING\n[%s]", msg)
-        self._transport.handle_send(msg)
-
-
-    def address(self) -> str:
-        """Text representation of destination address"""
-        return self._address
-
-    def isrunning(self) -> bool:
-        """Returns if the transport is able to send and receive packets"""
-        return self._transport.isrunning()
-
-    def _force_drop(self, msg) -> bool:
-        """Whether or not to always drop this message"""
-        return self._transport.ALWAYSDROP_TEXT in msg
-
-    def _nonforce_drop(self) -> bool:
-        """Whether randomly drop message"""
-        if self._transport.closed:
-            return True
-        if self._transport.zero_failures():
-            return False
-        return random.random() < self._transport.failurerate
-
-    def __str__(self):
-        return self._address
-
 
 class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attributes
     """Implements the mock transport used in these tests"""
@@ -121,7 +71,7 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
 
     def __init__(self, local_address):
         """Initialize MockTransport. {local_address}" can be any string."""
-        self.loopbacknode = MockRemoteNode(self, local_address)
+        self.loopbacknode = local_address
         self.recvqueue = conc.ConcurrentDeque()
         self.numsends = conc.AtomicNumber(0)
         self.numrecvs = conc.AtomicNumber(0)
@@ -156,13 +106,45 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
         # print("Scheduler stopped")
         self.closed = True
 
+    def send(self, destination, msg) -> None:
+        """Sends {msg} to {destination} node"""
+        self.numsends.next()
+        if self._force_drop(msg):
+            _MTTRACE("SEND_FORCEDROP\n[%s]", msg)
+            self.numforcedrops.next()
+            return # **************** EARLY RETURN *****
+
+        if self._nonforce_drop():
+            _MTTRACE("SEND_RANDDROP\n[%s]", msg)
+            self.numrandomdrops.next()
+            return # **************** EARLY RETURN *****
+
+        _MTTRACE("SEND_SENDING\n[%s]", msg)
+
+        if self.closed:
+            self.numforcedrops.next()
+            return
+        if self.no_delays():
+            self._receive_data(msg)
+        else:
+            delay = random.random() * self.maxdelay
+            def timertask():
+                if not self.closed:
+                    # Delayed send
+                    self._receive_data(msg)
+                else:
+                    self.numforcedrops.next()
+
+            self.scheduler.schedule(delay, timertask)
+
     #
     # Methods to be used by tests
     #
 
-    def new_remotenode(self, address) -> DatagramTransport.RemoteNode:
-        """COnstruct and return a new remote node"""
-        return MockRemoteNode(self, address)
+    @staticmethod
+    def new_remotenode(address) -> str:
+        """Construct and return a new remote node"""
+        return address
 
 
     def set_transport_characteristics(self, failurerate, maxdelay) -> None:
@@ -204,24 +186,6 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
         """Return the statistical packet failure rate"""
         return self.failurerate
 
-    def handle_send(self, msg) -> None:
-        """Internally handle a send request"""
-        if self.closed:
-            self.numforcedrops.next()
-            return
-        if self.no_delays():
-            self._receive_data(msg)
-        else:
-            delay = random.random() * self.maxdelay
-            def timertask():
-                if not self.closed:
-                    # Delayed send
-                    self._receive_data(msg)
-                else:
-                    self.numforcedrops.next()
-
-            self.scheduler.schedule(delay, timertask)
-
     #
     # Private methods
     #
@@ -235,6 +199,18 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
             self.client_recv(txt, self.loopbacknode)
         else:
             self.numforcedrops.next()
+
+    def _force_drop(self, msg) -> bool:
+        """Whether or not to always drop this message"""
+        return self.ALWAYSDROP_TEXT in msg
+
+    def _nonforce_drop(self) -> bool:
+        """Whether randomly drop message"""
+        if self.closed:
+            return True
+        if self.zero_failures():
+            return False
+        return random.random() < self.failurerate
 
 
 class TestMockTransport(unittest.TestCase):
@@ -269,7 +245,7 @@ class TestMockTransport(unittest.TestCase):
 
         def receivemsg(msg, node):
             # print("Received message [{}] from {}".format(msg, node))
-            if node.address() != self.LOCAL_ADDRESS:
+            if str(node) != self.LOCAL_ADDRESS:
                 errcount.next()
             recvcount.next()
             counter = messages.get(msg)
@@ -283,7 +259,7 @@ class TestMockTransport(unittest.TestCase):
         transport.start_listening(receivemsg)
         node = transport.new_remotenode(self.LOCAL_ADDRESS)
         for msg in messages:
-            node.send(msg) # We're sending the keys
+            transport.send(node, msg) # We're sending the keys
         # print("Waiting... for {} messages".format(expected_msgcount))
         while recvcount.value() < expected_msgcount and transport.healthy():
             time.sleep(0.1)
@@ -324,7 +300,7 @@ class TestMockTransport(unittest.TestCase):
 
         node = transport.new_remotenode("loopback")
         for msg in messages:
-            node.send(msg) # We're sending the keys
+            transport.send(node, msg) # We're sending the keys
         time.sleep(maxdelay)
 
         # Need to close before any test failure assertions, otherwise

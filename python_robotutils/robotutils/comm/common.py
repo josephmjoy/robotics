@@ -9,17 +9,11 @@ class DatagramTransport(abc.ABC):
     RobotComm to provide the underlying raw communication.
     """
 
-    class RemoteNode(abc.ABC):
-        """Represents a remote node"""
-
-        @abc.abstractmethod
-        def send(self, msg) -> None:
-            """Sends a single text message"""
-
-        @abc.abstractmethod
-        def address(self) -> str:
-            """"Text representation of destination address"""
-
+    @abc.abstractmethod
+    def send(self, destination, msg) -> None:
+        """Sends a single text message. {destination} is an opaque
+        node object returned by get_remote_node or in the transpoet
+        receive handler"""
 
     @abc.abstractmethod
     def start_listening(self, handler) -> None:
@@ -27,10 +21,10 @@ class DatagramTransport(abc.ABC):
         Starts listening for incoming datagrams. This will likely use up
         resources, such as a dedicated thread, depending on the implementation.
 
-        handler(msg: str, rn: RemoteNode) --
-            called when a message arrives. Prototype: handler(msg: str, rn:
-            RemoteNode): Will likely be called in some other thread's context.
-            The handler is expected NOT to block. If time consuming operations
+        handler(msg: str, remote_node: Object) --
+            called when a message arrives. The handler will
+            likely be called in some other thread's context.
+            The handler MUST NOT block. If time consuming operations
             need to be performed, queue the message for further processing, or
             implement a state machine. The handler *may* be reentered or called
             concurrently from another thread.  Call stop_listening to stop new

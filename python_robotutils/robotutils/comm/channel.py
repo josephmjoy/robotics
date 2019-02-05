@@ -87,7 +87,7 @@ class Channel: #pylint: disable=too-many-instance-attributes
             dgram = Datagram(DatagramType.MSG, self.name, msgtype,
                              None, None, message)
             self._approx_sent_messages += 1
-            node.send(_protocol.str_from_datagram(dgram))
+            self._transport.send(node, _protocol.str_from_datagram(dgram))
 
     def poll_received_message(self): #  -> ReceivedMessage:
         """Returns a received message, None otherwise"""

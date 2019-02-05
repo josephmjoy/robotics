@@ -2,17 +2,43 @@
 
 
 
+## February 4, 2018C JMJ: Thoughts on porting the UDP Transport
+Note that there is a `socketserver.UDPServer` class. We can't and don't want to use it because Robotutil's
+`DatagramTransport` is simple message passing, so this is just FYI.
+
+Things seem simpler than Java:
+- create a socket
+- bind if you want to listen
+- issue blocking listens
+- close when done.
+
+One can't really 'stop listening' independently of closing the socket. I suppose one could close the socket
+and if necessary create a new one.
+
+## February 4, 2018C JMJ: Design Note - Eliminating `DatagramTransport.RemoteNode`
+Rationale: `RemoteNode` has two methods: `send` and `address`. `node.send(...)` can be
+replaced by `transport.send(node, ...)`. `node.address()` can be replaced by `str(node)`.
+
+Both the `MockTransport` and the `UdpTransport` have very little state for the so-called remote node.
+For `MockTransport` it is the string address. For `UdpTransport` it is the tuple `(address, port)`. So
+these can be directly returned as a node object. 
+
+Successfully removed `RemoteNode` and got existing unit tests to pass. It was an easy exercise, underscoring
+the fact that it was unnecessary.
+
+
+
 ## February 4, 2018A JMJ: Added stress tests for CountDownLatch
 
 The stress tests are in class `test_concurrent_helper.TestCountDownLatch`. They verify timeout accuracy
 and test concurrent invocations of count down and wait. The tests pass.
 
 Note:
-ThreadPoolExecutor does not kill running background tasks even if the main thread is exiting. Nice explanation 
+`ThreadPoolExecutor` does not kill running background tasks even if the main thread is exiting. Nice explanation 
 here: https://stackoverflow.com/questions/49992329/the-workers-in-threadpoolexecutor-is-not-really-daemon
 
 ## February 3, 2018C JMJ: Implemented concurrent_helper.CountDownLatch
-This is the Python version of Java's CountDownLatch. There are some suggestions online, such as
+This is the Python version of Java's `CountDownLatch`. There are some suggestions online, such as
 http://www.madhur.co.in/blog/2015/11/02/countdownlatch-python.html
 The one I implemented also supports timeout. Code is `robotutils.concurrent_helper.CountDownLatch`. It has
 a basic doctest. Unit tests are in `test_concurrent_helper.TestCountDownLatch`.
