@@ -16,7 +16,7 @@ class DatagramTransport(abc.ABC):
     """
 
     @abc.abstractmethod
-    def send(self, destination, msg) -> None:
+    def send(self, msg, destination) -> None:
         """Sends a single text message. {destination} is an opaque
         node object returned by get_remote_node or in the transpoet
         receive handler"""

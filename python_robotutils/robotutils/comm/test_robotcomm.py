@@ -106,7 +106,7 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
         # print("Scheduler stopped")
         self.closed = True
 
-    def send(self, destination, msg) -> None:
+    def send(self, msg, destination) -> None:
         """Sends {msg} to {destination} node"""
         self.numsends.next()
         if self._force_drop(msg):
@@ -259,7 +259,7 @@ class TestMockTransport(unittest.TestCase):
         transport.start_listening(receivemsg)
         node = transport.new_remotenode(self.LOCAL_ADDRESS)
         for msg in messages:
-            transport.send(node, msg) # We're sending the keys
+            transport.send(msg, node) # We're sending the keys
         # print("Waiting... for {} messages".format(expected_msgcount))
         while recvcount.value() < expected_msgcount and transport.healthy():
             time.sleep(0.1)
@@ -300,7 +300,7 @@ class TestMockTransport(unittest.TestCase):
 
         node = transport.new_remotenode("loopback")
         for msg in messages:
-            transport.send(node, msg) # We're sending the keys
+            transport.send(msg, node) # We're sending the keys
         time.sleep(maxdelay)
 
         # Need to close before any test failure assertions, otherwise
