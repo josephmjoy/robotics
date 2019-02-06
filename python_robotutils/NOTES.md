@@ -1,5 +1,124 @@
 # Design and Development Notes for Python port of Robotutils.
 
+
+## February 6, 2018C JMJ: Thoughts on default 'system' channels
+Have Robotcomm publish some reserved channels, such as 'ping' - any service can be pinged for health, say.
+A standard set of commands and responses can be suggested, such as uptime and epoch (updated each time service
+is restarted), CPU utilization, #processes, #threads, %memory used, etc. Maybe this special channel is called
+`_sysinfo` and is a hidden channel - is responded to by Robotcomm itself as a convenience. Also can query
+Robotcomm's own internal stats.
+
+
+## February 6, 2018B JMJ: Robotcomm cmdline 'ping' utility design
+`rcping` is the name of a proposed utility to encompass the capability of `EchoClient` and `EchoServer`.
+General guidelines:
+1. Client and server roles are decoupled - they don't depend on each other. In particular, the client can be used
+to send user-supplied messages or commands to a destination, which will be useful for testing. Similarly, the server
+can supply canned responses to a client.
+1. Can use a config file for supplying more detailed information - not a hardcoded file location - a user-supplied
+file and section for extra configuration information.
+
+Client-side features:
+1. Send a standard message to a standard channel a default (4) times and wait for the echoed response before
+   sending the next one. This is a straightforward emulation of `ping`.
+1. As above, but standard command.
+1. As above, but standard rt command command.
+1. Support `-n` and `-t` options from ping for each.
+1. Support '-l' (length) size option from ping for each. It specifies the size of the _body_
+1. Support '-body',  for message body type and body (default to nanosecond timestamp)
+1. Support '-chan', for channel (default to 'echo')
+1. Set a standard port number for Robotcomm servers so that we don't have to keep typing (and mistyping) port numbers,
+   and can specifically open that port in firewalls.  Default echo server port: 41890 (see  "February 6, 2018A" note)
+
+```
+rcping -msg localhost
+rcping localhost # same as above
+rcping -cmd localhost
+rcping -rtcmd localhost
+
+# Below, for '-body', the type and body (if present) are separated by ','
+# [-body ''] specfies empty body type and body, which is perfectly valid
+rcping -chan 1 -msg -body 'loc, x: 32 y: 45' pi0:41891
+rcping -chan 1 -cmd -body 'calibrate' pi0:41891
+rcping -chan 1 -rtcmd -body 'getpos, x' pi0:41891
+
+rcping [-t] [-n count] [-l size] [-msg] [-cmd] [-rtcmd] [-body _type[,body_]] target_name[:target_port]
+
+Default values:
+-Option -n: 4, unless -t is specified
+-Option -l: About 30 - to hold a nanosecond timestamp specifed in hex (see below)
+-Option -body 'hello,timestamp: <nanosecond-timestap in hex><extra chars to pad to -l value>'
+-Option -body default example: 'hello,timestamp: 0x012345678901234567 pad: blah blah blah'
+-If none of -msg, -cmd and -rtcmd is specified, -msg is assumed
+-Server port number: 41890
+
+
+
+Illegal values and combinations:
+- Option -t and -n cannot be specified together
+- Option -l and -body cannot be specified together
+- Option -l (size) value less than 30 is ignored to make room for the default body which includes the timestamp
+- At most one of -msg, -cmd and -rtcmd must be specified (if none specified -msg is assumed)
+- Server port MUST be in the 41xxx range. Other options are 36xxx, 42xxx, 45xxx and 48xx per the note below, but
+  we'll keep things simple and restrict it to 41xxx so its easy to remember.
+
+```
+
+For future - potential specification of body types and content in a configuration file:
+```
+config:
+    msg_1: type, message content
+    cmd_1: type, command content
+    resp_1: type, response to cmd1
+    rtcmd_1: type, rt command content
+    rtresp_1: type, response to rtcmd1
+```
+
+
+## February 6, 2018A JMJ: Multicast IP addresses and server Port Number Assignment Guidelines
+
+Found the discussion on possible port numbers to use on OneNote - 'January 22' in `JMJ Personal->FRC->FRC Notes`
+
+### Multicast
+
+From <https://tools.ietf.org/html/rfc2365>:
+```
+	6.2. The IPv4 Organization Local Scope -- 239.192.0.0/14
+	239.192.0.0/14 is defined to be the IPv4 Organization Local Scope, and
+	is the space from which an organization should allocate sub- ranges
+	when defining scopes for private use. 
+```
+
+### Port numbers to use for in-house applications
+From <https://support.mcommstv.com/hc/en-us/articles/202306226-Choosing-multicast-addresses-and-ports>
+Do NOT use:
+- Ports 0-1023 are the Well Known Ports and are assigned by IANA. These
+  should only be used for the assigned protocols on public networks.
+  Ports 1024-65535 used to be called Registered Port Numbers (see
+  rfc1700) but are now split into two areas (see rfc6335).
+- Ports 1024-49151 are the User Ports and are the ones to use for your own protocols.
+- Ports 49152-65535 are the Dynamic ports and should not be prescribed to a protocol.
+
+From <https://stackoverflow.com/questions/218839/assigning-tcp-ip-ports-for-in-house-application-use> 
+<https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers> - very comprehensive!
+
+I also picked up these notes from OneNote, however I can't find any online confirmation of this,
+so don't know how this came about, and I'm ignoring this guidance:
+- Nix 40000-42999 - "Rainbow Six" - plus 44000 and 45000
+- 32768-65535 "Tiger Woods"
+- 42292 Unreal Tournament
+
+So we will live in the 36xxx range. Or we can be in 41xxx - because of 41899! 
+
+A very useful utility: <https://www.adminsub.net/tcp-udp-port-finder> It returns what is assigned if anything
+to a particular port.
+
+My conclusion as of January 21st, 2019:
+- 36xxx and 41xxx-42xxx, 45xxx, 48xxx range is unassigned currently
+- We'll pick 4189x for our use because we can remember 41899
+- Default echo server port: 41890
+
+
 ## February 5, 2018D JMJ: First cut of port of EchoServer
 Lives in `robotutils/comm_helper`. No tests for it, and anyways, haven't ported `EchoClient` yet.
 The Java version blocked; the Python version is non-blocking - the caller must repeatedly call `periodic_work`.
