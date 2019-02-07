@@ -181,8 +181,8 @@ class EchoServer:
     DEFAULT_CHANNEL = 'echo' # Default Echo Server Channel Name
     DEFAULT_BUFSIZE = 1024
 
-    def __init__(self, hostname, *, port=EchoServer.DEFAULT_PORT,
-                 recv_bufsize=EchoServer.DEFAULT_BUFSIZE,
+    def __init__(self, hostname, *, port=DEFAULT_PORT,
+                 recv_bufsize=DEFAULT_BUFSIZE,
                  channel_names=None):
         """
         Creates an echo server.
@@ -216,7 +216,7 @@ class EchoServer:
             chan.start_receiving_messages()
             def rt_handler(cmd): # Echo back RT commands
                 cmd.respond(cmd.msgtype, cmd.message)
-            chan.startReceivingRtCommands(rt_handler)
+            chan.start_receiving_rtcommands(rt_handler)
 
         self._rcomm.start_listening()
 
@@ -257,7 +257,7 @@ class EchoServer:
 
 
 
-class SampleEchoClient: # pylint: disable=too-many-instance-attributes
+class EchoClient: # pylint: disable=too-many-instance-attributes
     """Implements an echo client that generates messages,
     commands and rtcommands over a UDP transport and reports responses"""
 
@@ -286,7 +286,7 @@ class SampleEchoClient: # pylint: disable=too-many-instance-attributes
         remotenode = self._transport.new_remote_node(server_name, server_port)
         self._rcomm = RobotComm(self._transport)
         self._channel = self._rcomm.new_channel(channel)
-        self._channel.bind_to_remotenode(remotenode)
+        self._channel.bind_to_remote_node(remotenode)
         self.set_parameters() # Set defaults
 
 

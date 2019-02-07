@@ -9,7 +9,7 @@ import unittest
 
 from . import concurrent_helper as conc
 from . import logging_helper
-from .comm_helper import UdpTransport
+from .comm_helper import UdpTransport, EchoServer, EchoClient
 from . import _utils
 
 _LOGNAME = "test"
@@ -37,8 +37,8 @@ class CommUtilsTest(unittest.TestCase):
         # The client sends string versions of integers 1 to N
         # The server parses and adds these up and in the end
         # the test verifies that the sum is as expected.
-        client = UdpTransport(MAX_PACKET_SIZE)
-        server = UdpTransport(MAX_PACKET_SIZE,
+        client = UdpTransport(recv_bufsize=MAX_PACKET_SIZE)
+        server = UdpTransport(recv_bufsize=MAX_PACKET_SIZE,
                               local_host=SERVER_IP_ADDRESS,
                               local_port=SERVER_PORT)
         count = 1000
@@ -74,3 +74,13 @@ class CommUtilsTest(unittest.TestCase):
 
         self.assertEqual(client._send_errors, 0) # pylint: disable=protected-access
         self.assertEqual(server._send_errors, 0) # pylint: disable=protected-access
+
+
+    def test_echo_client_server_simple(self):
+        """Test the UDP echo client and server"""
+        server = EchoServer('localhost')
+        client = EchoClient('localhost')
+
+        server.start()
+        server.periodic_work()
+        server.stop()

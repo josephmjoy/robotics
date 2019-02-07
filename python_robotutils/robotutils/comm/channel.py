@@ -157,15 +157,18 @@ class Channel: #pylint: disable=too-many-instance-attributes
 
     def poll_received_command(self): # -> ReceivedCommand
         """Retrieve a queued received command if present, None otherwise"""
-        return self._server.poll_received_command()
+        # TODO: Implement
+        #return self._server.poll_received_command()
 
     def start_receiving_rtcommands(self, handler) -> None:
         """Indicate that received commands should  start being accepted"""
-        self._server.start_receiving_rtcommands(handler)
+        # TODO: Implement
+        # self._server.start_receiving_rtcommands(handler)
 
     def stop_receiving_rtcommands(self) -> None:
         """Stop accepting incoming commands"""
-        self._server.stop_receiving_rtcommands()
+        # TODO: Implement
+        # self._server.stop_receiving_rtcommands()
 
     #
     # End of public methods
@@ -184,5 +187,7 @@ class Channel: #pylint: disable=too-many-instance-attributes
     def _periodic_work(self):
         """Called internally by Robotcomm to perform periodic work"""
         if not self._closed:
-            self._client.periodic_work()
-            self._server.periodic_work()
+            # TODO: Implement
+            #self._client.periodic_work()
+            #self._server.periodic_work()
+            pass

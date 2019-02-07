@@ -24,5 +24,3 @@ def getsome(func, maxnum=None, *, sentinel=None):
             yield value
     except (IndexError, StopIteration):
         pass
-
-
