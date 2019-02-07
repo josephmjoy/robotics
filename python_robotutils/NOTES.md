@@ -1,6 +1,20 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## February 6, 2018D JMJ: Implemented EchoClient  - just for messaging
+Implemented the Udp echo client, `comm_helper.EchoClient`. Currently just handles sending and receiving messages.
+It's design is different from the Java version. Key differences:
+- Various send parameters are specified by a different function, called `set_parameters`.
+- Method `send_messages` just takes a single parameter, a handler that is called each time any message is received.
+ The Java version would log any received messages, but did not otherwise provide a way for the client to access any
+ received messages.
+- The rate of sends is dynamically controlled to match the requested rate - see the code in `send_messages` - it will
+  sleep a certain amount if it finds it is sending at a rate faster than what was requested. The Java version took a 
+  period as input and would sleep for that period between any sends.
+- The default format of a send message is as per the specification in the "February 6, 2018B" design note. It includes
+  a sequence number and time stamp and optional padding characters. However, the message can also be supplied by
+  the client.
+
 ## February 6, 2018C JMJ: Thoughts on default 'system' channels
 Have Robotcomm publish some reserved channels, such as 'ping' - any service can be pinged for health, say.
 A standard set of commands and responses can be suggested, such as uptime and epoch (updated each time service
@@ -46,18 +60,19 @@ rcping [-t] [-n count] [-l size] [-msg] [-cmd] [-rtcmd] [-body _type[,body_]] ta
 
 Default values:
 -Option -n: 4, unless -t is specified
--Option -l: About 30 - to hold a nanosecond timestamp specifed in hex (see below)
--Option -body 'hello,timestamp: <nanosecond-timestap in hex><extra chars to pad to -l value>'
--Option -body default example: 'hello,timestamp: 0x012345678901234567 pad: blah blah blah'
+-Option -l: About 30 - to hold a sequence number and time stamp (see below)
+-Option -body 'hello,sn: _sequence-number_  ts: _microsecond-timestap_ -pad: [_extra-pad-chars_]
+-Option -body default example: 'hello,sn: 2  ts: 552953421366 -pad: []'
 -If none of -msg, -cmd and -rtcmd is specified, -msg is assumed
 -Server port number: 41890
 
-
+sn: 1 ts: 55124112412412 -pad:[----]
 
 Illegal values and combinations:
 - Option -t and -n cannot be specified together
 - Option -l and -body cannot be specified together
-- Option -l (size) value less than 30 is ignored to make room for the default body which includes the timestamp
+- Option -l (size) value less than a minimum amount is ignored to make room for the default body which includes the sequence
+	number and timestamp.
 - At most one of -msg, -cmd and -rtcmd must be specified (if none specified -msg is assumed)
 - Server port MUST be in the 41xxx range. Other options are 36xxx, 42xxx, 45xxx and 48xx per the note below, but
   we'll keep things simple and restrict it to 41xxx so its easy to remember.

@@ -3,14 +3,17 @@ A private module that implements concurrency-friendly versions of
 queues, dictionaries and counters.
 Author: JMJ
 """
+import itertools
 import logging
 import socket
 import threading
+import time
 
 from . import logging_helper
 from . import _utils
 from .comm.common import DatagramTransport
 from .comm.robotcomm import RobotComm
+
 
 _LOGNAME = "robotutils.commutils"
 _LOGGER = logging.getLogger(_LOGNAME)
@@ -22,7 +25,7 @@ class UdpTransport(DatagramTransport):
 
 
     # For setting up a server at a known address and port.
-    def __init__(self, recv_bufsize, *, local_host=None, local_port=None):
+    def __init__(self, *, recv_bufsize=1400, local_host=None, local_port=None):
         """For clients - ask system to pick local address and port.
         {local_host} is the local DNS name or IP address. If not specified, the
         system will pick the default address.
@@ -174,45 +177,54 @@ class EchoServer:
     and rt-commands
     """
 
-    def __init__(self, hostname, port, channel_names,
-                 *, recv_bufsize=1024, server_name='server'):
+    DEFAULT_PORT = 41890 # Default Echo Server Port Number
+    DEFAULT_CHANNEL = 'echo' # Default Echo Server Channel Name
+    DEFAULT_BUFSIZE = 1024
+
+    def __init__(self, hostname, *, port=EchoServer.DEFAULT_PORT,
+                 recv_bufsize=EchoServer.DEFAULT_BUFSIZE,
+                 channel_names=None):
         """
         Creates an echo server.
         Positional parameters:
-            hostname, port - local host name and port associated with this
-            server channel_names - array of channel names
+            hostname - local host name associated with this server
         Optional keyword-only parameters:
-            server_name - name to associate with this server. For logging
-                purposes only.
+            port - server port - defaults to EchoServer.DEFAULT_PORT
             recv_bufSize - Size in bytes of the internal buffer used to receive
                 incoming data. If it is too small, data will be truncated.
+            channel_names - sequence of channel names. Defaults to
+                [EchoServer.DEFAULT_CHANNEL]
         """
-        self.transport = UdpTransport(recv_bufsize, local_host=hostname,
-                                      local_port=port)
-        self.rcomm = RobotComm(self.transport)
-        self.channels = [self.rcomm.new_channel(name) for name in channel_names]
-        self.server_name = server_name
+        self.hostname = hostname
+        self.port = port
+        self._transport = UdpTransport(recv_bufsize=recv_bufsize, local_host=hostname,
+                                       local_port=port)
+        self._rcomm = RobotComm(self._transport)
+        if channel_names is None:
+            channel_names = [EchoServer.DEFAULT_CHANNEL]
+        self._channels = [self._rcomm.new_channel(name) for name in channel_names]
 
 
     def start(self) -> None:
         """Starts the server. It does not block. Rather it relies on the client
         repeatedly calling periodic_work to do its work.
         """
-        _LOGGER.info("Starting server %s", self.server_name)
-        for chan in self.channels:
+        _LOGGER.info("Starting server hostname: %s port: %s",
+                     self.hostname, self.port)
+        for chan in self._channels:
             chan.start_receiving_commands()
             chan.start_receiving_messages()
             def rt_handler(cmd): # Echo back RT commands
                 cmd.respond(cmd.msgtype, cmd.message)
             chan.startReceivingRtCommands(rt_handler)
 
-        self.rcomm.start_listening()
+        self._rcomm.start_listening()
 
 
     def periodic_work(self):
         """Perform periodic work"""
-        self.rcomm.periodic_work()
-        for chan in self.channels:
+        self._rcomm.periodic_work()
+        for chan in self._channels:
 
             cmd = chan.poll_received_command()
             for cmd in _utils.getsome(chan.poll_received_command):
@@ -229,15 +241,147 @@ class EchoServer:
         * must be called by a different thread from the one that is running, obviously.
         *   Will also close the server.
         """
-        _LOGGER.info("Stopping server %s", self.server_name)
-        self.rcomm.stop_listening()
-        for chan in self.channels:
+        _LOGGER.info("Stopping server hostname: %s port: %s",
+                     self.hostname, self.port)
+        self._rcomm.stop_listening()
+        for chan in self._channels:
             chan.stop_receiving_commands()
             chan.stop_receiving_messages()
             chan.stop_receiving_rtcommands()
 
-        for stats in self.rcomm.get_channel_statistics():
+        for stats in self._rcomm.get_channel_statistics():
             _LOGGER.info("CHANNEL_STATS %s", str(stats))
 
-        self.rcomm.close()
-        self.transport.close()
+        self._rcomm.close()
+        self._transport.close()
+
+
+
+class SampleEchoClient: # pylint: disable=too-many-instance-attributes
+    """Implements an echo client that generates messages,
+    commands and rtcommands over a UDP transport and reports responses"""
+
+
+    def __init__(self, server_name, *, server_port=EchoServer.DEFAULT_PORT,
+                 recv_bufsize=EchoServer.DEFAULT_BUFSIZE,
+                 channel=EchoServer.DEFAULT_CHANNEL, client_name='echoclient'):
+        """
+        Creates an echo client.
+        Positional parameters:
+            hostname, port - echo server server host name and port
+            server channel_names - array of channel names
+        Optional keyword-only parameters:
+            server_name - name to associate with this server. For logging
+                purposes only.
+            server_port - server port - defaults to EchoServer.DEFAULT_PORT
+            channel - name of channel. Defaults to EchoServer.DEFAULT_CHANNEL
+            recv_bufSize - Size in bytes of the internal buffer used to receive
+                incoming data. If it is too small, data will be truncated.
+                 - used for logging
+            client_name - identifying name of this client - used in logging and in
+                generating message content.
+        """
+        self.client_name = client_name
+        self._transport = UdpTransport(recv_bufsize=recv_bufsize)
+        remotenode = self._transport.new_remote_node(server_name, server_port)
+        self._rcomm = RobotComm(self._transport)
+        self._channel = self._rcomm.new_channel(channel)
+        self._channel.bind_to_remotenode(remotenode)
+        self.set_parameters() # Set defaults
+
+
+    def set_parameters(self, *, count=4, size=None, rate=1, bodytype='hello',
+                       body=None, response_timeout=1.0):
+        """Sets optional send parameters. All default to None
+            count - number to send. If None will send indifinately.
+            size - approximate size of message/command body. If unspecified
+                an appropriate size is chosen.
+            rate - number of sends/submits per second
+            bodytype - message/command type
+            body - message/command body. If unspecified, it will be filled in with
+                a message including a sequence number and timestamp.
+            response_timeout - maximum time in seconds waiting for a response. This will
+                determine how much time to wait before ending transmissions, but does not
+                limit the rate of sends/submits
+        """
+        self.count = count
+        self.size = size
+        self.rate = rate # sends per second
+        self.bodytype = bodytype
+        self.body = body
+        self.response_timeout = response_timeout
+
+
+    def send_messages(self, response_handler=None):
+        """Sends messages based on parameters set earlier (either defaults or
+        in a call to set_parameters.  Will BLOCK until all messages are sent
+        or an exception is thrown.  Will wait up to the response timeout
+        (defaults to 1 second and settable via set_parameters) for
+        responses.
+
+        response_handler(msgtype:str, msg:str) - called whenever a
+            response is received. There may not be any correspondence between
+            sent and received messages.
+        """
+        _LOGGER.info("Echo client %s Starting to send %d messages",
+                     self.client_name, self.count)
+        self._rcomm.start_listening() # For responses
+        channel = self._channel
+        channel.start_receiving_messages()
+
+        if not self.rate:
+            counter = range(0) # nothing to send if rate is None or 0
+        elif self.count is None:
+            counter = itertools.count() # Count for ever
+        else:
+            counter = range(self.count) # could still be 0
+
+        try:
+            start = time.time()
+            for i in counter:
+                delta = start - time.time()
+                # First time through predicted_delta is 0 ...
+                predicted_delta = i / float(self.rate)
+                # Sleep if needed to catch up with prediction
+                if delta < predicted_delta:
+                    time.sleep(predicted_delta - delta)
+
+                self._rcomm.periodic_work()
+                msgtype = self.bodytype
+                msgbody = self._make_message_body(i)
+                _TRACE("ECHO_SEND_MSG msgtype: %s  msgbody: %s",
+                       msgtype, msgbody)
+                channel.send_message(msgtype, msgbody)
+                recvmsg = channel.poll_received_message()
+                if recvmsg:
+                    _TRACE("ECHO_RECV_MSG msgtype: %s  msgbody: %s",
+                           recvmsg.msgtype, recvmsg.msgbody)
+                if response_handler:
+                    response_handler(recvmsg.msgtype, recvmsg.message)
+
+            _LOGGER.info("Done sending %d messages", self.count)
+        except KeyboardInterrupt:
+            _LOGGER.info("KeyboardInterrupt raised. Quitting")
+        channel.stop_receiving_messages()
+        self._rcomm.stop_listening()
+
+
+    _MESSAGE_TEMPLATE = "sn: {} ts: {}"
+    _EXTENDED_MESSAGE_TEMPLATE = "{} -pad: {}" # for padding messages
+
+
+    def _make_message_body(self, index) -> str:
+        """Construct a message body - suitable for a
+        message, command or rt command"""
+        if self.body is not None:
+            return self.body # ---- EARLY RETURN ---
+
+        timestamp = round(time.perf_counter() * (10**6)) # microseconds
+        message = self._MESSAGE_TEMPLATE.format(index, timestamp)
+        ext_template = self._EXTENDED_MESSAGE_TEMPLATE
+        # This will attempt to pad the message so that it is
+        # about self.size - it's not exact but good enough
+        nextra = len(message) + len(ext_template) - 4 # -4 for 2 '{}' in template
+        if self.size and nextra < self.size:
+            message = ext_template.format(message, '-'*(self.size - nextra))
+        return message
