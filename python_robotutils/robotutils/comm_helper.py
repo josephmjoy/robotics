@@ -325,18 +325,9 @@ class SampleEchoClient: # pylint: disable=too-many-instance-attributes
         """
         _LOGGER.info("Echo client %s Starting to send %d messages",
                      self.client_name, self.count)
-        self._rcomm.start_listening() # For responses
-        channel = self._channel
-        channel.start_receiving_messages()
-
-        if not self.rate:
-            counter = range(0) # nothing to send if rate is None or 0
-        elif self.count is None:
-            counter = itertools.count() # Count for ever
-        else:
-            counter = range(self.count) # could still be 0
-
+        counter = self._setup()
         try:
+            channel = self._channel
             start = time.time()
             for i in counter:
                 delta = start - time.time()
@@ -362,13 +353,33 @@ class SampleEchoClient: # pylint: disable=too-many-instance-attributes
             _LOGGER.info("Done sending %d messages", self.count)
         except KeyboardInterrupt:
             _LOGGER.info("KeyboardInterrupt raised. Quitting")
-        channel.stop_receiving_messages()
-        self._rcomm.stop_listening()
+        self._teardown()
 
 
     _MESSAGE_TEMPLATE = "sn: {} ts: {}"
     _EXTENDED_MESSAGE_TEMPLATE = "{} -pad: {}" # for padding messages
 
+
+    def _setup(self):
+        """
+        Starts listening and returns a counter to be used for
+        sequencing messages.
+        """
+        self._rcomm.start_listening() # For responses
+        self._channel.start_receiving_messages()
+
+        if not self.rate:
+            counter = range(0) # nothing to send if rate is None or 0
+        elif self.count is None:
+            counter = itertools.count() # Count for ever
+        else:
+            counter = range(self.count) # could still be 0
+        return counter
+
+    def _teardown(self):
+        """Shut down after sending"""
+        self._channel.stop_receiving_messages()
+        self._rcomm.stop_listening()
 
     def _make_message_body(self, index) -> str:
         """Construct a message body - suitable for a
