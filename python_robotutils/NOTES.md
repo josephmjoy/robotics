@@ -1,6 +1,7 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## February 8, 2018A JMJ: A tight loop in executor task causes a hard hang...
 On windows, when attempting to receive a datagram using `recvfrom`, one of two conditions must hold:
 - The socket has previously been bound to a local address and port
 - The socket was previously used to send a packet.
@@ -24,7 +25,7 @@ never called or called much later than the client is initialized.
 Implemented these changes to `comm_helper.UdpTransport`.
 
 
-## February 6, 2018D JMJ: A tight loop in executor task causes a hard hang...
+## February 7, 2018A JMJ: A tight loop in executor task causes a hard hang...
 The following unit test reproduces the problem. The background task is simply a tight
 loop that never exits. The main thread fails an assertion. The program hangs - have to kill
 the bash shell. No errors are reported.  If, on the other hand, I sleep for a bit in the

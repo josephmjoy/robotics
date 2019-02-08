@@ -61,10 +61,12 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
         with self._lock:
             if self._deferred_listen_handler or self._listen_thread:
                 raise ValueError("Attempt to listen when already listening")
-            is_server = self._local_port is not None
-            sock = self._getsocket_lk(create=is_server)
-            if sock is None:
-                self._deferred_listen_handler = handler
+            if self._sock is None:
+                if self._local_port is None:
+                    # We can't create the socket now; have to defer to the first send
+                    self._deferred_listen_handler = handler
+                else:
+                    sock = self._sock = self._makesocket()
 
         if sock is None:
             _TRACE("Deferring starting to listen until first send")
@@ -104,7 +106,9 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
             # Get a hold of the socket AND see if we need to
             # start deferred background receive handling
             with self._lock:
-                sock = self._getsocket_lk(create=True)
+                if not self._sock:
+                    self._sock = self._makesocket()
+                sock = self._sock
                 recv_handler = self._deferred_listen_handler
                 if recv_handler:
                     self._deferred_listen_handler = None
@@ -194,19 +198,11 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
         thread.start()
 
 
-    def _getsocket_lk(self, *, create=False) -> object:
-        """Must be called with self._lock held!
-        Creates self._sock on demand and returns it.
-        If {create} is True it will attempt to create one.
-        If {create} is False it will return the previously created socket
-                    or None if no socket has been created yet
-        """
-        with self._lock:
-            sock = None
-            if not self._sock and create:
-                self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock = self._sock
-        return sock
+    @staticmethod
+    def _makesocket():
+        """Create a datagram socket"""
+        return socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
 
     @staticmethod
     def _make_sock_address(host, port) -> object:
