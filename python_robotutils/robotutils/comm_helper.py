@@ -33,14 +33,14 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
         ephemeral port. However, a port must be specified if `start_listening`
         is going to be called.
         """
-        self.lock = threading.Lock() # TODO: make it _lock
+        self._lock = threading.Lock()
         self._listen_thread = None # background listening thread
         self._deferred_listen_handler = None # Set in start_listening
         self._sock = None # Created on demand.
         self._local_host = local_host if local_host is not None else 'localhost'
         self._local_port = local_port # could be None
         self.recv_bufsize = recv_bufsize
-        self._send_errors = 0 # Count of send errors - serialized via self.lock
+        self._send_errors = 0 # Count of send errors - serialized via self._lock
 
     #
     # ABC DatagramTransport impementations
@@ -56,12 +56,13 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
         # port - one has to first send at least one packet - listening when the local port
         # is None is deferred until the first send packet. This fact is logged.
         #
+        breakpoint()
         sock = None
-        with self.lock:
+        with self._lock:
             if self._deferred_listen_handler or self._listen_thread:
                 raise ValueError("Attempt to listen when already listening")
             is_server = self._local_port is not None
-            sock = self._getsocket(create=is_server)
+            sock = self._getsocket_lk(create=is_server)
             if sock is None:
                 self._deferred_listen_handler = handler
 
@@ -74,7 +75,7 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
     def stop_listening(self) -> None:
         """Stops listening if started. Idempotent. It will block if necessary until
         any background processig is complete"""
-        with self.lock:
+        with self._lock:
             sock = self._sock
             thread = self._listen_thread
             self._sock = None
@@ -99,21 +100,25 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
         first send error is logged as an error and subsequent errors generate trace
         messages"""
         try:
-            sock = self._getsocket(create=True)
+
+            # Get a hold of the socket AND see if we need to
+            # start deferred background receive handling
+            with self._lock:
+                sock = self._getsocket_lk(create=True)
+                recv_handler = self._deferred_listen_handler
+                if recv_handler:
+                    self._deferred_listen_handler = None
+
             if _TRACE.enabled():
                 _TRACE("SEND_PKT_DATA msg=[%s] dest=[%s]", msg, str(destination))
             sock.sendto(msg.encode('utf8'), destination)
 
             # Potentially start previously-deferred listening
-            with self.lock:
-                handler = self._deferred_listen_handler
-                if handler:
-                    self._deferred_listen_handler = None
-            if handler:
-                self._really_start_listening(sock, handler)
+            if recv_handler:
+                self._really_start_listening(sock, recv_handler)
 
         except Exception as exp: # pylint: disable=broad-except
-            with self.lock:
+            with self._lock:
                 first = self._send_errors == 0
                 self._send_errors += 1
 
@@ -177,7 +182,7 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
                 else:
                     _TRACE("Expected exception ending listen. exp: %s", exp)
 
-        with self.lock:
+        with self._lock:
             assert self._listen_thread is None
             assert self._deferred_listen_handler is None
             thread = threading.Thread(target=listen_threadfn,
@@ -189,13 +194,14 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
         thread.start()
 
 
-    def _getsocket(self, *, create=False) -> object:
-        """Creates self._sock on demand and returns it.
+    def _getsocket_lk(self, *, create=False) -> object:
+        """Must be called with self._lock held!
+        Creates self._sock on demand and returns it.
         If {create} is True it will attempt to create one.
         If {create} is False it will return the previously created socket
                     or None if no socket has been created yet
         """
-        with self.lock:
+        with self._lock:
             sock = None
             if not self._sock and create:
                 self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
