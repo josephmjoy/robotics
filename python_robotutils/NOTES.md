@@ -1,6 +1,44 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+## February 8, 2018B JMJ: Milestone - got echo client and server to work over local UDP transport
+100,000 messages were sent at the rate of about 5000/sec (which is abut the max on my EliteBook). All of them
+were received (as expected, as this is the loop-back transport).
+
+Sending 0 messages also works.
+
+The errors were due to uncaught exceptions thrown that `unittest` would silently handle and not report, while there are background
+listen threads waiting to be shut down - in particular the transport listen threads. By catching exceptions and 
+closing the transport the hangs went away.
+
+TO debug I noticed that `EchoClient.sendMessage` was not returning normally - because the trace before it was displayed but
+not after - so I put a breakpoint in the function and stepped through until it hit the error.
+The key uncaught exception was an attribute naming error - see the `pdbg` listing below.
+```
+AttributeError: 'ReceivedMessage' object has no attribute 'msgbody'
+> c:\users\jmj\documents\github\robotics\python_robotutils\robotutils\comm_helper.py(400)send_messages(
+)
+-> recvmsg.msgtype, recvmsg.msgbody)
+(Pdb) l
+395                     recvmsg = channel.poll_received_message()
+396                     _TRACE("ECHO_POLL_RECEIVED returns")
+397                     breakpoint()
+398                     if recvmsg:
+399                         _TRACE("ECHO_RECV_MSG msgtype: %s  msgbody: %s",
+400  ->                            recvmsg.msgtype, recvmsg.msgbody)
+401                         if response_handler:
+402                             response_handler(recvmsg.msgtype, recvmsg.message)
+403
+404                 _LOGGER.info("Done sending %d messages", num_sends)
+405             except KeyboardInterrupt:
+(Pdb) pp recvmsg
+ReceivedMessage(msgtype='hello', message='sn: 0 ts: 233134', remote_node=('127.0.0.1', 41890), received
+_timestamp=1549631684822, channel=<robotutils.comm.channel.Channel object at 0x000001F07CB63F28>)
+(Pdb)
+```
+The `EchoClient.send_message` code was also just polling for one received message at a time, instead of processing
+all that have arrived. This code is now factored into the method `_get_received_messages` and uses the handy-dandy
+`_utils.getsome`  - see "January 29, 2018G" note.
 
 ## February 8, 2018B JMJ: More progress in debugging and fixing echo client and server
 Note: discovered `math.isclose`: `math.isclose(self.rate, 0.0, abs_tol=1e-3)`.
