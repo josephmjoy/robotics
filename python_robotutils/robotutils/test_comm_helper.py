@@ -93,6 +93,7 @@ class CommUtilsTest(unittest.TestCase):
                 server.stop()
 
             executor.submit(runserver)
+            time.sleep(0.1) # Give some time for server to get started
 
             def response_handler(resptype, respbody):
                 print("GOT RESPONSE ({}, {})".format(resptype, respbody))

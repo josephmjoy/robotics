@@ -170,7 +170,6 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
                 while self._listen_thread:
                     if _TRACE.enabled():
                         _TRACE("RECV_WAIT Waiting to receive UDP packet...")
-                    assert isinstance(self.recv_bufsize, int)
                     data, node = self._sock.recvfrom(self.recv_bufsize)
                     # We directly get the remote node in our 'node' format, which
                     # is (host, port), so don't need to call self.new_remote_node
@@ -327,7 +326,6 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
         self._rcomm = RobotComm(self._transport, name="rc_client")
         self._channel = self._rcomm.new_channel(channel)
         self._channel.bind_to_remote_node(remotenode)
-        self._channel.start_receiving_messages()
         self.set_parameters() # Set defaults
 
 
