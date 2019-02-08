@@ -19,7 +19,7 @@ _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 # Uncomment one of these to set the global trace level for ALL unit tests, not
 # just the ones in this file.
 #logging.basicConfig(level=logging.INFO)
-#logging.basicConfig(level=logging_helper.TRACELEVEL)
+logging.basicConfig(level=logging_helper.TRACELEVEL)
 
 SERVER_IP_ADDRESS = "127.0.0.1"
 SERVER_PORT = 41899 + 3
@@ -76,6 +76,16 @@ class CommUtilsTest(unittest.TestCase):
         self.assertEqual(client._send_errors, 0) # pylint: disable=protected-access
         self.assertEqual(server._send_errors, 0) # pylint: disable=protected-access
 
+    def test_zecho_client_simple(self):
+        """Test the UDP echo client sending to nowhere"""
+        client = EchoClient('localhost')
+        num_sends = 0
+
+        # send_messages will block until done...
+        print("GOING TO SEND MESSAGES")
+        client.send_messages(num_sends)
+        print("DONE SENDING MESSAGES")
+
 
     def test_echo_client_server_simple(self):
         """Test the UDP echo client and server"""
@@ -103,7 +113,7 @@ class CommUtilsTest(unittest.TestCase):
 
             # send_messages will block until done...
             client.send_messages(num_sends, response_handler=response_handler)
-            time.sleep(1)
+            time.sleep(5)
             stop_server = True
             print("Waiting for server to shut down")
 
