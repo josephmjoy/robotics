@@ -1,5 +1,25 @@
 # Design and Development Notes for Python port of Robotutils.
 
+## February 6, 2018D JMJ: A tight loop in executor task causes a hard hang...
+The following unit test reproduces the problem. The background task is simply a tight
+loop that never exits. The main thread fails an assertion. The program hangs - have to kill
+the bash shell. No errors are reported. If, on the other hand, I sleep for a bit in the
+loop (uncomment the commented-out line below), it works fine - assertion failure is reported and 
+the program exits.
+```
+    def test_sample_hanging_executor_submission(self):
+        """Shows getting stuck because of a never-exiting background submission"""
+        with concurrent.futures.ThreadPoolExecutor(1) as executor:
+            def runserver():
+                while True:
+                    pass
+                    #time.sleep(0.1)
+            executor.submit(runserver)
+        assert False
+```
+I hit this debugging an issue with the echo client / server unit tests. To debug, I
+had to 
+
 ## February 6, 2018D JMJ: Added optional parameter `name` to  RobotComm constructor
 This is for logging purposes - so in the logs we can make out which instance of Robotcomm is
 generating what logs. It is a keyword-only parameter with a reasonable default:
