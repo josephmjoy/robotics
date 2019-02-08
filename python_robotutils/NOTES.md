@@ -1,5 +1,11 @@
 # Design and Development Notes for Python port of Robotutils.
 
+## February 6, 2018D JMJ: Added optional parameter `name` to  RobotComm constructor
+This is for logging purposes - so in the logs we can make out which instance of Robotcomm is
+generating what logs. It is a keyword-only parameter with a reasonable default:
+`def __init__(self, transport, *, name="robotcomm"):`
+This is a pattern that can be adopted more generally - each object of
+significance has an attribute called `name` that is injected into log messages.
 
 ## February 6, 2018D JMJ: Implemented EchoClient  - just for messaging
 Implemented the Udp echo client, `comm_helper.EchoClient`. Currently just handles sending and receiving messages.

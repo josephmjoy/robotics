@@ -19,12 +19,14 @@ _INFO = logging_helper.LevelSpecificLogger(logging.INFO, _LOGGER)
 class RobotComm():
     """The top-level class for robotcomm"""
 
-    def __init__(self, transport):
-        """Initializes an instance of RobotComm with the specified transport."""
+    def __init__(self, transport, *, name="robotcomm"):
+        """Initializes an instance of RobotComm with the specified transport.
+        {name} identifies this instance for logging purposes."""
 
         self._closed = False # set to false when close() is called.
         self.listening = False  # Whether or not client is listening
         self.transport = transport
+        self.name = name
         self._listenlock = threading.Lock()
         self.rand = random.random
         self._channels = concurrent_helper.ConcurrentDict()
@@ -59,7 +61,7 @@ class RobotComm():
                 start = True
                 self.listening = True
         if start:
-            _INFO("STARTING LISTENING")
+            _INFO("START_LISTENING instance: %s", self.name)
             self.transport.start_listening(self._listen_handler)
 
 
@@ -71,7 +73,7 @@ class RobotComm():
                 self.listening = False
                 stop = True
         if stop:
-            _INFO("STOPPING LISTENING")
+            _INFO("STOP_LISTENING instance: %s)", self.name)
             self.transport.stop_listening()
 
 
