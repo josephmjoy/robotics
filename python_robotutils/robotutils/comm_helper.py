@@ -331,7 +331,7 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
 
 
     def set_parameters(self, *, size=None, rate=1, bodytype='hello',
-                       body=None, response_timeout=1.0):
+                       body=None, response_timeout=0.5):
         """Sets optional send parameters. All default to None
             size - approximate size of message/command body. If unspecified
                 an appropriate size is chosen.
@@ -392,17 +392,17 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
                 _TRACE("ECHO_SEND_MSG msgtype: %s  msgbody: %s",
                        msgtype, msgbody)
                 channel.send_message(msgtype, msgbody)
-                recvmsg = channel.poll_received_message()
-                if recvmsg:
-                    _TRACE("ECHO_RECV_MSG msgtype: %s  msgbody: %s",
-                           recvmsg.msgtype, recvmsg.msgbody)
-                    if response_handler:
-                        response_handler(recvmsg.msgtype, recvmsg.message)
+                self._get_received_messages(response_handler)
 
             _LOGGER.info("Done sending %d messages", num_sends)
+            # Let's wait for a bit to get any final responses from the server
+            _LOGGER.info("Sleeping for %1.3f seconds", self.response_timeout)
+            time.sleep(self.response_timeout)
+            self._get_received_messages(response_handler)
         except KeyboardInterrupt:
             _LOGGER.info("KeyboardInterrupt raised. Quitting")
-        self._teardown()
+        finally:
+            self._teardown()
 
 
     def close(self) -> None:
@@ -447,3 +447,12 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
         if self.size and nextra < self.size:
             message = ext_template.format(message, '-'*(self.size - nextra))
         return message
+
+
+    def _get_received_messages(self, response_handler):
+        """Pick up and deliver any messages received from the server"""
+        for recvmsg in _utils.getsome(self._channel.poll_received_message):
+            _TRACE("ECHO_RECV_MSG msgtype: %s  msgbody: %s",
+                   recvmsg.msgtype, recvmsg.message)
+            if response_handler:
+                response_handler(recvmsg.msgtype, recvmsg.message)
