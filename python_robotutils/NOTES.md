@@ -1,6 +1,40 @@
 # Design and Development Notes for Python port of Robotutils.
 
 
+
+## February 8, 2018B JMJ: More progress in debugging and fixing echo client and server
+Note: discovered `math.isclose`: `math.isclose(self.rate, 0.0, abs_tol=1e-3)`.
+
+When the echo client server test attempts to send 4 packets and have them reflected back, the first two of them
+make it to the server and back, but the response is not indicated back to the client - the udp transport receives them
+on the client side, but the messages do not show up when the client polls for responses.
+
+Also the tests hang. So to debug these issues, I created simple client-only and server-only tests:
+`test_echo_only_client_simple` and `test_echo_only_server_simple`. These seem to run fine (with some small
+fixes in the echo client and server when sending 0 messages.
+
+When the client AND server is run, sending 0 messages, the tests hang:
+```
+INFO:robotutils.commutils:Starting server hostname: localhost port: 41890
+INFO:robotutils.commutils:Closing Echo Client
+INFO:robotutils.comm:START_LISTENING instance: rc_server
+INFO:robotutils.commutils:ECHO CLIENT CHANNEL_STATS ChannelStatistics(channelName='echo', sentMessages=
+0, rcvdMessages=0, clientStats=None, clientRtStats=None, serverStats=None)
+INFO:robotutils.comm:STOP_LISTENING instance: rc_client)
+TRACE:robotutils.comm.channel:REMOVING_CHANNEL name: echo
+TRACE:robotutils.commutils:Starting background listen thread <Thread(DGRAM-LISTEN, initial daemon)>
+TRACE:robotutils.commutils:START_LISTEN Binding socket to address ('localhost', 41890)
+TRACE:robotutils.commutils:RECV_WAIT Waiting to receive UDP packet...
+INFO:robotutils.commutils:Echo client echoclient Starting to send 0 messages
+INFO:robotutils.comm:START_LISTENING instance: rc_client
+TRACE:robotutils.commutils:Deferring starting to listen until first send
+```
+The logging is confusing because the two instances of the transport, the echo client and the echo server
+all use the same log `robotutils.commutils`. It's probably time to move to class-specific loggers from module-wide
+loggers and also inject the friendly name of the instances per "February 6, 2018D" note.
+
+Need to look into why the test is hanging sending 0 messages...
+
 ## February 8, 2018A JMJ: A tight loop in executor task causes a hard hang...
 On windows, when attempting to receive a datagram using `recvfrom`, one of two conditions must hold:
 - The socket has previously been bound to a local address and port

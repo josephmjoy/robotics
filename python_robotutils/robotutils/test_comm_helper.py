@@ -76,18 +76,41 @@ class CommUtilsTest(unittest.TestCase):
         self.assertEqual(client._send_errors, 0) # pylint: disable=protected-access
         self.assertEqual(server._send_errors, 0) # pylint: disable=protected-access
 
-    def test_zecho_client_simple(self):
+
+    def test_echo_only_client_simple(self):
         """Test the UDP echo client sending to nowhere"""
         client = EchoClient('localhost')
-        num_sends = 0
-
+        num_sends = 1
         # send_messages will block until done...
         print("GOING TO SEND MESSAGES")
         client.send_messages(num_sends)
         print("DONE SENDING MESSAGES")
+        client.close()
+        self.assertTrue(bool(client)) # replace with some better check
 
 
-    def test_echo_client_server_simple(self):
+    def test_echo_only_server_simple(self):
+        """Test the UDP echo server just waiting for a client that doesn't show up"""
+        server = EchoServer('localhost')
+        stop_server = False
+
+        with concurrent.futures.ThreadPoolExecutor(1) as executor:
+            def runserver():
+                server.start()
+                while not stop_server:
+                    server.periodic_work()
+                    time.sleep(0.1)
+                server.stop()
+
+            executor.submit(runserver)
+
+            time.sleep(1)
+            stop_server = True
+            print("Waiting for server to shut down")
+        self.assertTrue(stop_server) # replace with some better check
+
+
+    def test_zecho_client_server_simple(self):
         """Test the UDP echo client and server"""
         server = EchoServer('localhost')
         client = EchoClient('localhost')
@@ -104,6 +127,7 @@ class CommUtilsTest(unittest.TestCase):
                 server.stop()
 
             executor.submit(runserver)
+            client.close()
             time.sleep(0.1) # Give some time for server to get started
 
             def response_handler(resptype, respbody):
@@ -118,4 +142,4 @@ class CommUtilsTest(unittest.TestCase):
             print("Waiting for server to shut down")
 
         if num_sends:
-            self.assertGreater(receive_count, 0) # Should receive at least 1 message
+            self.assertGreater(receive_count, 0) # Should receive at least 1 message"

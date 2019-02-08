@@ -290,7 +290,7 @@ class EchoServer:
             chan.stop_receiving_rtcommands()
 
         for stats in self._rcomm.get_channel_statistics():
-            _LOGGER.info("CHANNEL_STATS %s", str(stats))
+            _LOGGER.info("ECHO SERVER CHANNEL_STATS %s", str(stats))
 
         self._rcomm.close()
         self._transport.close()
@@ -404,6 +404,18 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
             _LOGGER.info("KeyboardInterrupt raised. Quitting")
         self._teardown()
 
+
+    def close(self) -> None:
+        """ Closes the echo client."""
+        _LOGGER.info("Closing Echo Client")
+        for stats in self._rcomm.get_channel_statistics():
+            _LOGGER.info("ECHO CLIENT CHANNEL_STATS %s", str(stats))
+        self._rcomm.close()
+        self._transport.close()
+
+    #
+    # Private attributes and methods
+    #
 
     _MESSAGE_TEMPLATE = "sn: {} ts: {}"
     _EXTENDED_MESSAGE_TEMPLATE = "{} -pad: {}" # for padding messages
