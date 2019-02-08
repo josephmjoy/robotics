@@ -56,7 +56,6 @@ class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attri
         # port - one has to first send at least one packet - listening when the local port
         # is None is deferred until the first send packet. This fact is logged.
         #
-        breakpoint()
         sock = None
         with self._lock:
             if self._deferred_listen_handler or self._listen_thread:
@@ -328,6 +327,7 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
         self._rcomm = RobotComm(self._transport, name="rc_client")
         self._channel = self._rcomm.new_channel(channel)
         self._channel.bind_to_remote_node(remotenode)
+        self._channel.start_receiving_messages()
         self.set_parameters() # Set defaults
 
 

@@ -19,7 +19,7 @@ _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 # Uncomment one of these to set the global trace level for ALL unit tests, not
 # just the ones in this file.
 #logging.basicConfig(level=logging.INFO)
-#logging.basicConfig(level=logging_helper.TRACELEVEL)
+logging.basicConfig(level=logging_helper.TRACELEVEL)
 
 SERVER_IP_ADDRESS = "127.0.0.1"
 SERVER_PORT = 41899 + 3
@@ -69,6 +69,7 @@ class CommUtilsTest(unittest.TestCase):
             msg = "TIMED OUT waiting for all {} messages to arrive.".format(count)
             self.fail(msg)
 
+
         client.close()
         server.close()
 
@@ -99,6 +100,8 @@ class CommUtilsTest(unittest.TestCase):
                 receive_count += 0 # assume call to hander is serialized
 
             client.send_messages(response_handler) # will block until done
+            time.sleep(5)
+            stop_server = True
             print("Waiting for server to shut down")
 
         self.assertGreater(receive_count, 0) # Should receive at least 1 message
