@@ -50,13 +50,11 @@ class UdpTransport(DatagramTransport):
         for incoming datagrams. {handler} is signature is
         handler(msg: str, rn: RemoteNode) -- see ABC DatagramTransportation
         for documentation."""
-
-        if self._local_port is None:
-            raise ValueError("Attempting to listen with local port set to None")
-        address = self._make_sock_address(self._local_host, self._local_port)
-        sock = self._getsocket()
-        _TRACE("Binding socket to address %s", address)
-        sock.bind(address)
+        if self._local_port is not None:
+            _TRACE("Binding socket to address %s", address)
+            address = self._make_sock_address(self._local_host, self._local_port)
+            sock = self._getsocket()
+            sock.bind(address)
 
         def listen_threadfn():
             try:
@@ -199,7 +197,7 @@ class EchoServer:
         self.port = port
         self._transport = UdpTransport(recv_bufsize=recv_bufsize, local_host=hostname,
                                        local_port=port)
-        self._rcomm = RobotComm(self._transport)
+        self._rcomm = RobotComm(self._transport, name="rc_server")
         if channel_names is None:
             channel_names = [EchoServer.DEFAULT_CHANNEL]
         self._channels = [self._rcomm.new_channel(name) for name in channel_names]
@@ -284,7 +282,7 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
         self.client_name = client_name
         self._transport = UdpTransport(recv_bufsize=recv_bufsize)
         remotenode = self._transport.new_remote_node(server_name, server_port)
-        self._rcomm = RobotComm(self._transport)
+        self._rcomm = RobotComm(self._transport, name="rc_client")
         self._channel = self._rcomm.new_channel(channel)
         self._channel.bind_to_remote_node(remotenode)
         self.set_parameters() # Set defaults
@@ -335,7 +333,9 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
                 predicted_delta = i / float(self.rate)
                 # Sleep if needed to catch up with prediction
                 if delta < predicted_delta:
-                    time.sleep(predicted_delta - delta)
+                    amount = predicted_delta - delta
+                    _TRACE("Going to sleep %d seconds", amount)
+                    time.sleep(amount)
 
                 self._rcomm.periodic_work()
                 msgtype = self.bodytype

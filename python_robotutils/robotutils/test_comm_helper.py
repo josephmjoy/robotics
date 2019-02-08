@@ -3,14 +3,14 @@ Unit tests for the robotutils.comm_helper module.
 Ported from Java CommUtilsTest
 Author: JMJ
 '''
-
+import time
 import logging
 import unittest
+import concurrent.futures
 
 from . import concurrent_helper as conc
 from . import logging_helper
 from .comm_helper import UdpTransport, EchoServer, EchoClient
-from . import _utils
 
 _LOGNAME = "test"
 _LOGGER = logging.getLogger(_LOGNAME)
@@ -80,7 +80,25 @@ class CommUtilsTest(unittest.TestCase):
         """Test the UDP echo client and server"""
         server = EchoServer('localhost')
         client = EchoClient('localhost')
+        stop_server = False
+        receive_count = 0
 
-        server.start()
-        server.periodic_work()
-        server.stop()
+        with concurrent.futures.ThreadPoolExecutor(1) as executor:
+            def runserver():
+                server.start()
+                while not stop_server:
+                    server.periodic_work()
+                    time.sleep(0.1)
+                server.stop()
+
+            executor.submit(runserver)
+
+            def response_handler(resptype, respbody):
+                print("GOT RESPONSE ({}, {})".format(resptype, respbody))
+                nonlocal receive_count
+                receive_count += 0 # assume call to hander is serialized
+
+            client.send_messages(response_handler) # will block until done
+            print("Waiting for server to shut down")
+
+        self.assertGreater(receive_count, 0) # Should receive at least 1 message
