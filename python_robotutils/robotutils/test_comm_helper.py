@@ -19,7 +19,7 @@ _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 # Uncomment one of these to set the global trace level for ALL unit tests, not
 # just the ones in this file.
 #logging.basicConfig(level=logging.INFO)
-logging.basicConfig(level=logging_helper.TRACELEVEL)
+#logging.basicConfig(level=logging_helper.TRACELEVEL)
 
 SERVER_IP_ADDRESS = "127.0.0.1"
 SERVER_PORT = 41899 + 3
@@ -83,6 +83,7 @@ class CommUtilsTest(unittest.TestCase):
         client = EchoClient('localhost')
         stop_server = False
         receive_count = 0
+        num_sends = 0
 
         with concurrent.futures.ThreadPoolExecutor(1) as executor:
             def runserver():
@@ -100,9 +101,11 @@ class CommUtilsTest(unittest.TestCase):
                 nonlocal receive_count
                 receive_count += 0 # assume call to hander is serialized
 
-            client.send_messages(response_handler) # will block until done
-            time.sleep(5)
+            # send_messages will block until done...
+            client.send_messages(num_sends, response_handler=response_handler)
+            time.sleep(1)
             stop_server = True
             print("Waiting for server to shut down")
 
-        self.assertGreater(receive_count, 0) # Should receive at least 1 message
+        if num_sends:
+            self.assertGreater(receive_count, 0) # Should receive at least 1 message

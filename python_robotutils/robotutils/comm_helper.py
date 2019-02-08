@@ -5,6 +5,7 @@ Author: JMJ
 """
 import itertools
 import logging
+import math
 import socket
 import threading
 import time
@@ -329,10 +330,9 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
         self.set_parameters() # Set defaults
 
 
-    def set_parameters(self, *, count=4, size=None, rate=1, bodytype='hello',
+    def set_parameters(self, *, size=None, rate=1, bodytype='hello',
                        body=None, response_timeout=1.0):
         """Sets optional send parameters. All default to None
-            count - number to send. If None will send indifinately.
             size - approximate size of message/command body. If unspecified
                 an appropriate size is chosen.
             rate - number of sends/submits per second
@@ -343,7 +343,6 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
                 determine how much time to wait before ending transmissions, but does not
                 limit the rate of sends/submits
         """
-        self.count = count
         self.size = size
         self.rate = rate # sends per second
         self.bodytype = bodytype
@@ -351,20 +350,29 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
         self.response_timeout = response_timeout
 
 
-    def send_messages(self, response_handler=None):
+    def send_messages(self, num_sends=None, *, response_handler=None):
         """Sends messages based on parameters set earlier (either defaults or
         in a call to set_parameters.  Will BLOCK until all messages are sent
         or an exception is thrown.  Will wait up to the response timeout
         (defaults to 1 second and settable via set_parameters) for
         responses.
 
+        num_sends - number to send. If None will send indifinately.
         response_handler(msgtype:str, msg:str) - called whenever a
             response is received. There may not be any correspondence between
             sent and received messages.
         """
         _LOGGER.info("Echo client %s Starting to send %d messages",
-                     self.client_name, self.count)
-        counter = self._setup()
+                     self.client_name, num_sends)
+        self._setup()
+        no_sends = num_sends == 0 or math.isclose(self.rate, 0.0, abs_tol=1e-3) # 1 in 1K seconds
+        if no_sends:
+            counter = range(0) # nothing to send if rate is None or 0
+        elif num_sends is None:
+            counter = itertools.count() # Count for ever
+        else:
+            counter = range(num_sends)
+
         try:
             channel = self._channel
             start = time.time()
@@ -391,7 +399,7 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
                     if response_handler:
                         response_handler(recvmsg.msgtype, recvmsg.message)
 
-            _LOGGER.info("Done sending %d messages", self.count)
+            _LOGGER.info("Done sending %d messages", num_sends)
         except KeyboardInterrupt:
             _LOGGER.info("KeyboardInterrupt raised. Quitting")
         self._teardown()
@@ -402,21 +410,10 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
 
 
     def _setup(self):
-        """
-        Starts listening and returns a counter to be used for
-        sequencing messages.
-        """
+        """Starts listening"""
         self._rcomm.start_listening() # For responses
         self._channel.start_receiving_messages()
 
-        if not self.rate:
-            counter = range(0) # nothing to send if rate is None or 0
-        elif self.count is None:
-            counter = itertools.count() # Count for ever
-        else:
-            counter = range(self.count) # could still be 0
-        _TRACE("client exiting setup")
-        return counter
 
     def _teardown(self):
         """Shut down after sending"""
