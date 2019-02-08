@@ -1,9 +1,33 @@
 # Design and Development Notes for Python port of Robotutils.
 
+
+On windows, when attempting to receive a datagram using `recvfrom`, one of two conditions must hold:
+- The socket has previously been bound to a local address and port
+- The socket was previously used to send a packet.
+
+I did not realize this. There is a nice explanation here:
+<https://stackoverflow.com/questions/35805664/socket-recvfrom1024-throws-socket-error-invalid-argument-supplied>
+
+The echo client was not calling bind, but also started a background thread which attempted to receive, and that was
+throwing an exception:
+`OSError: [WinError 10022] An invalid argument was supplied`
+
+There are various ways to fix this:
+- Require `UdpTransport` users to send at least packet before calling `start_listening`.
+- Have the background thread wait for the first send to be called - in a loop with a short sleep.
+- Have the background thread wait to be signalled when the first send is submitted.
+- Defer starting the background thread until the first send (if ever).
+
+I picked the last option as it seems the cleanest and wastes the fewest resources in the case the send is
+never called or called much later than the client is initialized.
+
+Implemented these changes to `comm_helper.UdpTransport`.
+
+
 ## February 6, 2018D JMJ: A tight loop in executor task causes a hard hang...
 The following unit test reproduces the problem. The background task is simply a tight
 loop that never exits. The main thread fails an assertion. The program hangs - have to kill
-the bash shell. No errors are reported. If, on the other hand, I sleep for a bit in the
+the bash shell. No errors are reported.  If, on the other hand, I sleep for a bit in the
 loop (uncomment the commented-out line below), it works fine - assertion failure is reported and 
 the program exits.
 ```
@@ -17,8 +41,9 @@ the program exits.
             executor.submit(runserver)
         assert False
 ```
-I hit this debugging an issue with the echo client / server unit tests. To debug, I
-had to 
+I hit this debugging an issue with the echo client / server unit tests. The program hanged so hard
+that the main line code log and print statements did not run. To debug, I
+stepped through code with pdb and realized that an assertion was failing.
 
 ## February 6, 2018D JMJ: Added optional parameter `name` to  RobotComm constructor
 This is for logging purposes - so in the logs we can make out which instance of Robotcomm is

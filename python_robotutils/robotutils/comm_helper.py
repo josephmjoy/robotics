@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(_LOGNAME)
 _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 
 
-class UdpTransport(DatagramTransport):
+class UdpTransport(DatagramTransport): # pylint: disable=too-many-instance-attributes
     """Implements the DatagramTransport interface over UDP"""
 
 
@@ -33,8 +33,9 @@ class UdpTransport(DatagramTransport):
         ephemeral port. However, a port must be specified if `start_listening`
         is going to be called.
         """
-        self.lock = threading.Lock()
+        self.lock = threading.Lock() # TODO: make it _lock
         self._listen_thread = None # background listening thread
+        self._deferred_listen_handler = None # Set in start_listening
         self._sock = None # Created on demand.
         self._local_host = local_host if local_host is not None else 'localhost'
         self._local_port = local_port # could be None
@@ -50,41 +51,24 @@ class UdpTransport(DatagramTransport):
         for incoming datagrams. {handler} is signature is
         handler(msg: str, rn: RemoteNode) -- see ABC DatagramTransportation
         for documentation."""
-        if self._local_port is not None:
-            _TRACE("Binding socket to address %s", address)
-            address = self._make_sock_address(self._local_host, self._local_port)
-            sock = self._getsocket()
-            sock.bind(address)
 
-        def listen_threadfn():
-            try:
-                while self._listen_thread:
-                    if _TRACE.enabled():
-                        _TRACE("RECV_WAIT Waiting to receive UDP packet...")
-                    data, node = self._sock.recvfrom(self.recv_bufsize)
-                    # We directly get the remote node in our 'node' format, which
-                    # is (host, port), so don't need to call self.new_remote_node
-                    msg = data.decode('utf-8')
-                    if _TRACE.enabled():
-                        _TRACE("RECV_PKT_DATA [%s] from %s", msg, str(node))
-                    handler(msg, node)
-
-            except Exception as exp: # pylint: disable=broad-except
-                if self._listen_thread:
-                    _LOGGER.exception("Error in socket.recvfrom or handler")
-                else:
-                    _TRACE("Expected exception ending listen. exp: %s", exp)
-
+        # Because (at least on Windows sockets) one cannot start listening on an ephemeral
+        # port - one has to first send at least one packet - listening when the local port
+        # is None is deferred until the first send packet. This fact is logged.
+        #
+        sock = None
         with self.lock:
-            if self._listen_thread:
+            if self._deferred_listen_handler or self._listen_thread:
                 raise ValueError("Attempt to listen when already listening")
-            thread = threading.Thread(target=listen_threadfn,
-                                      name="DGRAM-LISTEN",
-                                      daemon=True)
-            self._listen_thread = thread
+            is_server = self._local_port is not None
+            sock = self._getsocket(create=is_server)
+            if sock is None:
+                self._deferred_listen_handler = handler
 
-        _TRACE("Starting background listen thread %s", str(thread))
-        thread.start()
+        if sock is None:
+            _TRACE("Deferring starting to listen until first send")
+        else:
+            self._really_start_listening(sock, handler)
 
 
     def stop_listening(self) -> None:
@@ -95,6 +79,7 @@ class UdpTransport(DatagramTransport):
             thread = self._listen_thread
             self._sock = None
             self._listen_thread = None
+            self._deferred_listen_handler = None
 
         if sock:
             sock.close() # Will cause listening thread to break out of recvfrom
@@ -102,7 +87,7 @@ class UdpTransport(DatagramTransport):
         if thread:
             _TRACE("Waiting for listen thread %s to exit...", str(thread))
             thread.join()
-            _TRACE("Done waiting for listen thread %s to exit...")
+            _TRACE("Done waiting for listen thread %s to exit...", str(thread))
 
     def close(self) -> None:
         """Close the transport. Future sends will raise ValueError exceptions"""
@@ -114,10 +99,19 @@ class UdpTransport(DatagramTransport):
         first send error is logged as an error and subsequent errors generate trace
         messages"""
         try:
-            sock = self._getsocket()
+            sock = self._getsocket(create=True)
             if _TRACE.enabled():
                 _TRACE("SEND_PKT_DATA msg=[%s] dest=[%s]", msg, str(destination))
             sock.sendto(msg.encode('utf8'), destination)
+
+            # Potentially start previously-deferred listening
+            with self.lock:
+                handler = self._deferred_listen_handler
+                if handler:
+                    self._deferred_listen_handler = None
+            if handler:
+                self._really_start_listening(sock, handler)
+
         except Exception as exp: # pylint: disable=broad-except
             with self.lock:
                 first = self._send_errors == 0
@@ -153,10 +147,57 @@ class UdpTransport(DatagramTransport):
     #
     # Private methods
     #
-    def _getsocket(self) -> object:
-        """Creates self._sock on demand and returns it."""
+
+    def _really_start_listening(self, sock, handler) -> None:
+        """Start a thread to listen for incoming packets on socket {sock}"""
+
+        def listen_threadfn():
+            try:
+                if self._local_port is not None:
+                    # Non-ephimeral server port - we can bind to it
+                    address = self._make_sock_address(self._local_host, self._local_port)
+                    _TRACE("START_LISTEN Binding socket to address %s", address)
+                    sock.bind(address)
+
+                while self._listen_thread:
+                    if _TRACE.enabled():
+                        _TRACE("RECV_WAIT Waiting to receive UDP packet...")
+                    assert isinstance(self.recv_bufsize, int)
+                    data, node = self._sock.recvfrom(self.recv_bufsize)
+                    # We directly get the remote node in our 'node' format, which
+                    # is (host, port), so don't need to call self.new_remote_node
+                    msg = data.decode('utf-8')
+                    if _TRACE.enabled():
+                        _TRACE("RECV_PKT_DATA [%s] from %s", msg, str(node))
+                    handler(msg, node)
+
+            except Exception as exp: # pylint: disable=broad-except
+                if self._listen_thread:
+                    _LOGGER.exception("Error in socket.recvfrom or handler")
+                else:
+                    _TRACE("Expected exception ending listen. exp: %s", exp)
+
         with self.lock:
-            if not self._sock:
+            assert self._listen_thread is None
+            assert self._deferred_listen_handler is None
+            thread = threading.Thread(target=listen_threadfn,
+                                      name="DGRAM-LISTEN",
+                                      daemon=True)
+            self._listen_thread = thread
+
+        _TRACE("Starting background listen thread %s", str(thread))
+        thread.start()
+
+
+    def _getsocket(self, *, create=False) -> object:
+        """Creates self._sock on demand and returns it.
+        If {create} is True it will attempt to create one.
+        If {create} is False it will return the previously created socket
+                    or None if no socket has been created yet
+        """
+        with self.lock:
+            sock = None
+            if not self._sock and create:
                 self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock = self._sock
         return sock
@@ -328,13 +369,13 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
             channel = self._channel
             start = time.time()
             for i in counter:
-                delta = start - time.time()
+                delta = time.time() - start
                 # First time through predicted_delta is 0 ...
                 predicted_delta = i / float(self.rate)
                 # Sleep if needed to catch up with prediction
                 if delta < predicted_delta:
                     amount = predicted_delta - delta
-                    _TRACE("Going to sleep %d seconds", amount)
+                    _TRACE("Going to sleep %0.3f seconds", amount)
                     time.sleep(amount)
 
                 self._rcomm.periodic_work()
@@ -347,8 +388,8 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
                 if recvmsg:
                     _TRACE("ECHO_RECV_MSG msgtype: %s  msgbody: %s",
                            recvmsg.msgtype, recvmsg.msgbody)
-                if response_handler:
-                    response_handler(recvmsg.msgtype, recvmsg.message)
+                    if response_handler:
+                        response_handler(recvmsg.msgtype, recvmsg.message)
 
             _LOGGER.info("Done sending %d messages", self.count)
         except KeyboardInterrupt:
@@ -374,6 +415,7 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
             counter = itertools.count() # Count for ever
         else:
             counter = range(self.count) # could still be 0
+        _TRACE("client exiting setup")
         return counter
 
     def _teardown(self):
