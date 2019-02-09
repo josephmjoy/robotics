@@ -24,3 +24,11 @@ def getsome(func, maxnum=None, *, sentinel=None):
             yield value
     except (IndexError, StopIteration):
         pass
+
+
+def containschars(str_, charset) -> bool:
+    """Returns if {str} contains any chars in {chars}"""
+    for char in str_:
+        if char in charset:
+            return True
+    return False

@@ -5,6 +5,7 @@ Author: JMJ
 """
 import argparse
 import sys
+import re
 
 def generate_argparser():
     """Generate the argument parser for this utility"""
@@ -33,7 +34,6 @@ def generate_argparser():
     cmdgroup.add_argument('-cmd', action='store_true', help='send commands')
     cmdgroup.add_argument('-rtcmd', action='store_true', help='send rt-commands')
 
-
     parser.add_argument('-c', metavar='CHANNEL', help='name of channel')
 
     return parser
@@ -58,11 +58,21 @@ def parse_args(args):
     return params
 
 
+_HOSTNAME_REGEX = re.compile(r'^(\w\.)+$')
+_PORTRANGE = 41 # Range 41000-41999
 def parse_address(address):
     """Parse address of the form hostname[:port]"""
-    if address:
-        return ("localhost", 41890)
-    raise ValueError("Invalid hostname. Hostname has the for name_or_ip[:port]")
+    errmsg = '\n'.join(("Invalid address '{}'".format(address),
+                        "Hostname should have the form name_or_ip[:port]"))
+    hostname, *rest = address.split(':')
+    if not _HOSTNAME_REGEX.match(hostname) or len(rest) > 1:
+        raise ValueError(errmsg)
+    port = int(rest[0]) if rest else None
+    if port is not None and port//1000 != _PORTRANGE:
+        msg = "Port must be in the range %d to %d"
+        minport = _PORTRANGE*1000
+        raise ValueError(msg.format(minport, minport+999))
+    return (hostname, port)
 
 
 def parse_payload(payload):
@@ -86,8 +96,9 @@ def main(args):
         print('send_rtcommands(params)')
     # client.shutdown()
 
+print(parse_address('localhost'))
 
-main(sys.argv[1:])
+#main(sys.argv[1:])
 #ARGS1 = [""]
 #ARGS2 = ["localhost"]
 #ARGS3 = "-msg localhost".split()
