@@ -5,6 +5,9 @@
 ## February 10, 2018F JMJ: Milestone - successfully ran echo client and server on different machines
 Print output was held until the command terminated when python was invoked directly from the bash shell. It's 
 an artifact of the console - so have to run `winpty python`, not `python`.
+ 
+Sent 1 million messages from `JMJ-ELITEBOOK` to `JMJ-XPS15` which was running the echo server and the latter dutifully
+sent them back. There was some loss, but I think those are the very list batch of messages not being read by the client as it is terminating.
 
 
 ## February 10, 2018F JMJ: `rcping` - implemented -q option, sent/received 100K messages
