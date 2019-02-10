@@ -1,5 +1,21 @@
 # Design and Development Notes for Python port of Robotutils.
 
+## February 10, 2018C JMJ: Ping statistics to emulate:
+```
+$ ping localhost
+
+Pinging JMJ-EliteBook [::1] with 32 bytes of data:
+Reply from ::1: time<1ms
+Reply from ::1: time<1ms
+Reply from ::1: time<1ms
+Reply from ::1: time<1ms
+
+Ping statistics for ::1:
+    Packets: Sent = 4, Received = 4, Lost = 0 (0% loss),
+Approximate round trip times in milli-seconds:
+    Minimum = 0ms, Maximum = 0ms, Average = 0ms
+```
+
 ## February 10, 2018B JMJ: PrettyPrinter objects are very powerful, along with vars
 `pprint.PrettyPrinter` objects, including the default object `pprint.pprint` are much more powerful
 than I first thought. Some of the things you can do:

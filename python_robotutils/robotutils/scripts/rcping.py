@@ -4,10 +4,22 @@ rcping - ping a remote robotcomm instance with messages, commands and rt-command
 Author: JMJ
 """
 import argparse
+import logging
 import pprint
 import re
 import string
 import sys
+
+from .. import logging_helper
+from ..comm_helper import EchoClient
+
+
+_LOGGER = logging.getLogger('rcping')
+_TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
+
+#TODO: get the logging level and logging destination from cmdline args
+#logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging_helper.TRACELEVEL)
 
 def generate_argparser():
     """Generate the argument parser for this utility"""
@@ -105,23 +117,47 @@ def parse_payload(payload):
     return (msgtype, msgbody)
 
 
+def send_messages(client, count):
+    """Send messages using an instance of echo client"""
+    receive_count = 0
+
+    def response_handler(resptype, respbody):
+        msg = "Response: ({}, {})".format(resptype, respbody)
+        _TRACE(msg)
+        print(msg)
+        nonlocal receive_count
+        receive_count += 1 # assume call to hander is serialized
+
+    # send_messages will block until done...
+    _TRACE("GOING TO SEND MESSAGES")
+    client.send_messages(count, response_handler=response_handler)
+    _TRACE("DONE SENDING MESSAGES")
+    print("Received = {}", receive_count)
+
+
 def main(args):
     """Main entry point"""
     params = parse_args(args)
     ppobject(params)
-    # client = EchoClient(...)
-    if params.msg:
-        print('send_messages(params)')
-    elif params.cmd:
-        print('send_commands(params)')
-    elif params.rtcmd:
-        print('send_rtcommands(params)')
-    # client.shutdown()
+
+    client = EchoClient('localhost')
+    try:
+        client.set_parameters(rate=params.rate)
+        if params.msg:
+            send_messages(client, params.count)
+        elif params.cmd:
+            print('send_commands(params)')
+        elif params.rtcmd:
+            print('send_rtcommands(params)')
+    except Exception: # pylint: disable=broad-except
+        _LOGGER.exception()
+    finally:
+        client.close()
 
 
-def ppobject(obj, *args, *kwargs):
+def ppobject(obj, *args, **kwargs):
     """Pretty print a single object"""
-    pprint.pprint(vars(obj), *args, *kwargs)
+    pprint.pprint(vars(obj), *args, **kwargs)
 
 
 def containschars(str_, charset) -> bool:
