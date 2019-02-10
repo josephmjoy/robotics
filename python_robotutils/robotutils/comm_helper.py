@@ -330,22 +330,24 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
         self.set_parameters() # Set defaults
 
 
-    def set_parameters(self, *, size=None, rate=1, bodytype='hello',
+    def set_parameters(self, *, size=None, rate=1, bodytype=None,
                        body=None, response_timeout=0.5):
         """Sets optional send parameters. All default to None
             size - approximate size of message/command body. If unspecified
                 an appropriate size is chosen.
             rate - number of sends/submits per second
-            bodytype - message/command type
-            body - message/command body. If unspecified, it will be filled in with
-                a message including a sequence number and timestamp.
-            response_timeout - maximum time in seconds waiting for a response. This will
-                determine how much time to wait before ending transmissions, but does not
-                limit the rate of sends/submits
+            bodytype - message/command type. If unspecified or None, it will be
+                set to 'hello'
+            body - message/command body. If unspecified or none, it will be
+                filled in with a message including a sequence number and
+                timestamp.
+            response_timeout - maximum time in seconds waiting for a response.
+                This will determine how much time to wait before ending
+                transmissions, but does not limit the rate of sends/submits.
         """
         self.size = size
         self.rate = rate # sends per second
-        self.bodytype = bodytype
+        self.bodytype = 'hello' if bodytype is None else bodytype
         self.body = body
         self.response_timeout = response_timeout
 

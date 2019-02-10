@@ -1,6 +1,11 @@
 # Design and Development Notes for Python port of `Robotutils`.
 
 
+## February 10, 2018E JMJ: Changed `rcping` option `-payload` to '-body`
+```
+  -body PAYLOAD         send PAYLOAD, which has the form bodytype[::body] or
+                        ::body
+```
 ## February 10, 2018E JMJ: Adding send notification handler to `EchoClient`
 `rcping` is rather quite sending messages as it does not report the sending of individual messages.
 So adding an handler to the echo client which will be called just before sending each message.
