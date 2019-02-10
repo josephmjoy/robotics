@@ -58,18 +58,21 @@ def parse_args(args):
     return params
 
 
-_HOSTNAME_REGEX = re.compile(r'^(\w\.)+$')
+# Note: IPV6 addresses are not supported - it would
+# be extra work to distinguish a port from a ':' inside
+# the IPv6 address.
+_HOSTNAME_REGEX = re.compile(r'(\w|\.)+')
 _PORTRANGE = 41 # Range 41000-41999
 def parse_address(address):
     """Parse address of the form hostname[:port]"""
     errmsg = '\n'.join(("Invalid address '{}'".format(address),
                         "Hostname should have the form name_or_ip[:port]"))
     hostname, *rest = address.split(':')
-    if not _HOSTNAME_REGEX.match(hostname) or len(rest) > 1:
+    if not _HOSTNAME_REGEX.fullmatch(hostname) or len(rest) > 1:
         raise ValueError(errmsg)
     port = int(rest[0]) if rest else None
     if port is not None and port//1000 != _PORTRANGE:
-        msg = "Port must be in the range %d to %d"
+        msg = "Port must be in the range {} to {}"
         minport = _PORTRANGE*1000
         raise ValueError(msg.format(minport, minport+999))
     return (hostname, port)
@@ -96,9 +99,8 @@ def main(args):
         print('send_rtcommands(params)')
     # client.shutdown()
 
-print(parse_address('localhost'))
 
-#main(sys.argv[1:])
+main(sys.argv[1:])
 #ARGS1 = [""]
 #ARGS2 = ["localhost"]
 #ARGS3 = "-msg localhost".split()
