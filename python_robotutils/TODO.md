@@ -1,7 +1,7 @@
 # TODOs and Open Issues for the Python robotutils package
 
 #Plan
-1. Implement and test utils/comm_utils.py - the UDP transport.
+1. Implement rcping and rcecho - scripts to exercise EchoClient and EchoServer
 1. Proof NOTES.md - there are a few typos here and there
 1. [BIG] Pi: Install latest Raspbian and Python on BabyBot
 1. [BIG] Get all `robotutils` unit tests to work on the Pi (BabyBot)

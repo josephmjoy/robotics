@@ -1,12 +1,25 @@
 # Design and Development Notes for Python port of `Robotutils`.
 
 
+## February 10, 2018F JMJ: Milestone: Robotcomm `rcping` and new `rcecho` work with each other.
+`rcecho.py` was very straightforward. There's some shared code with `rcping.py` that should be moved to a common place.
+Pylint points out this common code - impressive.
+
+Some quirks:
+- `rcping` doesn't report ongoing sends and responses until all are received. Didn't do this when it never got any receives.
+  Need to investigate
+- `rcecho` is very silent - needs to print something when it is starting and when it is shutdown with CRTL-C
+- Reduce duplicate code between the two utilities (mentioned earlier)
+- `rcping` - needs to stop reporting output after a certain number have received so we don't clutter the console window. Especially
+  needed for long-running stress testing done at a high rate. Or maybe a -quiet option - that may be better actually, rather
+  than suppressing of output based on some number of sends/receives.
+
 ## February 10, 2018E JMJ: Changed `rcping` option `-payload` to '-body`
 ```
   -body PAYLOAD         send PAYLOAD, which has the form bodytype[::body] or
                         ::body
 ```
-## February 10, 2018E JMJ: Adding send notification handler to `EchoClient`
+c# February 10, 2018E JMJ: Adding send notification handler to `EchoClient`
 `rcping` is rather quite sending messages as it does not report the sending of individual messages.
 So adding an handler to the echo client which will be called just before sending each message.
 Now the output is:
