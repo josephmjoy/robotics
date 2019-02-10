@@ -55,6 +55,8 @@ def generate_argparser():
     loglevel_help = 'sets logging level. LOGLEVEL is one of: ' + choices_text
     parser.add_argument('-loglevel', default='ERROR', choices=choices_list,
                         help=loglevel_help)
+    parser.add_argument('-q', dest='quiet', action='store_const', const=True,
+                        default=False, help='run quietly')
 
     return parser
 
@@ -119,19 +121,23 @@ def parse_body(payload):
     return (bodytype, body)
 
 
-def send_messages(client, count):
-    """Send messages using an instance of echo client"""
+def send_messages(client, count, quiet):
+    """Send {count} messages using an instance of echo client.
+    If {quiet} supress per-message output.
+    """
     receive_count = 0
 
     def send_handler(resptype, respbody):
         msg = "Sending: '{}::{}'".format(resptype, respbody)
         _TRACE(msg)
-        print(msg)
+        if not quiet:
+            print(msg)
 
     def response_handler(resptype, respbody):
         msg = "Response: '{}::{}'".format(resptype, respbody)
         _TRACE(msg)
-        print(msg)
+        if not quiet:
+            print(msg)
         nonlocal receive_count
         receive_count += 1 # assume call to hander is serialized
 
@@ -166,7 +172,7 @@ def main(args):
         client.set_parameters(size=params.size, rate=params.rate,
                               bodytype=params.bodytype, body=params.body)
         if params.msg:
-            send_messages(client, params.count)
+            send_messages(client, params.count, params.quiet)
         elif params.cmd:
             print('send_commands(params)')
         elif params.rtcmd:

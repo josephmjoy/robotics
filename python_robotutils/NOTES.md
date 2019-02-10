@@ -1,6 +1,10 @@
 # Design and Development Notes for Python port of `Robotutils`.
 
 
+## February 10, 2018F JMJ: `rcping` - implemented -q option, sent/received 100K messages
+Implemented the '-q` quite option in `rcping`, and successfully sent and received 100K messages using `rcping` and `rcecho` -
+still on the same machine, but running in separate console windows.
+
 ## February 10, 2018F JMJ: Milestone: Robotcomm `rcping` and new `rcecho` work with each other.
 `rcecho.py` was very straightforward. There's some shared code with `rcping.py` that should be moved to a common place.
 Pylint points out this common code - impressive.
