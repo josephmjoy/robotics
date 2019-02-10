@@ -17,9 +17,6 @@ from robotutils.comm_helper import EchoClient
 _LOGGER = logging.getLogger('rcping')
 _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 
-#TODO: get the logging level and logging destination from cmdline args
-#logging.basicConfig(level=logging.INFO)
-logging.basicConfig(level=logging_helper.TRACELEVEL)
 
 def generate_argparser():
     """Generate the argument parser for this utility"""
@@ -53,6 +50,11 @@ def generate_argparser():
                         help='name of channel')
     parser.add_argument('-rate', type=float, default=1.0,
                         help='rate in sends per second')
+    choices_text = "TRACE DEBUG INFO WARNING ERROR CRITICAL"
+    choices_list = choices_text.split()
+    loglevel_help = 'sets logging level. LOGLEVEL is one of: ' + choices_text
+    parser.add_argument('-loglevel', default='ERROR', choices=choices_list,
+                        help=loglevel_help)
 
     return parser
 
@@ -132,13 +134,26 @@ def send_messages(client, count):
     _TRACE("GOING TO SEND MESSAGES")
     client.send_messages(count, response_handler=response_handler)
     _TRACE("DONE SENDING MESSAGES")
-    print("Received = {}", receive_count)
+    print("Received = {}".format(receive_count))
+
+
+def set_loglevel(strloglevel):
+    """Sets up logging with the specified logging level"""
+    if strloglevel == 'TRACE':
+        # Special case - not defined in logging module
+        level = logging_helper.TRACELEVEL
+    else:
+        choices = "DEBUG INFO WARNING ERROR CRITICAL".split()
+        index = choices.index(strloglevel)
+        level = getattr(logging, choices[index])
+    logging.basicConfig(level=level)
 
 
 def main(args):
     """Main entry point"""
     params = parse_args(args)
-    ppobject(params)
+    set_loglevel(params.loglevel)
+    _LOGGER.info("parameters:\n%s", pprint.pformat(vars(params)))
 
     client = EchoClient('localhost')
     try:
@@ -153,11 +168,6 @@ def main(args):
         _LOGGER.exception()
     finally:
         client.close()
-
-
-def ppobject(obj, *args, **kwargs):
-    """Pretty print a single object"""
-    pprint.pprint(vars(obj), *args, **kwargs)
 
 
 def containschars(str_, charset) -> bool:
