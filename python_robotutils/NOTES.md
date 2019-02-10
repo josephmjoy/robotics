@@ -2,7 +2,7 @@
 
 
 
-## February 10, 2018F JMJ: Milestone - successfully ran echo client and server on different machines
+## February 10, 2018C JMJ: Milestone - successfully ran echo client and server on different machines
 Print output was held until the command terminated when python was invoked directly from the bash shell. It's 
 an artifact of the console - so have to run `winpty python`, not `python`.
  
@@ -10,29 +10,26 @@ Sent 1 million messages from `JMJ-ELITEBOOK` to `JMJ-XPS15` which was running th
 sent them back. There was some loss, but I think those are the very list batch of messages not being read by the client as it is terminating.
 
 
-## February 10, 2018F JMJ: `rcping` - implemented -q option, sent/received 100K messages
+### `rcping` - implemented -q option, sent/received 100K messages
 Implemented the `-q` quite option in `rcping`, and successfully sent and received 100K messages using `rcping` and `rcecho` -
 still on the same machine, but running in separate console windows.
 
-## February 10, 2018F JMJ: Milestone: Robotcomm `rcping` and new `rcecho` work with each other.
-`rcecho.py` was very straightforward. There's some shared code with `rcping.py` that should be moved to a common place.
+There's some shared code with `rcping.py` that should be moved to a common place.
 Pylint points out this common code - impressive.
 
 Some quirks:
-- `rcping` doesn't report ongoing sends and responses until all are received. Didn't do this when it never got any receives.
-  Need to investigate
 - `rcecho` is very silent - needs to print something when it is starting and when it is shutdown with CRTL-C
 - Reduce duplicate code between the two utilities (mentioned earlier)
 - `rcping` - needs to stop reporting output after a certain number have received so we don't clutter the console window. Especially
   needed for long-running stress testing done at a high rate. Or maybe a -quiet option - that may be better actually, rather
   than suppressing of output based on some number of sends/receives.
 
-## February 10, 2018E JMJ: Changed `rcping` option `-payload` to '-body`
+### Changed `rcping` option `-payload` to '-body`
 ```
   -body PAYLOAD         send PAYLOAD, which has the form bodytype[::body] or
                         ::body
 ```
-c# February 10, 2018E JMJ: Adding send notification handler to `EchoClient`
+### Adding send notification handler to `EchoClient`
 `rcping` is rather quite sending messages as it does not report the sending of individual messages.
 So adding an handler to the echo client which will be called just before sending each message.
 Now the output is:
@@ -46,7 +43,7 @@ Received = 0
 ```
 Note that '::' is used to separate message type from body.
 
-## February 10, 2018D JMJ: Adding logging level to `rcping` command line
+### Adding logging level to `rcping` command line
 Spec: `-loglevel TRACE|DEBUG|INFO|ERROR|CRITICAL`
 Default is ERROR
 Logging to a file is not yet supported.
@@ -58,7 +55,7 @@ index = choices.index(strloglevel)
 level = getattr(logging, choices[index])
 ```
 
-## February 10, 2018C JMJ: Moving `rcping` outside the `robotutils` package
+### Moving `rcping` outside the `robotutils` package
 It should be inside `robotutils` anyways, because it is a _client_ of `robotutils.`
 For now, until we figure out how to install `robotutils` as a package available to any
 python script, the only place it can be is one level above the `robotutils` package directory,
@@ -67,7 +64,7 @@ because the directory of the script is always added to the python module search 
 With this change - `rcping` now works - sending messages. The logging output is verbose - need to make it
 settable via a command line argument.
 
-## February 10, 2018C JMJ: Ping statistics to emulate:
+### Ping statistics to emulate:
 ```
 $ ping localhost
 
