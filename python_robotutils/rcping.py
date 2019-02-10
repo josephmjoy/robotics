@@ -163,7 +163,8 @@ def main(args):
 
     client = EchoClient('localhost')
     try:
-        client.set_parameters(rate=params.rate)
+        client.set_parameters(size=params.size, rate=params.rate,
+                              bodytype=params.msgtype, body=params.msgbody)
         if params.msg:
             send_messages(client, params.count)
         elif params.cmd:
