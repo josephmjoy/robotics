@@ -1,8 +1,14 @@
 # Design and Development Notes for Python port of `Robotutils`.
 
 
+
+## February 10, 2018F JMJ: Milestone - successfully ran echo client and server on different machines
+Print output was held until the command terminated when python was invoked directly from the bash shell. It's 
+an artifact of the console - so have to run `winpty python`, not `python`.
+
+
 ## February 10, 2018F JMJ: `rcping` - implemented -q option, sent/received 100K messages
-Implemented the '-q` quite option in `rcping`, and successfully sent and received 100K messages using `rcping` and `rcecho` -
+Implemented the `-q` quite option in `rcping`, and successfully sent and received 100K messages using `rcping` and `rcecho` -
 still on the same machine, but running in separate console windows.
 
 ## February 10, 2018F JMJ: Milestone: Robotcomm `rcping` and new `rcecho` work with each other.

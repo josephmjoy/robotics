@@ -302,7 +302,7 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
     commands and rtcommands over a UDP transport and reports responses"""
 
 
-    def __init__(self, server_name, *, server_port=EchoServer.DEFAULT_PORT,
+    def __init__(self, server_name, *, server_port=None,
                  recv_bufsize=EchoServer.DEFAULT_BUFSIZE,
                  channel=EchoServer.DEFAULT_CHANNEL, client_name='echoclient'):
         """
@@ -321,6 +321,8 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
             client_name - identifying name of this client - used in logging and in
                 generating message content.
         """
+        if not server_port:
+            server_port = EchoServer.DEFAULT_PORT
         self.client_name = client_name
         self._transport = UdpTransport(recv_bufsize=recv_bufsize)
         remotenode = self._transport.new_remote_node(server_name, server_port)
@@ -392,6 +394,7 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
                     time.sleep(amount)
 
                 self._rcomm.periodic_work()
+                self._get_received_messages(response_handler)
                 msgtype = self.bodytype
                 msgbody = self._make_message_body(i)
                 _TRACE("ECHO_SEND_MSG msgtype: %s  msgbody: %s",
@@ -399,7 +402,6 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
                 if send_handler:
                     send_handler(msgtype, msgbody)
                 channel.send_message(msgtype, msgbody)
-                self._get_received_messages(response_handler)
 
             _LOGGER.info("Done sending %d messages", num_sends)
             # Let's wait for a bit to get any final responses from the server

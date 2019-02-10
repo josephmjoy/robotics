@@ -167,7 +167,7 @@ def main(args):
     set_loglevel(params.loglevel)
     _LOGGER.info("parameters:\n%s", pprint.pformat(vars(params)))
 
-    client = EchoClient('localhost')
+    client = EchoClient(params.hostname, server_port=params.port)
     try:
         client.set_parameters(size=params.size, rate=params.rate,
                               bodytype=params.bodytype, body=params.body)
