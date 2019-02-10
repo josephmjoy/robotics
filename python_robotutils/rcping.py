@@ -123,8 +123,13 @@ def send_messages(client, count):
     """Send messages using an instance of echo client"""
     receive_count = 0
 
+    def send_handler(resptype, respbody):
+        msg = "Sending: '{}::{}'".format(resptype, respbody)
+        _TRACE(msg)
+        print(msg)
+
     def response_handler(resptype, respbody):
-        msg = "Response: ({}, {})".format(resptype, respbody)
+        msg = "Response: '{}::{}'".format(resptype, respbody)
         _TRACE(msg)
         print(msg)
         nonlocal receive_count
@@ -132,7 +137,8 @@ def send_messages(client, count):
 
     # send_messages will block until done...
     _TRACE("GOING TO SEND MESSAGES")
-    client.send_messages(count, response_handler=response_handler)
+    client.send_messages(count, send_handler=send_handler,
+                         response_handler=response_handler)
     _TRACE("DONE SENDING MESSAGES")
     print("Received = {}".format(receive_count))
 

@@ -1,5 +1,19 @@
-# Design and Development Notes for Python port of Robotutils.
+# Design and Development Notes for Python port of `Robotutils`.
 
+
+## February 10, 2018E JMJ: Adding send notification handler to `EchoClient`
+`rcping` is rather quite sending messages as it does not report the sending of individual messages.
+So adding an handler to the echo client which will be called just before sending each message.
+Now the output is:
+```
+$ rcping -msg localhost
+Sending: 'hello::sn: 0 ts: 82360'
+Sending: 'hello::sn: 1 ts: 1083484'
+Sending: 'hello::sn: 2 ts: 2083293'
+Sending: 'hello::sn: 3 ts: 3083060'
+Received = 0
+```
+Note that '::' is used to separate message type from body.
 
 ## February 10, 2018D JMJ: Adding logging level to `rcping` command line
 Spec: `-loglevel TRACE|DEBUG|INFO|ERROR|CRITICAL`

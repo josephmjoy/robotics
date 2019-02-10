@@ -350,7 +350,8 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
         self.response_timeout = response_timeout
 
 
-    def send_messages(self, num_sends=None, *, response_handler=None):
+    def send_messages(self, num_sends=None, *, send_handler=None,
+                      response_handler=None):
         """Sends messages based on parameters set earlier (either defaults or
         in a call to set_parameters.  Will BLOCK until all messages are sent
         or an exception is thrown.  Will wait up to the response timeout
@@ -358,6 +359,8 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
         responses.
 
         num_sends - number to send. If None will send indifinately.
+        send_handler(msgtype:str, msg:str) - called just before actually
+            sending a message.
         response_handler(msgtype:str, msg:str) - called whenever a
             response is received. There may not be any correspondence between
             sent and received messages.
@@ -391,6 +394,8 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
                 msgbody = self._make_message_body(i)
                 _TRACE("ECHO_SEND_MSG msgtype: %s  msgbody: %s",
                        msgtype, msgbody)
+                if send_handler:
+                    send_handler(msgtype, msgbody)
                 channel.send_message(msgtype, msgbody)
                 self._get_received_messages(response_handler)
 
