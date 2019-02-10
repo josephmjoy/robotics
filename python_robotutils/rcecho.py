@@ -116,7 +116,7 @@ def main(args):
     set_loglevel(params.loglevel)
     _LOGGER.info("parameters:\n%s", pprint.pformat(vars(params)))
 
-    server = EchoServer('localhost')
+    server = EchoServer(params.hostname)
     server.start()
     try:
         while True:
