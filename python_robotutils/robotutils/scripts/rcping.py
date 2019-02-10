@@ -4,8 +4,10 @@ rcping - ping a remote robotcomm instance with messages, commands and rt-command
 Author: JMJ
 """
 import argparse
-import sys
+import pprint
 import re
+import string
+import sys
 
 def generate_argparser():
     """Generate the argument parser for this utility"""
@@ -17,14 +19,15 @@ def generate_argparser():
 
     # Number of messages - mutually exclusive options
     numgroup = parser.add_mutually_exclusive_group()
-    numgroup.add_argument('-n', metavar='count', action='store', type=int,
-                          default=4, help='count of things to send')
-    numgroup.add_argument('-t', action='store_true', help='send indifinitely')
+    numgroup.add_argument('-n', dest='count', metavar='count', action='store',
+                          type=int, default=4, help='count of things to send')
+    numgroup.add_argument('-t', dest='count', action='store_const', const=None,
+                          help='send indifinitely')
 
     # Message size or explicit message - mutually exclusive options
     sizegroup = parser.add_mutually_exclusive_group()
-    sizegroup.add_argument('-l', metavar='size', action='store', type=int,
-                           help='size of auto payload')
+    sizegroup.add_argument('-l', dest='size', metavar='size', action='store',
+                           type=int, help='size of auto payload')
     payload_help = "send PAYLOAD, which has the form mytype[::mybody] or ::mybody"
     sizegroup.add_argument('-payload', help=payload_help)
 
@@ -34,7 +37,10 @@ def generate_argparser():
     cmdgroup.add_argument('-cmd', action='store_true', help='send commands')
     cmdgroup.add_argument('-rtcmd', action='store_true', help='send rt-commands')
 
-    parser.add_argument('-c', metavar='CHANNEL', help='name of channel')
+    parser.add_argument('-c', dest='channel', metavar='CHANNEL',
+                        help='name of channel')
+    parser.add_argument('-rate', type=float, default=1.0,
+                        help='rate in sends per second')
 
     return parser
 
@@ -66,7 +72,7 @@ _PORTRANGE = 41 # Range 41000-41999
 def parse_address(address):
     """Parse address of the form hostname[:port]"""
     errmsg = '\n'.join(("Invalid address '{}'".format(address),
-                        "Hostname should have the form name_or_ip[:port]"))
+                        "Hostname should have the form NAME_OR_IP[:PORT]"))
     hostname, *rest = address.split(':')
     if not _HOSTNAME_REGEX.fullmatch(hostname) or len(rest) > 1:
         raise ValueError(errmsg)
@@ -78,18 +84,31 @@ def parse_address(address):
     return (hostname, port)
 
 
+_BAD_MSGTYPE_CHARS = string.whitespace + ','
+_PAYLOAD_SEPARATOR = '::'
 def parse_payload(payload):
     """Parse payload, which has the form type or ::body or type::body"""
+    msgtype, msgbody = None, None
     if payload:
-        return ("mytype", "mybody")
-    return(None, None)
-    #raise ValueError("Invalid payload. Payload is like msgtype or msgtype::body or ::body")
+        errmsg = '\n'.join(("Invalid payload '{}'".format(payload),
+                            "Payload should have the form TYPE or ::TYPE or TYPE::BODY"))
+        # We pick the first instance of '::'
+        try:
+            index = payload.index(_PAYLOAD_SEPARATOR)
+            msgtype = payload[:index] or None
+            msgbody = payload[index+len(_PAYLOAD_SEPARATOR):] # skip past '::'
+            msgbody = msgbody or None # convert '' to None
+        except ValueError:
+            msgtype = payload
+        if msgtype and containschars(msgtype, _BAD_MSGTYPE_CHARS):
+            raise ValueError(errmsg)
+    return (msgtype, msgbody)
 
 
 def main(args):
     """Main entry point"""
     params = parse_args(args)
-    print(params)
+    ppobject(params)
     # client = EchoClient(...)
     if params.msg:
         print('send_messages(params)')
@@ -100,9 +119,15 @@ def main(args):
     # client.shutdown()
 
 
+def ppobject(obj):
+    """Pretty print a single object"""
+    pprint.pprint(vars(obj))
+
+def containschars(str_, charset) -> bool:
+    """Returns if {str} contains any chars in {chars}"""
+    for char in str_:
+        if char in charset:
+            return True
+    return False
+
 main(sys.argv[1:])
-#ARGS1 = [""]
-#ARGS2 = ["localhost"]
-#ARGS3 = "-msg localhost".split()
-#ARGS4 = "-msg -n 7 -payload msgtype rpi0:4900".split()
-#main(ARGS4)
