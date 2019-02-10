@@ -10,8 +10,8 @@ import re
 import string
 import sys
 
-from .. import logging_helper
-from ..comm_helper import EchoClient
+from robotutils import logging_helper
+from robotutils.comm_helper import EchoClient
 
 
 _LOGGER = logging.getLogger('rcping')
