@@ -3,7 +3,7 @@
 ## February 10, 2018B JMJ: PrettyPrinter objects are very powerful, along with vars
 `pprint.PrettyPrinter` objects, including the default object `pprint.pprint` are much more powerful
 than I first thought. Some of the things you can do:
-- get the formatted output as a string using `pformat`
+- get the formatted output as a string using `pprint.pformat`
 - check if the object is readable (can be used to reconstruct the object entirely) or is recursive (has 
   cycles, which it detects)
 - can print compactly (small attributes packed into a single single)
@@ -16,9 +16,11 @@ mc = MyClass()
 pprint.pprint(vars(mc)) # takes additional parameters, including a stream to write to
 
 # Or, if you want to use pformat...
-pp = pprint.PrettyPrinter() # constructor takes additional arguments
-s = pp.pformat(vars(mc)) # s is the pretty-printed string.
+s = pprint.pformat(vars(mc)) # s is the pretty-printed string.
+print(s)
 ```
+According to "The Python 3 Standard Library by Example" book, if an object has a `__repr__` method, 
+pretty printing will display that object. See Section 2.10.3.
 
 ## February 10, 2018A JMJ: Started work on rcping utility
 
