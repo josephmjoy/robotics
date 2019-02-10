@@ -1,5 +1,25 @@
 # Design and Development Notes for Python port of Robotutils.
 
+## February 10, 2018B JMJ: PrettyPrinter objects are very powerful, along with vars
+`pprint.PrettyPrinter` objects, including the default object `pprint.pprint` are much more powerful
+than I first thought. Some of the things you can do:
+- get the formatted output as a string using `pformat`
+- check if the object is readable (can be used to reconstruct the object entirely) or is recursive (has 
+  cycles, which it detects)
+- can print compactly (small attributes packed into a single single)
+- can vary width of line and indentation amount
+
+Pretty printer objects will not directly print an arbitrary object. To do so, pass the 
+object through `vars`:
+```
+mc = MyClass()
+pprint.pprint(vars(mc)) # takes additional parameters, including a stream to write to
+
+# Or, if you want to use pformat...
+pp = pprint.PrettyPrinter() # constructor takes additional arguments
+s = pp.pformat(vars(mc)) # s is the pretty-printed string.
+```
+
 ## February 10, 2018A JMJ: Started work on rcping utility
 
 It is based on design note `February 6, 2018B JMJ`.  It lives, for now, in

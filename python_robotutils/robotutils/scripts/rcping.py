@@ -119,9 +119,10 @@ def main(args):
     # client.shutdown()
 
 
-def ppobject(obj):
+def ppobject(obj, *args, *kwargs):
     """Pretty print a single object"""
-    pprint.pprint(vars(obj))
+    pprint.pprint(vars(obj), *args, *kwargs)
+
 
 def containschars(str_, charset) -> bool:
     """Returns if {str} contains any chars in {chars}"""
