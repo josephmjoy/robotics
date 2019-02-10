@@ -7,8 +7,8 @@ Print output was held until the command terminated when python was invoked direc
 an artifact of the console - so have to run `winpty python`, not `python`.
  
 Sent 1 million messages from `JMJ-ELITEBOOK` to `JMJ-XPS15` which was running the echo server and the latter dutifully
-sent them back. There was some loss, but I think those are the very list batch of messages not being read by the client as it is terminating.
-
+sent them back. There was some loss, but I think those are the very last batch
+of messages not being read by the client as it is terminating.
 
 ### `rcping` - implemented -q option, sent/received 100K messages
 Implemented the `-q` quite option in `rcping`, and successfully sent and received 100K messages using `rcping` and `rcecho` -
