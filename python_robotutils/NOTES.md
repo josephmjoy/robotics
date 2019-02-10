@@ -96,7 +96,7 @@ def ppobject(obj):
     pprint.pprint(vars(obj))
 ```
 
-## February 8, 2018B JMJ: Milestone - got echo client and server to work over local UDP transport
+## February 8, 2018C JMJ: Milestone - got echo client and server to work over local UDP transport
 100,000 messages were sent at the rate of about 5000/sec (which is abut the max on my EliteBook). All of them
 were received (as expected, as this is the loop-back transport).
 
@@ -106,7 +106,7 @@ The errors were due to uncaught exceptions thrown that `unittest` would silently
 listen threads waiting to be shut down - in particular the transport listen threads. By catching exceptions and 
 closing the transport the hangs went away.
 
-TO debug I noticed that `EchoClient.sendMessage` was not returning normally - because the trace before it was displayed but
+To debug I noticed that `EchoClient.sendMessage` was not returning normally - because the trace before it was displayed but
 not after - so I put a breakpoint in the function and stepped through until it hit the error.
 The key uncaught exception was an attribute naming error - see the `pdbg` listing below.
 ```
@@ -168,7 +168,7 @@ loggers and also inject the friendly name of the instances per "February 6, 2018
 
 Need to look into why the test is hanging sending 0 messages...
 
-## February 8, 2018A JMJ: A tight loop in executor task causes a hard hang...
+## February 8, 2018A JMJ: Need to bind or send from a socket before you can receive from it
 On windows, when attempting to receive a datagram using `recvfrom`, one of two conditions must hold:
 - The socket has previously been bound to a local address and port
 - The socket was previously used to send a packet.
