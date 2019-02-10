@@ -1,5 +1,11 @@
 # Design and Development Notes for Python port of Robotutils.
 
+## February 10, 2018C JMJ: Moving `rcping` outside the `robotutils` package
+It should be inside `robotutils` anyways, because it is a _client_ of `robotutils.`
+For now, until we figure out how to install `robotutils` as a package available to any
+python script, the only place it can be is one level above the `robotutils` package directory,
+because the directory of the script is always added to the python module search path.
+
 ## February 10, 2018C JMJ: Ping statistics to emulate:
 ```
 $ ping localhost
