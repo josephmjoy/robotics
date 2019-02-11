@@ -56,36 +56,36 @@ ReceivedMessage.__doc__ += """: Incoming message as reported to client"""
 
 
 ServerStatistics = namedtuple('ServerStatistics',
-                              ('rcvdCommands',
-                               'rcvdCMDs',
-                               'sentCMDRESPs',
-                               'rcvdCMDRESPACKs',
-                               'curSvrRecvdCmdMapSize',
-                               'curSvrRcvdCmdIncomingQueueSize',
-                               'curSvrRcvdCmdCompletedQueueSize'))
+                              ('rcvd_commands',
+                               'rcvd_CMDs',
+                               'sent_CMDRESPs',
+                               'rcvd_CMDRESPACKs',
+                               'cur_SvrRecvdCmdMap_size',
+                               'cur_SvrRcvdCmdIncomingQueue_size',
+                               'cur_SvrRcvdCmdCompletedQueue_size'))
 
 
 ClientStatistics = namedtuple('ClientStatistics',
-                              ('sentCommands',
-                               'sentCMDs',
-                               'rcvdCMDRESPs',
-                               'sentCMDRESPACKs',
-                               'curCliSentCmdMapSize',
-                               'curCliSentCmdCompletionQueueSize'))
+                              ('sent_commands',
+                               'sent_CMDs',
+                               'rcvd_CMDRESPs',
+                               'sent_CMDRESPACKs',
+                               'cur_CliSentCmdMap_size',
+                               'cur_CliSentCmdCompletionQueue_size'))
 
 
 ClientRtStatistics = namedtuple('ClientRtStatistics',
-                                ('approxSentRtCommands',
-                                 'approxSendRTCMDs',
-                                 'approxRcvdRTCMDRESPs',
-                                 'approxRtTimeouts',
-                                 'curCliSentRtCmdMapSize'))
+                                ('approx_sent_rtcommands',
+                                 'approx_send_RTCMDs',
+                                 'approx_rcvd_RTCMDRESPs',
+                                 'approx_rttimeouts',
+                                 'cur_CliSentRtCmdMap_size'))
 
 
 ChannelStatistics = namedtuple('ChannelStatistics',
-                               ('channelName',
-                                'sentMessages',
-                                'rcvdMessages',
-                                'clientStats',
-                                'clientRtStats',
-                                'serverStats'))
+                               ('channel_name',
+                                'sent_messages',
+                                'rcvd_messages',
+                                'client_stats',
+                                'client_rtstats',
+                                'server_stats'))

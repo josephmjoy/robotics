@@ -155,8 +155,8 @@ def send_messages(client, params):
 
 def display_robocomm_stats(hostname, elapsed_time, stats):
     """Display various statistics about the session"""
-    sent_msgs = stats.sentMessages
-    recvd_msgs = stats.rcvdMessages
+    sent_msgs = stats.sent_messages
+    recvd_msgs = stats.rcvd_messages
     rate = sent_msgs/(elapsed_time+1e-10)
     lost = sent_msgs - recvd_msgs
     loss_rate_p = (lost/sent_msgs if sent_msgs else 0) * 100
