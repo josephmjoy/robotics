@@ -5,7 +5,7 @@
 ## February 11, 2018A JMJ: Moved Robotcomm tests to the tests directory
 `test_robotcomm.py` and `test_comm_helper.py` were sitting side-by-side with the code they were testing. They have been
 moved to the `tests` directory to join the other unit tests. The imports have to be changed. In doing so, I realized that
-the `context` import in test is imported by other tests during unittest test discovery, and this is confusing, because
+the `context` import in test is imported by other tests during `unittest` test discovery, and this is confusing, because
 I could remove the `import context` and still have the tests import `robotutils` even though the latter is not
 in the python path. For now, using `unittest discover` as below works well from any directory, and should
 be set as an alias...
@@ -15,14 +15,13 @@ alias rutest='py -m unittest discover -s ~/Documents/GitHub/robotics/python_robo
 Without specifying the `discover` option, as below, the test fails because it cannot find `robotutils`, because
 the `context.py` module was not loaded by that test. In `test_comm_helper.py`, importing `.context` _before_
 referencing `robotutil` works, but is frowned on by Pylint. Placing it _after_ makes Pylint happy, but
-then then unittest (without `discover` option) fails.
+then then `unittest` (without `discover` option) fails.
 ```
 py -m unittest python_robotutils/tests/test_comm_helper.py
 ```
 Bottom line: until I get to the bottom of this, just run with the `-discover` option, run `rutest`, which works from
 any directory (assuming of course that the location of the `python_robotutils` directory in the alias is
 correctly specified).
-`
 
 ## February 10, 2018D JMJ: Adding timing to the echo client
 Things to measure:
