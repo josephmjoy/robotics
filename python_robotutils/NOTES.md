@@ -130,7 +130,7 @@ Approximate round trip times in milli-seconds:
     Minimum = 0ms, Maximum = 0ms, Average = 0ms
 ```
 
-## February 10, 2018B JMJ: PrettyPrinter objects are very powerful, along with vars
+## February 10, 2018B JMJ: `PrettyPrinter` objects are very powerful, along with vars
 `pprint.PrettyPrinter` objects, including the default object `pprint.pprint` are much more powerful
 than I first thought. Some of the things you can do:
 - get the formatted output as a string using `pprint.pformat`
@@ -152,7 +152,7 @@ print(s)
 According to "The Python 3 Standard Library by Example" book, if an object has a `__repr__` method, 
 pretty printing will display that object. See Section 2.10.3.
 
-## February 10, 2018A JMJ: Started work on rcping utility
+## February 10, 2018A JMJ: Started work on `rcping` utility
 
 It is based on design note `February 6, 2018B JMJ`.  It lives, for now, in
 `robotutils/scripts`. It uses Python's powerful `argparse` module for parsing command line
@@ -269,7 +269,7 @@ all that have arrived. This code is now factored into the method `_get_received_
 Note: discovered `math.isclose`: `math.isclose(self.rate, 0.0, abs_tol=1e-3)`.
 
 When the echo client server test attempts to send 4 packets and have them reflected back, the first two of them
-make it to the server and back, but the response is not indicated back to the client - the udp transport receives them
+make it to the server and back, but the response is not indicated back to the client - the UDP transport receives them
 on the client side, but the messages do not show up when the client polls for responses.
 
 Also the tests hang. So to debug these issues, I created simple client-only and server-only tests:
@@ -343,7 +343,7 @@ I hit this debugging an issue with the echo client / server unit tests. The prog
 that the main line code log and print statements did not run. To debug, I
 stepped through code with pdb and realized that an assertion was failing.
 
-## February 6, 2018D JMJ: Added optional parameter `name` to  RobotComm constructor
+## February 6, 2018E JMJ: Added optional parameter `name` to  RobotComm constructor
 This is for logging purposes - so in the logs we can make out which instance of Robotcomm is
 generating what logs. It is a keyword-only parameter with a reasonable default:
 `def __init__(self, transport, *, name="robotcomm"):`
@@ -564,7 +564,7 @@ here: https://stackoverflow.com/questions/49992329/the-workers-in-threadpoolexec
 
 ## February 3, 2018C JMJ: Implemented concurrent_helper.CountDownLatch
 This is the Python version of Java's `CountDownLatch`. There are some suggestions online, such as
-http://www.madhur.co.in/blog/2015/11/02/countdownlatch-python.html
+<http://www.madhur.co.in/blog/2015/11/02/countdownlatch-python.html>
 The one I implemented also supports timeout. Code is `robotutils.concurrent_helper.CountDownLatch`. It has
 a basic doctest. Unit tests are in `test_concurrent_helper.TestCountDownLatch`.
 At this point basic tests pass and Pylint is happy.
@@ -666,7 +666,7 @@ do because the scheduler's `close` method was not called.
 The fix is simply to set the `daemon` property of the background thread to `True` before starting it.
 Works great - now my comm unit tests no longer hang on exceptions.
 
-Reference: https://docs.python.org/3/library/threading.html#threading.Thread.daemon
+Reference: <https://docs.python.org/3/library/threading.html#threading.Thread.daemon>
 
 ## February 1, 2018A JMJ: Implemented LevelSpecificLogger
 This replaces earlier notes on logging:
@@ -799,7 +799,7 @@ def getsome(func, maxnum, sentinel=None):
 ## January 29, 2018F JMJ: Performance cost of nested functions
 
 Great discussion on whether or not nested functions are "compiled":
-	https://stackoverflow.com/questions/6020532/are-python-inner-functions-compiled
+	<https://stackoverflow.com/questions/6020532/are-python-inner-functions-compiled>
 Also good examples of calling `dis.dis(function)`, using `timeit`, and reporting the `id` of objects.
 Short answer: they are _parsed_ when the module is parsed, creating a code object. However a function
 object is created each time the outer function is called. This function object includes any referenced
@@ -1127,7 +1127,7 @@ Updated `TestConcurrentDict` to also include `upsert`. All tests pass.
 
 ## January 22, 2018D JMJ: Regarding Circular Imports
 Lots of good discussions in circular imports - for example:
-https://stackoverflow.com/questions/744373/circular-or-cyclic-imports-in-python
+<https://stackoverflow.com/questions/744373/circular-or-cyclic-imports-in-python>
 
 Pylint complains of circular references:
 ```
@@ -1153,7 +1153,7 @@ See "January 4, 2019A" note on the original code structure proposal for addition
 For now the unit tests still live side-by-side with the modules they test, but they should move
 to a `test` directory in parallel with `robotutil` once the code is stabilized.
 When that happens, we'll need to add (just for the tests), `robotutil` to the python path. Follow
-the instructions in https://docs.python-guide.org/writing/structure/ (Hitchhiker's Guide to Python),
+the instructions in <https://docs.python-guide.org/writing/structure/> (Hitchhiker's Guide to Python),
 in particular, create a `tests/context.py` file:
 ```
 import os
@@ -1282,15 +1282,15 @@ def setuplogging(modulename, logname=None) -> None:
 ## January 21, 2018A JMJ: Some logging resources
 
 Official docs, tutorial and cookbook:
-	https://docs.python.org/3/library/logging.html
-	https://docs.python.org/3/howto/logging.html#logging-basic-tutorial
-	https://docs.python.org/3/howto/logging.html#logging-advanced-tutorial
-	https://docs.python.org/3/howto/logging-cookbook.html#logging-cookbook
+    <https://docs.python.org/3/library/logging.html>
+    <https://docs.python.org/3/howto/logging.html#logging-basic-tutorial>
+    <https://docs.python.org/3/howto/logging.html#logging-advanced-tutorial>
+    <https://docs.python.org/3/howto/logging-cookbook.html#logging-cookbook>
 
-Tips on logging: https://fangpenlin.com/posts/2012/08/26/good-logging-practice-in-python/
+Tips on logging: <https://fangpenlin.com/posts/2012/08/26/good-logging-practice-in-python/>
 From Hitchhiker's guide:
-https://12factor.net/logs
-https://12factor.net/
+<https://12factor.net/logs>
+<https://12factor.net/>
 
 Logging level aka severty level: higher is more important. So opposite of 'priority' in general.
 `exc_info, stack_info`. Latter can be specified even if there is no exception - any time you
@@ -1312,7 +1312,7 @@ NOTSET 0
 ### Design Decisions
 
 Looking at video 
-https://www.youtube.com/watch?v=HTLu2DFOdTg&t=33m8s
+<https://www.youtube.com/watch?v=HTLu2DFOdTg&t=33m8s>
 
 -Use clasmethods if you want to properly deal with subclassing
 -Use slots for lightweight objects. Use slots only if you really need them -
@@ -1384,7 +1384,7 @@ ChannelImplementation
 ## January 20, 2018A JMJ: Documenting named tuples and Pylint smarts
 
 Got this from a Stack overflow answer: Since Python 3.5, docstrings for `namedtuple` objects
-can be updated.  From https://docs.python.org/3/whatsnew/3.5.html#collections
+can be updated.  From <https://docs.python.org/3/whatsnew/3.5.html#collections>
 
 ```
 	Point = namedtuple('Point', ['x', 'y'])
@@ -1809,7 +1809,7 @@ should be recognizable, but it is not. For now I've commented out the return typ
 
 ## January 9, 2018B JMJ: Implemented AtomicNumber class, and started using doctest
 Wrote `misc/atomic.py`, a module that implements various atomic operations (for now just `next`).
-This code is adapted from https://gist.github.com/benhoyt/8c8a8d62debe8e5aa5340373f9c509c7,
+This code is adapted from <https://gist.github.com/benhoyt/8c8a8d62debe8e5aa5340373f9c509c7>,
 including the use of `doctest`, which is so elegant! The original (Ben Hoyt's) code 
 had more elaborate doc tests that including creating many threads.
 
@@ -1849,11 +1849,11 @@ address (for UDP, it's an IP address vs. a name), it should be fine and gets rid
 
 ## January 7, 2019C JMJ: What about Python's own logging support?
 Python has pretty good logging functionality on its own - see
-https://docs.python.org/3/library/logging.html
+<https://docs.python.org/3/library/logging.html>
 
 It supports multiple consumers, and a hierarchy of named loggers and multiprocessor support.
 It is very sophisticated, with lots of documentation,
-including this cookbook: https://docs.python.org/3/howto/logging-cookbook.html
+including this cookbook: <https://docs.python.org/3/howto/logging-cookbook.html>
 
 This begs the question: can't we just adapt Python's existing logging support instead of a strict
 port of Robotutils's structured logger from Java?
@@ -1880,7 +1880,7 @@ Python logging apis, or create a simple wrapper, especially for trace messages.
 
 ## January 7, 2019B JMJ: What to do about all the Java interface definitions in Robotutils?
 I decided to define abstract base classes for most (all?) of them. Relevant articles:
-https://pymotw.com/3/abc/ and article's it references, including Guido's original PEP.
+<https://pymotw.com/3/abc/> and article's it references, including Guido's original PEP.
 
 The Java `StructuredLogger` class has the complete implementation of structured logging, including all
 the interfaces and private classes it uses. For the first port, I'm inclined to keep this model,
@@ -1964,7 +1964,7 @@ as `build_random_input`. Works fine - can be invoked either via `self.method` or
 `Class.method` - in either case, the `self` argument is not supplied. `@staticmethod`
 is not _required_ if you invoke that method via `class.method`, however if not specified,
 you cannot invoke it via `self.method`, plus it is helpful to announce to everyone that
-it is a static method. Doc: https://docs.python.org/3.7/library/functions.html#staticmethod
+it is a static method. Doc: <https://docs.python.org/3.7/library/functions.html#staticmethod>
 
 ## January 4, 2019E JMJ: misc/strmap_helper.get_as_num method
 Interesting that this method implements *six* methods in Java
@@ -2006,8 +2006,8 @@ I never got to the bottom of that. But for now things work well.
 
 ## January 4, 2019A JMJ: New code structure
 Looked at various suggestions for structuring python projects, including...
-- https://docs.python-guide.org/writing/structure/
-- https://blog.ionelmc.ro/2014/05/25/python-packaging/#the-structure
+- <https://docs.python-guide.org/writing/structure/>
+- <https://blog.ionelmc.ro/2014/05/25/python-packaging/#the-structure>
 It seems that larger projects advocate a separate test directory that sits parallel to the
 code. However, for low-level unit tests, it's more convenient to keep the test source close
 to the corresponding code to be tested, while both are being ported. So the plan is to break
