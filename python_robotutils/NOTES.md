@@ -1,8 +1,8 @@
-# Design and Development Notes for Python port of `Robotutils`
+# Design and Development Notes for Python port of `robotutils`
 
 
 
-## February 11, 2018A JMJ: Moved RobotComm tests to the tests directory
+## February 11, 2018A JMJ: Moved `RobotComm` tests to the tests directory
 `test_robotcomm.py` and `test_comm_helper.py` were sitting side-by-side with the code they were testing. They have been
 moved to the `tests` directory to join the other unit tests. The imports have to be changed. In doing so, I realized that
 the `context` import in test is imported by other tests during `unittest` test discovery, and this is confusing, because
@@ -68,7 +68,7 @@ There's some shared code with `rcping.py` that should be moved to a common place
 Pylint points out this common code - impressive.
 
 Some quirks:
-- `rcecho` is very silent - needs to print something when it is starting and when it is shutdown with CRTL-C
+- `rcecho` is very silent - needs to print something when it is starting and when it is shutdown with `CRTL-C`
 - Reduce duplicate code between the two utilities (mentioned earlier)
 - `rcping` - needs to stop reporting output after a certain number have received so we don't clutter the console window. Especially
   needed for long-running stress testing done at a high rate. Or maybe a -quiet option - that may be better actually, rather
@@ -95,8 +95,7 @@ Note that '::' is used to separate message type from body.
 
 ### Adding logging level to `rcping` command line
 Spec: `-loglevel TRACE|DEBUG|INFO|ERROR|CRITICAL`
-Default is ERROR
-Logging to a file is not yet supported.
+Default is ERROR. Logging to a file is not yet supported.
 
 Implementation note: the standard logging levels are parsed using the following code:
 ```
@@ -106,7 +105,7 @@ level = getattr(logging, choices[index])
 ```
 
 ### Moving `rcping` outside the `robotutils` package
-It should be inside `robotutils` anyways, because it is a _client_ of `robotutils.`
+It should not be inside `robotutils` anyways, because it is a _client_ of `robotutils.`
 For now, until we figure out how to install `robotutils` as a package available to any
 python script, the only place it can be is one level above the `robotutils` package directory,
 because the directory of the script is always added to the python module search path.
@@ -343,15 +342,15 @@ I hit this debugging an issue with the echo client / server unit tests. The prog
 that the main line code log and print statements did not run. To debug, I
 stepped through code with pdb and realized that an assertion was failing.
 
-## February 6, 2018E JMJ: Added optional parameter `name` to  RobotComm constructor
-This is for logging purposes - so in the logs we can make out which instance of RobotComm is
+## February 6, 2018E JMJ: Added optional parameter `name` to  `RobotComm` constructor
+This is for logging purposes - so in the logs we can make out which instance of `RobotComm` is
 generating what logs. It is a keyword-only parameter with a reasonable default:
 `def __init__(self, transport, *, name="robotcomm"):`
 This is a pattern that can be adopted more generally - each object of
 significance has an attribute called `name` that is injected into log messages.
 
-## February 6, 2018D JMJ: Implemented EchoClient  - just for messaging
-Implemented the Udp echo client, `comm_helper.EchoClient`. Currently just handles sending and receiving messages.
+## February 6, 2018D JMJ: Implemented `EchoClient`  - just for messaging
+Implemented the UDP echo client, `comm_helper.EchoClient`. Currently just handles sending and receiving messages.
 It's design is different from the Java version. Key differences:
 - Various send parameters are specified by a different function, called `set_parameters`.
 - Method `send_messages` just takes a single parameter, a handler that is called each time any message is received.
@@ -365,20 +364,20 @@ It's design is different from the Java version. Key differences:
   the client.
 
 ## February 6, 2018C JMJ: Thoughts on default 'system' channels
-Have RobotComm publish some reserved channels, such as 'ping' - any service can be pinged for health, say.
+Have `RobotComm` publish some reserved channels, such as 'ping' - any service can be pinged for health, say.
 A standard set of commands and responses can be suggested, such as uptime and epoch (updated each time service
 is restarted), CPU utilization, #processes, #threads, %memory used, etc. Maybe this special channel is called
-`_sysinfo` and is a hidden channel - is responded to by RobotComm itself as a convenience. Also can query
-RobotComm's own internal stats.
+`_sysinfo` and is a hidden channel - is responded to by `RobotComm` itself as a convenience. Also can query
+`RobotComm`'s own internal stats.
 
 
-## February 6, 2018B JMJ: RobotComm command line 'ping' utility design
+## February 6, 2018B JMJ: `RobotComm` command line 'ping' utility design
 `rcping` is the name of a proposed utility to encompass the capability of `EchoClient` and `EchoServer`.
 General guidelines:
 1. Client and server roles are decoupled - they don't depend on each other. In particular, the client can be used
 to send user-supplied messages or commands to a destination, which will be useful for testing. Similarly, the server
 can supply canned responses to a client.
-1. Can use a config file for supplying more detailed information - not a hardcoded file location - a user-supplied
+1. Can use a configuration file for supplying more detailed information - not a hardcoded file location - a user-supplied
 file and section for extra configuration information.
 
 Client-side features:
@@ -581,7 +580,7 @@ All tests pass. I haven't yet disabled `invalid-name` as there are other naming 
 (chiefly, 1 2 letter names).
 
 
-## February 3, 2018A JMJ: Investigating why RobotComm send/receive are failing under high stress - RESOLVED
+## February 3, 2018A JMJ: Investigating why `RobotComm` send/receive are failing under high stress - RESOLVED
 The problem was first mentioned in the 'February 2, 2018A' note.
 The problem has been resolved (discussion below) and we can now batch send 300K messages with random drops
 and delays.
@@ -634,7 +633,7 @@ retrying when waiting to exit test in `submitMessage` - which currently waits up
 of time for missing messages to be accounted for. This timeout scheme needs to be refined to work
 even on slow processors, and with any number of messages. That is TBD.
 
-## February 2, 2018B JMJ: RobotComm send/receive message stress tests pass for more complex cases
+## February 2, 2018B JMJ: `RobotComm` send/receive message stress tests pass for more complex cases
 Can successfully send 100,000 messages, with 10 threads and random delays and drops. The max rate of
 submission on my Elitebook seems to be about 5000 per second - this is less than 1/10th the rate of the 
 Java version - which can handle about 100,000 messages per second. Nevertheless, this is a
@@ -650,10 +649,10 @@ but it fails if the rate is bumped up to 20K/sec. Sending 50K at 10K/sec also fa
 This failure persists even if `TestHarness.submitMessages` waits for much longer before calling
 `finalSendMessageValidation` - so this issue needs to be investigated.
 
-## February 2, 2018A JMJ: Milestone. RobotComm send/receive message stress tests pass for basic cases
+## February 2, 2018A JMJ: Milestone. `RobotComm` send/receive message stress tests pass for basic cases
 Successfully sent and received 10,000 messages over the mock transport with 'trivial' settings
 of a 1-thread worker pool and no delays! The fixes were just in how different fields of a received 
-message were interpreted by the tests - no fixes in the actual RobotComm implementation.
+message were interpreted by the tests - no fixes in the actual `RobotComm` implementation.
 
 Logging is paying dividends in debugging, especially logging of call stack on exceptions in the
 background threads, by `ConcurrentInvoker`. Also helpful to be able to set log levels.
@@ -669,7 +668,7 @@ Works great - now my comm unit tests no longer hang on exceptions.
 
 Reference: <https://docs.python.org/3/library/threading.html#threading.Thread.daemon>
 
-## February 1, 2018A JMJ: Implemented LevelSpecificLogger
+## February 1, 2018A JMJ: Implemented `LevelSpecificLogger`
 This replaces earlier notes on logging:
 	January 31, 2018B
 	January 25, 2018B
@@ -722,7 +721,7 @@ transport closing"`. Perhaps we can standardize on these tags - for now they are
 specified formally - perhaps comments can list the current list of pseudo-message-types.
 
 
-## January 31, 2018A JMJ: New class concurrent_helper.ConcurrentInvoke
+## January 31, 2018A JMJ: New class `concurrent_helper.ConcurrentInvoke`
 I implemented class `ConcurrentInvoke` to make sure that concurrently executed
 tasks properly log exceptions and there is a way to stop future executions of
 concurrent tasks. This came up writing comm tests, where I wanted to execute
@@ -876,18 +875,18 @@ for f in funcs:
 ```
 Without the `i=i`, the code prints 10 81s. Another option is to use `functools.partial`.
 
-## January 29, 2018D JMJ: Python equivalent of Java's System.currentTimeMillis
+## January 29, 2018D JMJ: Python equivalent of Java's `System.currentTimeMillis`
 
 `System.currentTimeMillis()` (in milliseconds, long) -> `time.time()` (in seconds, float) - both UT
 
 ## January 29, 2018C JMJ: Cleaned up most camel case - > moved to snake case
-It was fairly straightforward. The unittests caught some inter-module mistakes - it seems Pylint does
+It was fairly straightforward. The unit tests caught some inter-module mistakes - it seems Pylint does
 not catch badly named attributes if the class in question is external - I suppose that makes sense.
 The following module are almost clean: `_protocol.py, channe.py and robotcomm.py`. They are clean as reported
 by Pylint. However Pylint does not report camel casing in named tuples (for example,
 `ServerStatistics`).
 
-## January 29, 2018B JMJ: Milestone - simple Robotutils send and receive test works!
+## January 29, 2018B JMJ: Milestone - simple `RobotComm` send and receive test works!
 This is `TestRobotComm.test_message_basic` that sends a single message over the test transport
 and verifies the message is received. Far from the light at the end of the tunnel, more like 
 light from a small skylight. But still, a solid milestone!
@@ -919,7 +918,7 @@ Here is the removed method:
 The `Channel` class and `Server` and `Client` classes are all really part of the same implementation and
 sometimes need to reach into each others' protected attributes and members. These attributes and members
 (such as `Channel._server`, and `Channel._handle_received_messages`) do need to be protected as the class 
-(`Channel` in this case) is public, exposed to clients of Robotutils. For now, I explicitly 
+(`Channel` in this case) is public, exposed to clients of `robotutils`. For now, I explicitly 
 disable the Pylint warnings at each instance, such as:
 ```
     server = chan._server # pylint: disable=protected-access
@@ -932,7 +931,7 @@ disable the Pylint warnings at each instance, such as:
 There are relatively few of these explicit disables and I'm happy with living with them. Certainly don't 
 want to globally disable this check!
 
-## January 28, 2018C JMJ: Finished 1st-cut port of robotutils.Channel
+## January 28, 2018C JMJ: Finished 1st-cut port of `RobotComm.Channel`
 This is `comm/channel.py`. It is a complete port. However, all command and rt-command handling
 is delegated to the 'client' and 'server' objects. Message handling is handled in `Channel`, and 
 that is the first comm feature we are going to test end to end on multiple platforms.
@@ -946,17 +945,17 @@ attributes. The simplest and most often suggested method is to simply expose the
 or limit them in any way. Other options are to use decorators, such as `@property`, which, frankly, I think
 is overkill.
 
-So for Robotutils, I have come up with the following guidelines. is to simply
+So for `robotutils`, I have come up with the following guidelines. is to simply
 expose public attributes. They should ONLY be read-only (not settable).  They
 should be initialized in their own section at the beginning  `__init__`, with
 comments identifying them as such.  Also, they should be called out as a list
 of read-only attributes in the class docstring.
 
-## January 28, 2018A JMJ: New method ConcurrentDict.remove_instance
+## January 28, 2018A JMJ: New method `ConcurrentDict.remove_instance`
 `ConcurrentDict.remove_instance` emulates Java's `ConcurrentHashMap.remove`
 Implemented in `concurrent_helper.py`. Unit tests updated in `test_concurrent_helper.py`. Tests pass.
 
-## January 25, 2018E JMJ: Moved shared definitions to ./comm/common.py
+## January 25, 2018E JMJ: Moved shared definitions to `./comm/common.py`
 These definitions were sitting in `robotcomm.py`, but are needed in `channel.py`. But
 `channel.py` must be imported by `robotcomm.py`. To avoid the circular import
 (see "January 22, 2018D" note), I'm moving these definitions to `common.py`
@@ -969,7 +968,7 @@ moving to the previously checked in `_protocol.py`.
 This code cannot yet be tested because it simply delegates work to channels and channels are not
 yet implemented - the checked in `channel.py` is just a skeleton.
 
-## January 25, 2018C JMJ: Removed `__len__` from ConcurrentDict
+## January 25, 2018C JMJ: Removed `__len__` from `ConcurrentDict`
 [UPDATE: Jan 30, 2018: `__len__` was added back - was needed for `RobotComm` tests]
 It was triggered by a Pylint warning in `comm/robotcomm.py` not test
 for a collection to be empty by `len(collection) == 0`. You are supposed to just use
