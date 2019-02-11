@@ -2,7 +2,7 @@
 
 
 
-## February 11, 2018A JMJ: Moved Robotcomm tests to the tests directory
+## February 11, 2018A JMJ: Moved RobotComm tests to the tests directory
 `test_robotcomm.py` and `test_comm_helper.py` were sitting side-by-side with the code they were testing. They have been
 moved to the `tests` directory to join the other unit tests. The imports have to be changed. In doing so, I realized that
 the `context` import in test is imported by other tests during `unittest` test discovery, and this is confusing, because
@@ -74,7 +74,7 @@ Some quirks:
   needed for long-running stress testing done at a high rate. Or maybe a -quiet option - that may be better actually, rather
   than suppressing of output based on some number of sends/receives.
 
-### Changed `rcping` option `-payload` to '-body`
+### Changed `rcping` option `-payload` to `-body`
 ```
   -body PAYLOAD         send PAYLOAD, which has the form bodytype[::body] or
                         ::body
@@ -183,7 +183,7 @@ usage: rcping.py [-h] [-n count | -t] [-l size | -payload PAYLOAD]
                  (-msg | -cmd | -rtcmd) [-c CHANNEL]
                  address
 
-Robotcomm ping utility
+RobotComm ping utility
 
 positional arguments:
   address           hostname[:port] of destination
@@ -344,7 +344,7 @@ that the main line code log and print statements did not run. To debug, I
 stepped through code with pdb and realized that an assertion was failing.
 
 ## February 6, 2018E JMJ: Added optional parameter `name` to  RobotComm constructor
-This is for logging purposes - so in the logs we can make out which instance of Robotcomm is
+This is for logging purposes - so in the logs we can make out which instance of RobotComm is
 generating what logs. It is a keyword-only parameter with a reasonable default:
 `def __init__(self, transport, *, name="robotcomm"):`
 This is a pattern that can be adopted more generally - each object of
@@ -365,14 +365,14 @@ It's design is different from the Java version. Key differences:
   the client.
 
 ## February 6, 2018C JMJ: Thoughts on default 'system' channels
-Have Robotcomm publish some reserved channels, such as 'ping' - any service can be pinged for health, say.
+Have RobotComm publish some reserved channels, such as 'ping' - any service can be pinged for health, say.
 A standard set of commands and responses can be suggested, such as uptime and epoch (updated each time service
 is restarted), CPU utilization, #processes, #threads, %memory used, etc. Maybe this special channel is called
-`_sysinfo` and is a hidden channel - is responded to by Robotcomm itself as a convenience. Also can query
-Robotcomm's own internal stats.
+`_sysinfo` and is a hidden channel - is responded to by RobotComm itself as a convenience. Also can query
+RobotComm's own internal stats.
 
 
-## February 6, 2018B JMJ: Robotcomm cmdline 'ping' utility design
+## February 6, 2018B JMJ: RobotComm command line 'ping' utility design
 `rcping` is the name of a proposed utility to encompass the capability of `EchoClient` and `EchoServer`.
 General guidelines:
 1. Client and server roles are decoupled - they don't depend on each other. In particular, the client can be used
@@ -387,10 +387,10 @@ Client-side features:
 1. As above, but standard command.
 1. As above, but standard rt command command.
 1. Support `-n` and `-t` options from ping for each.
-1. Support '-l' (length) size option from ping for each. It specifies the size of the _body_
-1. Support '-body',  for message body type and body (default to nanosecond timestamp)
-1. Support '-c', for channel (default to 'echo')
-1. Set a standard port number for Robotcomm servers so that we don't have to keep typing (and mistyping) port numbers,
+1. Support `-l` (length) size option from ping for each. It specifies the size of the _body_
+1. Support `-body`,  for message body type and body (default to nanosecond time stamp)
+1. Support `-c`, for channel (default to 'echo')
+1. Set a standard port number for RobotComm servers so that we don't have to keep typing (and mistyping) port numbers,
    and can specifically open that port in firewalls.  Default echo server port: 41890 (see  "February 6, 2018A" note)
 
 ```
@@ -455,6 +455,7 @@ From <https://tools.ietf.org/html/rfc2365>:
 
 ### Port numbers to use for in-house applications
 From <https://support.mcommstv.com/hc/en-us/articles/202306226-Choosing-multicast-addresses-and-ports>
+
 Do NOT use:
 - Ports 0-1023 are the Well Known Ports and are assigned by IANA. These
   should only be used for the assigned protocols on public networks.
@@ -553,16 +554,16 @@ Added this note to `DatagramTransport` docstring:
 
 
 
-## February 4, 2018A JMJ: Added stress tests for CountDownLatch
+## February 4, 2018A JMJ: Added stress tests for `CountDownLatch`
 
 The stress tests are in class `test_concurrent_helper.TestCountDownLatch`. They verify timeout accuracy
 and test concurrent invocations of count down and wait. The tests pass.
 
 Note:
 `ThreadPoolExecutor` does not kill running background tasks even if the main thread is exiting. Nice explanation 
-here: https://stackoverflow.com/questions/49992329/the-workers-in-threadpoolexecutor-is-not-really-daemon
+here: <https://stackoverflow.com/questions/49992329/the-workers-in-threadpoolexecutor-is-not-really-daemon>
 
-## February 3, 2018C JMJ: Implemented concurrent_helper.CountDownLatch
+## February 3, 2018C JMJ: Implemented `concurrent_helper.CountDownLatch`
 This is the Python version of Java's `CountDownLatch`. There are some suggestions online, such as
 <http://www.madhur.co.in/blog/2015/11/02/countdownlatch-python.html>
 The one I implemented also supports timeout. Code is `robotutils.concurrent_helper.CountDownLatch`. It has
@@ -580,7 +581,7 @@ All tests pass. I haven't yet disabled `invalid-name` as there are other naming 
 (chiefly, 1 2 letter names).
 
 
-## February 3, 2018A JMJ: Investigating why Robotcomm send/receive are failing under high stress - RESOLVED
+## February 3, 2018A JMJ: Investigating why RobotComm send/receive are failing under high stress - RESOLVED
 The problem was first mentioned in the 'February 2, 2018A' note.
 The problem has been resolved (discussion below) and we can now batch send 300K messages with random drops
 and delays.
@@ -633,7 +634,7 @@ retrying when waiting to exit test in `submitMessage` - which currently waits up
 of time for missing messages to be accounted for. This timeout scheme needs to be refined to work
 even on slow processors, and with any number of messages. That is TBD.
 
-## February 2, 2018B JMJ: Robotcomm send/receive message stress tests pass for more complex cases
+## February 2, 2018B JMJ: RobotComm send/receive message stress tests pass for more complex cases
 Can successfully send 100,000 messages, with 10 threads and random delays and drops. The max rate of
 submission on my Elitebook seems to be about 5000 per second - this is less than 1/10th the rate of the 
 Java version - which can handle about 100,000 messages per second. Nevertheless, this is a
@@ -649,10 +650,10 @@ but it fails if the rate is bumped up to 20K/sec. Sending 50K at 10K/sec also fa
 This failure persists even if `TestHarness.submitMessages` waits for much longer before calling
 `finalSendMessageValidation` - so this issue needs to be investigated.
 
-## February 2, 2018A JMJ: Milestone. Robotcomm send/receive message stress tests pass for basic cases
+## February 2, 2018A JMJ: Milestone. RobotComm send/receive message stress tests pass for basic cases
 Successfully sent and received 10,000 messages over the mock transport with 'trivial' settings
 of a 1-thread worker pool and no delays! The fixes were just in how different fields of a received 
-message were interpreted by the tests - no fixes in the actual Robotcomm implementation.
+message were interpreted by the tests - no fixes in the actual RobotComm implementation.
 
 Logging is paying dividends in debugging, especially logging of call stack on exceptions in the
 background threads, by `ConcurrentInvoker`. Also helpful to be able to set log levels.
@@ -909,7 +910,7 @@ Here is the removed method:
         Creates a new remote node from a string representation of the address
         WARNING: Depending on the transport and the string representation, this
         method can block as it attempts to perform network operations.
-        NOTE: Robotcomm never calls this method. This is for the client's benefit.
+        NOTE: RobotComm never calls this method. This is for the client's benefit.
         Consider deprecating.
         """
 ```
@@ -1787,7 +1788,7 @@ ConcurrentDeque
 	underlying data structure: collections.dequeue
 ```
 We may find better standard library classes to use later, but for now it unblocks us from
-going on with the port of Robotcomm.
+going on with the port of RobotComm.
 
 ## January 10, 2018A JMJ: Pylint doesn't like nested classes as function return annotation
 
