@@ -13,13 +13,14 @@ import collections
 import time
 import concurrent.futures
 
-from .. import _utils
-from . import robotcomm as rc
-from .. import concurrent_helper as conc
-from .. import logging_helper
-from .common import DatagramTransport
+from robotutils import _utils
+from robotutils.comm.common import DatagramTransport
+import robotutils.comm.robotcomm as rc
+from robotutils import concurrent_helper as conc
 
-_LOGNAME = "test"
+from .context import logging_helper # also to ensure .context gets loaded
+
+_LOGNAME = "rcommtest"
 _LOGGER = logging.getLogger(_LOGNAME)
 _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 
@@ -97,7 +98,7 @@ class MockTransport(DatagramTransport): # pylint: disable=too-many-instance-attr
             self.numrandomdrops.next()
             return # **************** EARLY RETURN *****
 
-        _MTTRACE("SEND_SENDING\n[%s]", msg)
+        _MTTRACE("SEND_SENDING\n[%s] to %s", msg, destination)
 
         if self.closed:
             self.numforcedrops.next()
@@ -211,9 +212,9 @@ class TestMockTransport(unittest.TestCase):
         failurerate = 0
         maxdelay = 1
 
-        def genmsg(x):
+        def genmsg(index):
             nonlocal expected_msgcount
-            msg = 'msg-' + str(x)
+            msg = 'msg-' + str(index)
             if self.cointoss():
                 expected_msgcount += 1
                 return msg
@@ -570,8 +571,8 @@ def new_message_record(id_, alwaysdrop):
         return hex(id_) + '\n' + '\n'.join(sequence)
 
     def random_type():
-        x = hex(rand32())
-        return x[:random.randint(0, len(x))] # can be the empty string
+        chunk = hex(rand32())
+        return chunk[:random.randint(0, len(chunk))] # can be the empty string
 
     body = MockTransport.ALWAYSDROP_TEXT if alwaysdrop else random_body()
     return TestMessageRecord(id=id_, alwaysdrop=alwaysdrop,

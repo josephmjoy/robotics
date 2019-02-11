@@ -6,4 +6,5 @@ import sys
 # pylint: disable=unused-import,wrong-import-position
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from robotutils import msgmap, concurrent_helper, config_helper, strmap_helper
+from robotutils import logging_helper, comm_helper
 import robotutils

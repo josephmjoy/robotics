@@ -8,9 +8,15 @@ import logging
 import unittest
 import concurrent.futures
 
-from . import concurrent_helper as conc
-from . import logging_helper
-from .comm_helper import UdpTransport, EchoServer, EchoClient
+#Pylint complains about import order of .context, but if it is put later,
+#unittest (with -k) can't find robotutils, because it hasn't loaded .context
+#when discovering other tests
+#from .context import robotutils
+
+from robotutils.comm_helper import UdpTransport, EchoServer, EchoClient
+from robotutils import concurrent_helper as conc
+
+from .context import logging_helper # also to ensure .context gets loaded
 
 _LOGNAME = "test"
 _LOGGER = logging.getLogger(_LOGNAME)
@@ -18,7 +24,7 @@ _TRACE = logging_helper.LevelSpecificLogger(logging_helper.TRACELEVEL, _LOGGER)
 
 # Uncomment one of these to set the global trace level for ALL unit tests, not
 # just the ones in this file.
-#logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 #logging.basicConfig(level=logging_helper.TRACELEVEL)
 
 SERVER_IP_ADDRESS = "127.0.0.1"
