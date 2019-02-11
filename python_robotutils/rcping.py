@@ -9,6 +9,7 @@ import pprint
 import re
 import string
 import sys
+import time
 
 from robotutils import logging_helper
 from robotutils.comm_helper import EchoClient
@@ -121,10 +122,11 @@ def parse_body(payload):
     return (bodytype, body)
 
 
-def send_messages(client, count, quiet):
-    """Send {count} messages using an instance of echo client.
-    If {quiet} supress per-message output.
+def send_messages(client, params):
+    """Send {params.count} messages using an instance of echo client.
+    If {params.quiet} supress per-message output.
     """
+    count, quiet = params.count, params.quiet
     receive_count = 0
 
     def send_handler(resptype, respbody):
@@ -143,10 +145,25 @@ def send_messages(client, count, quiet):
 
     # send_messages will block until done...
     _TRACE("GOING TO SEND MESSAGES")
+    start_time = time.perf_counter() # in seconds
     client.send_messages(count, send_handler=send_handler,
                          response_handler=response_handler)
+    elapsed_time = time.perf_counter() - start_time
     _TRACE("DONE SENDING MESSAGES")
+    display_robocomm_stats(params.hostname, elapsed_time, client.get_stats())
     print("Received = {}".format(receive_count))
+
+def display_robocomm_stats(hostname, elapsed_time, stats):
+    """Display various statistics about the session"""
+    sent_msgs = stats.sentMessages
+    recvd_msgs = stats.rcvdMessages
+    rate = sent_msgs/(elapsed_time+1e-10)
+    lost = sent_msgs - recvd_msgs
+    loss_rate_p = (lost/sent_msgs if sent_msgs else 0) * 100
+    print("Message statistics for {}".format(hostname))
+    template = ", ".join(("    Sent = {0}, Rate = {1:0.2f}, Received = {2}",
+                          "Lost = {3} ({4:6.2f}% loss)"))
+    print(template.format(sent_msgs, rate, recvd_msgs, lost, loss_rate_p))
 
 
 def set_loglevel(strloglevel):
@@ -172,7 +189,7 @@ def main(args):
         client.set_parameters(size=params.size, rate=params.rate,
                               bodytype=params.bodytype, body=params.body)
         if params.msg:
-            send_messages(client, params.count, params.quiet)
+            send_messages(client, params)
         elif params.cmd:
             print('send_commands(params)')
         elif params.rtcmd:

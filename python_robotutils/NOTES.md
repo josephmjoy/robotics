@@ -2,13 +2,42 @@
 
 
 
+## February 10, 2018D JMJ: Adding timing to the echo client
+Things to measure:
+- total time
+- total messages sent
+- total messages received
+- messages per second
+- failure rate
+- response time for an individual packet. This requires matching up a message with its response - but we could
+  do this matching just every Nth message if sending at a high rate or a very large number of messages. I think it's
+  better to do that response time with commands and rt commands instead of trying to correlate outgoing messages with
+  responses from the echo server.
+
+Implemented this in `rcping`. Implemented new method `EchoClient.get_stats` that returns the `robotcomm` statistics.
+The output shows the results of sending 1 million messages. Interestingly, the rate running the client and server
+on the same machine is about half the rate of running them on different machines. I suppose this is expected.
+It's about 2K per second on my Elitebook and 4K per second across machines.
+Sample output below.
+```
+$  rcping -msg -n 1000000 -rate 4000 -q 192.168.1.16
+Message statistics for 192.168.1.16
+    Sent = 1000000, Rate = 3991.94, Received = 998196, Lost = 1804 (0.18% loss)
+Received = 998196
+```
+Loss rate (over Wifi) is hard to characterize. It seems to depend on how many messages are being sent in total.
+At 4K messages per second:
+- 1M:   ~0.2%
+- 100K: 0 to 0.03% usually
+- 10K: often 0 loss
+
 ## February 10, 2018C JMJ: Milestone - successfully ran echo client and server on different machines
 Print output was held until the command terminated when python was invoked directly from the bash shell. It's 
 an artifact of the console - so have to run `winpty python`, not `python`.
  
 Sent 1 million messages from `JMJ-ELITEBOOK` to `JMJ-XPS15` which was running the echo server and the latter dutifully
-sent them back. There was some loss, but I think those are the very last batch
-of messages not being read by the client as it is terminating.
+sent them back. There was some loss - hard to characterize, but it's between 1 in 1K and 1 in 50K messages. It is dependent
+on rate. It's about 1 in 1K, sending 1M messages at a rate of 5K per second. At a slower rate the loss diminishes.
 
 ### `rcping` - implemented -q option, sent/received 100K messages
 Implemented the `-q` quite option in `rcping`, and successfully sent and received 100K messages using `rcping` and `rcecho` -

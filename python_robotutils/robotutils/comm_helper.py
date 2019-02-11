@@ -12,7 +12,7 @@ import time
 
 from . import logging_helper
 from . import _utils
-from .comm.common import DatagramTransport
+from .comm.common import DatagramTransport, ChannelStatistics
 from .comm.robotcomm import RobotComm
 
 
@@ -413,6 +413,11 @@ class EchoClient: # pylint: disable=too-many-instance-attributes
         finally:
             self._teardown()
 
+    def get_stats(self) -> ChannelStatistics:
+        """Returns the robotcomm channel statistics"""
+        stats = list(self._rcomm.get_channel_statistics())
+        assert(len(stats)) == 1
+        return stats[0]
 
     def close(self) -> None:
         """ Closes the echo client."""
