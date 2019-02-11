@@ -1,4 +1,4 @@
-# Design and Development Notes for Python port of `Robotutils`.
+# Design and Development Notes for Python port of `Robotutils`
 
 
 
@@ -530,7 +530,7 @@ At this point, tests are not written, but `comm_helper` compiles with no Pylint 
 the ones explicitly disabled, in particular the catching of all exceptions when sending and in the
 listen thread.
 
-## February 4, 2018C JMJ: Design Note - Eliminating `DatagramTransport.RemoteNode`
+## February 4, 2018B JMJ: Design Note - Eliminating `DatagramTransport.RemoteNode`
 Rationale: `RemoteNode` has two methods: `send` and `address`. `node.send(...)` can be
 replaced by `transport.send(node, ...)`. `node.address()` can be replaced by `str(node)`.
 
@@ -633,7 +633,7 @@ retrying when waiting to exit test in `submitMessage` - which currently waits up
 of time for missing messages to be accounted for. This timeout scheme needs to be refined to work
 even on slow processors, and with any number of messages. That is TBD.
 
-## February 2, 2018A JMJ: Robotcomm send/receive message stress tests pass for more complex cases
+## February 2, 2018B JMJ: Robotcomm send/receive message stress tests pass for more complex cases
 Can successfully send 100,000 messages, with 10 threads and random delays and drops. The max rate of
 submission on my Elitebook seems to be about 5000 per second - this is less than 1/10th the rate of the 
 Java version - which can handle about 100,000 messages per second. Nevertheless, this is a
@@ -1597,7 +1597,7 @@ Porting strategy:
 
 Used chained comparison `assert 0 <= failurerate <= 1` - Pylint pointed this out
 
-## January 14, 2018A JMJ: Finished concurrent unit test for ConcurrentDict
+## January 14, 2018E JMJ: Finished concurrent unit test for ConcurrentDict
 This is `TestConcurrentDict.test_concurrent_cdict`. Multiple threads party on
 a shared `ConcurrentDict`. There are shared keys - all threads party on them -- and
 private keys, that are specific to specific threads. When using private keys, the tests
@@ -1966,7 +1966,7 @@ is not _required_ if you invoke that method via `class.method`, however if not s
 you cannot invoke it via `self.method`, plus it is helpful to announce to everyone that
 it is a static method. Doc: https://docs.python.org/3.7/library/functions.html#staticmethod
 
-## January 4, 2019D JMJ: misc/strmap_helper.get_as_num method
+## January 4, 2019E JMJ: misc/strmap_helper.get_as_num method
 Interesting that this method implements *six* methods in Java
 (`[int, long, float] X [with-minmax, without-minmax]`).  The method
 uses the type of the default value to determine what type of value to return. So
@@ -1974,7 +1974,7 @@ use `helper.get_as_num(key, 10, ...)` to get an integer, and
 `helper.get_as_num(key, 10.0, ...)` to get a float value. The docstring reports this, but 
 it may be a bit too clever.
 
-## January 4, 2019C JMJ: Started adding unit tests for misc/strmap_helper.py
+## January 4, 2019D JMJ: Started adding unit tests for misc/strmap_helper.py
 Unit tests are in `misc/test_strmap_helper.py`. The one test that's in there,
 that tests (partially) the empty-dictionary case, runs successfully.
 
@@ -2034,7 +2034,7 @@ _lot_ of porting to be done.
 
 - For each class in above list, port over `JUnit` tests and implementation in parallel
 
-## December 23, 2018A JMJ: Considered, then dropped pytest
+## December 23, 2018A JMJ: Considered, then dropped Pytest
 `Pytest` is well supported and has many features over `unittest`. However it is
 a separate package, and thus far, `robotutils` just uses built in Python
 libraries, so we don't want to add anything unless there is a really compelling
