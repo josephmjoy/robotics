@@ -88,6 +88,17 @@ I had to CTRL-C
 So we're stuck waiting for the server to close, after having sent and received all messages.
 Need to investigate. But great that several comm-related tests pass!
 
+Doesn't help to call socket.shutdown or to set the timeout to 0 or a small value before close.
+Setting up the socket with a timeout of, say, 1 second, gets the basic UDP test to work. However
+the echo tests hang - again waiting for the listening thread to exit, but the thread is waiting
+on `recvfrom`.
+
+
+TODO :
+1. Figure out how to properly the message rate for the stress tests in `TestRobotComm`. A value of 5K works on the Elitebook. A value of 1K works on the Pi.
+2.  Need to take a step back and come up with a datagram listening scheme that works on both Windows
+and the Pi. Investigate asynchronous I/O
+
 ## February 14, 2018A JMJ: Attempting to get unit tests to run on the Pi
 Testing is on `babybot-pi`, the Raspberry Pi B+ on the Baby Bot. It is running Raspbian stretch lite,
 version 2018-11-13. For 'deployment' I've installed git on the pi (email:
