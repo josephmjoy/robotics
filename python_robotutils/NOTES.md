@@ -1,6 +1,16 @@
 # Design and Development Notes for Python port of `robotutils`
 
 ## February 14, 2018B JMJ: Investigating passing and failing `comm` and `comm_helper` tests
+TODO :
+1. Need to take a step back and come up with a datagram listening scheme that works on both Windows. 
+ Closing the socket right in the middle of it being used by another thread anyways is frowned upon, 
+ and that makes sense. Explore asyncio or using two sockets and using `select`. Needs to work with
+ Python 3.5
+2. Figure out how to properly the message rate for the stress tests in `TestRobotComm`. A value of 5K works on the Elitebook. A value of 1K works on the Pi.
+and the Pi. Investigate asynchronous I/O
+
+Details of investigation below...
+
 Many unit tests pass! Some test output:
 ```
 pi@babybot-pi:~/github/robotics/python_robotutils $ python3 -m unittest tests.test_robotcomm.TestMockTransport
@@ -93,11 +103,6 @@ Setting up the socket with a timeout of, say, 1 second, gets the basic UDP test 
 the echo tests hang - again waiting for the listening thread to exit, but the thread is waiting
 on `recvfrom`.
 
-
-TODO :
-1. Figure out how to properly the message rate for the stress tests in `TestRobotComm`. A value of 5K works on the Elitebook. A value of 1K works on the Pi.
-2.  Need to take a step back and come up with a datagram listening scheme that works on both Windows
-and the Pi. Investigate asynchronous I/O
 
 ## February 14, 2018A JMJ: Attempting to get unit tests to run on the Pi
 Testing is on `babybot-pi`, the Raspberry Pi B+ on the Baby Bot. It is running Raspbian stretch lite,
