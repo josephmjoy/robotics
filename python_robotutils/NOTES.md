@@ -1,5 +1,92 @@
 # Design and Development Notes for Python port of `robotutils`
 
+## February 14, 2018B JMJ: Investigating passing and failing `comm` and `comm_helper` tests
+Many unit tests pass! Some test output:
+```
+pi@babybot-pi:~/github/robotics/python_robotutils $ python3 -m unittest tests.test_robotcomm.TestMockTransport
+transport_simple: received 7048/10000 messages
+.transport_simple: received 4997/10000 messages
+.
+----------------------------------------------------------------------
+Ran 2 tests in 4.770s
+```
+Similarly all these pass...
+```
+ $ python3 -m unittest tests.test_robotcomm.TestRobotComm.test_message_basic
+Ran 1 test in 0.013s
+$ python3 -m unittest tests.test_robotcomm.TestRobotComm.test_stress_send_and_receive_messages_trivial
+Ran 1 test in 0.014s
+$ python3 -m unittest tests.test_robotcomm.TestRobotComm.test_stress_send_and_receive_messages_short
+Ran 1 test in 2.501s
+```
+But this one didn't:
+```
+$ python3 -m unittest tests.test_robotcomm.TestRobotComm.test_stress_send_and_receive_messages_medium
+F
+======================================================================
+FAIL: test_stress_send_and_receive_messages_medium (tests.test_robotcomm.TestRobotComm)
+Sends 10000 messages with delays and drops; 10 threads
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/pi/github/robotics/python_robotutils/tests/test_robotcomm.py", line 665, in test_stress_send_and_receive_messages_medium
+    stresser.submit_messages(nmessages, message_rate, drop_rate)
+  File "/home/pi/github/robotics/python_robotutils/tests/test_robotcomm.py", line 476, in submit_messages
+    self.final_send_message_validation()
+  File "/home/pi/github/robotics/python_robotutils/tests/test_robotcomm.py", line 536, in final_send_message_validation
+    self.harness.assertEqual(randomdrops, mapsize)
+AssertionError: 965 != 1647
+
+----------------------------------------------------------------------
+Ran 1 test in 69.767s
+
+FAILED (failures=1)
+```
+I reduced the rate of sending from 5K (about the max on the EliteBook) to 1K and now the
+test passes... (with INFO logging turned on)
+```
+$ python3 -m unittest tests.test_robotcomm.TestRobotComm.test_stress_send_and_receive_messages_medium
+INFO:robotutils.comm:START_LISTENING instance: robotcomm
+INFO:rcommtest:Submitting 10000 messages. rate: 1000: alwaysDropRate: 0
+INFO:rcommtest:SUBMIT Beginning to submit 1000 messages
+INFO:rcommtest:SUBMIT Beginning to submit 1000 messages
+INFO:rcommtest:SUBMIT Beginning to submit 1000 messages
+INFO:rcommtest:SUBMIT Beginning to submit 1000 messages
+INFO:rcommtest:SUBMIT Beginning to submit 1000 messages
+INFO:rcommtest:SUBMIT Beginning to submit 1000 messages
+INFO:rcommtest:SUBMIT Beginning to submit 1000 messages
+INFO:rcommtest:SUBMIT Beginning to submit 1000 messages
+INFO:rcommtest:SUBMIT Beginning to submit 1000 messages
+INFO:rcommtest:SUBMIT Beginning to submit 1000 messages
+INFO:rcommtest:SUBMIT Beginning to submit 0 messages
+INFO:rcommtest:WAITING Waiting to receive up to 10000 messages
+INFO:rcommtest:Breaking out. msgmap: 929
+INFO:rcommtest:Final verification ForceDrops: 924 RandomDrops: 929 MISSING: 0
+.
+----------------------------------------------------------------------
+Ran 1 test in 14.559s
+```
+This one hangs on closing after actually sending and receiving successfully.
+```
+pi@babybot-pi:~/github/robotics/python_robotutils $ python3 -m unittest tests.test_comm_helper.CommUtilsTest.test_udp_transport_simple
+INFO:test:Waiting for all messages to arrive...
+INFO:test:Done waiting for all 1000 messages to arrive.
+INFO:test:Closing client...
+INFO:test:Client closed. Closing server...
+```
+I had to CTRL-C
+```
+  ...
+ 
+  File "/home/pi/github/robotics/python_robotutils/robotutils/comm_helper.py", line 92, in stop_listening
+    thread.join()
+  File "/usr/lib/python3.5/threading.py", line 1054, in join
+    self._wait_for_tstate_lock()
+  File "/usr/lib/python3.5/threading.py", line 1070, in _wait_for_tstate_lock
+    elif lock.acquire(block, timeout):
+
+```
+So we're stuck waiting for the server to close, after having sent and received all messages.
+Need to investigate. But great that several comm-related tests pass!
 
 ## February 14, 2018A JMJ: Attempting to get unit tests to run on the Pi
 Testing is on `babybot-pi`, the Raspberry Pi B+ on the Baby Bot. It is running Raspbian stretch lite,
