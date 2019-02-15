@@ -24,7 +24,7 @@ helper classes. Some exmples:
     False
 """
 
-from enum import Enum, IntEnum, auto
+from enum import Enum, IntEnum
 from collections import namedtuple
 import string
 
@@ -35,22 +35,25 @@ PROTOCOL_SIGNATURE = "3wIC" # About 1 of 10E7 combnations.
 # representations. Therefore they MUST NOT be changed or else it will break the
 # protcol.
 #
+# IMPLEMENATION NOTE:  The nums use integer values instead of auto() because the latter
+# was introduced in Python 3.6. Can't assume that version is on the Raspberry Pi.
+#
 
 class DatagramType(Enum):
     """The type of the datagram"""
-    MSG = auto()
-    CMD = auto()
-    CMDRESP = auto()
-    RTCMD = auto()
-    RTCMDRESP = auto()
-    CMDRESPACK = auto()
+    MSG = 1
+    CMD = 2
+    CMDRESP = 3
+    RTCMD = 4
+    RTCMDRESP = 5
+    CMDRESPACK = 6
 
 class CommandStatus(Enum):
     """Command status"""
-    QUEUED = auto()
-    COMPUTING = auto()
-    COMPLETED = auto()
-    REJECTED = auto()
+    QUEUED = 1
+    COMPUTING = 2
+    COMPLETED = 3
+    REJECTED = 4
 
 
 class Position(IntEnum):

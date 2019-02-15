@@ -1,6 +1,93 @@
 # Design and Development Notes for Python port of `robotutils`
 
 
+## February 14, 2018A JMJ: Attempting to get unit tests to run on the Pi
+Testing is on `babybot-pi`, the Raspberry Pi B+ on the Baby Bot. It is running Raspbian stretch lite,
+version 2018-11-13. For 'deployment' I've installed git on the pi (email:
+`jmjlives@gmail.com`) and cloned the robotics repository. That went smoothly -
+ssh in from my laptop. Also installed Pylint. Here's `git config --list`
+output from the Pi:
+```
+pi@babybot-pi:~/github/robotics/python_robotutils $ git config --list
+user.name=JMJ-Device
+user.email=jmjlives@gmail.com
+core.repositoryformatversion=0
+core.filemode=true
+core.bare=false
+core.logallrefupdates=true
+remote.origin.url=https://github.com/josephmjoy/robotics
+remote.origin.fetch=+refs/heads/*:refs/remotes/origin/*
+branch.master.remote=origin
+branch.master.merge=refs/heads/master
+```
+First hiccup: `enum.auto` is version 3.6 and later, while the current Raspbian stretch comes with
+Python 3.5.3. I do not want to update Python on the Pi if I can help it. So I plan to do away with
+using `auto`.
+
+Fixed that - by editing the files on the Pi itself.
+
+Very good progress. These tests files pass:
+`test_strmap_helper.py`, `test_config_helper.py`, `test_concurrent_helper.py`. The later is
+testing various concurrent data structures, so I'm relieved it's passing:
+```
+pi@babybot-pi:~/github/robotics/python_robotutils $ python3 -m unittest discover -s ~/github/robotics/python_robotutils -p 'test_concurrent_helper.py'
+.....Task task0 completed. local_ops: 40764
+Task task1 completed. local_ops: 40813
+Task task2 completed. local_ops: 40975
+opcount: 122552
+........scheduler CANCEL: count=5609/100000
+.scheduler NOCANCEL: count=20000/20000
+..
+----------------------------------------------------------------------
+Ran 16 tests in 71.633s
+```
+Interesting to compare with the run on my Elitebook:
+```
+$ rutest concurrent_helper
+.....Task task0 completed. local_ops: 41083
+Task task1 completed. local_ops: 41187
+Task task2 completed. local_ops: 40868
+opcount: 123138
+........scheduler CANCEL: count=1940/100000
+.scheduler NOCANCEL: count=20000/20000
+..
+----------------------------------------------------------------------
+Ran 16 tests in 20.642s
+```
+So the Pi is about 2/7 the speed of the Elitebook. Not bad at all. This is a very crude number
+because only parts of the test are CPU bound - there are some sleeps there.
+Anyway, it's great that these tests pass.
+
+One test that's failing is `test_msgmap`:
+```
+  File "/home/pi/github/robotics/python_robotutils/tests/test_msgmap.py", line 51, in test_simple_dict_to_str
+    self.assertEqual(s, 'k1:v1 k2:v2 k3:v3')
+AssertionError: 'k2:v2 k3:v3 k1:v1' != 'k1:v1 k2:v2 k3:v3'
+- k2:v2 k3:v3 k1:v1
++ k1:v1 k2:v2 k3:v3
+```
+In Python 3.7 onwards, dictionary enumeration is in the order of insertions. So that's what we are hitting. Fix is to fix the tests so that it doesn't assume this.
+
+Fixed this by in one case sorting the order of the string being compared and in a second case
+only doing a test if the version is at least 3.6:
+
+```if min_version(3, 7):
+            output_msg = msgmap.dict_to_str(d)
+            self.assertEqual(output_msg, msg_clean)
+...
+
+def min_version(major, minor):
+    """Returns true if the python version is at least {major}'.'{minor}"""
+    cur = sys.version_info
+    return cur.major >= major and cur.minor >= minor
+```
+The neat thing about these fixes is they were debugged and fixed on the Pi itself - ssh'd in. I
+also used local git on the Pi to do diffs and check in locally - after originally cloning the project.
+I did not push those changes back up - as I'm (currently) using 2-factor authentication on Github and
+I don't want to put password information for my account on the Pi. So getting these updated changes
+back to my laptop required using `sftp` and copying those one by one - a bit of a drag. Need to explore
+a better workflow for retrieving changes made on the Pi - that doesn't require connecting to Github,
+because an Internet connection can't be assumed.
 
 ## February 11, 2018A JMJ: Moved `RobotComm` tests to the tests directory
 `test_robotcomm.py` and `test_comm_helper.py` were sitting side-by-side with the code they were testing. They have been

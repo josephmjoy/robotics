@@ -8,6 +8,7 @@ Author: JMJ
 
 import unittest
 import random
+import sys
 
 from .context import msgmap
 
@@ -48,7 +49,9 @@ class TestStringMethods(unittest.TestCase):
     def test_simple_dict_to_str(self):
         """ Simple case of multiple kv-pairs - dict to str"""
         s = msgmap.dict_to_str({'k1':'v1', 'k2':'v2', 'k3':'v3'})
-        self.assertEqual(s, 'k1:v1 k2:v2 k3:v3')
+        # On Python < 3.7, key insert order may not be in order of insertion...
+        sorted_s = " ".join(sorted(s.split()))
+        self.assertEqual(sorted_s, 'k1:v1 k2:v2 k3:v3')
 
     def test_more_complex_mappings(self):
         '''
@@ -116,12 +119,20 @@ class TestStringMethods(unittest.TestCase):
             self.assertEqual(v, d.get(k))
 
         # now convert back to a string and verify it is what we expect - the
-        # clean string!
-        output_msg = msgmap.dict_to_str(d)
-        self.assertEqual(output_msg, msg_clean)
+        # clean string! This only works in Python 3.7+ because key order is
+        # not deterministic in earlier versons
+        if min_version(3, 7):
+            output_msg = msgmap.dict_to_str(d)
+            self.assertEqual(output_msg, msg_clean)
+
 
 def random_whitespace():
     """Return a 'random' amount of 'random' whitespace characters"""
     whitespace = '    \t\t    \n\r      '
     i = random.randrange(len(whitespace))
     return whitespace[i:]
+
+def min_version(major, minor):
+    """Returns true if the python version is at least {major}'.'{minor}"""
+    cur = sys.version_info
+    return cur.major >= major and cur.minor >= minor
