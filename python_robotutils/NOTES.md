@@ -76,9 +76,10 @@ Fixed this by in one case sorting the order of the string being compared and in 
 only doing a test if the version is at least 3.7:
 
 ```
-if min_version(3, 7):
-            output_msg = msgmap.dict_to_str(d)
-            self.assertEqual(output_msg, msg_clean)
+	if min_version(3, 7):
+	    output_msg = msgmap.dict_to_str(d)
+	    self.assertEqual(output_msg, msg_clean)
+...
 
 def min_version(major, minor):
     """Returns true if the python version is at least {major}'.'{minor}"""
