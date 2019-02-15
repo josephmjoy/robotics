@@ -29,6 +29,7 @@ Fixed that - by editing the files on the Pi itself.
 Very good progress. These tests files pass:
 `test_strmap_helper.py`, `test_config_helper.py`, `test_concurrent_helper.py`. The later is
 testing various concurrent data structures, so I'm relieved it's passing:
+
 ```
 pi@babybot-pi:~/github/robotics/python_robotutils $ python3 -m unittest discover -s ~/github/robotics/python_robotutils -p 'test_concurrent_helper.py'
 .....Task task0 completed. local_ops: 40764
@@ -41,6 +42,7 @@ opcount: 122552
 ----------------------------------------------------------------------
 Ran 16 tests in 71.633s
 ```
+
 Interesting to compare with the run on my Elitebook:
 ```
 $ rutest concurrent_helper
@@ -59,6 +61,7 @@ because only parts of the test are CPU bound - there are some sleeps there.
 Anyway, it's great that these tests pass.
 
 One test that's failing is `test_msgmap`:
+
 ```
   File "/home/pi/github/robotics/python_robotutils/tests/test_msgmap.py", line 51, in test_simple_dict_to_str
     self.assertEqual(s, 'k1:v1 k2:v2 k3:v3')
@@ -66,15 +69,17 @@ AssertionError: 'k2:v2 k3:v3 k1:v1' != 'k1:v1 k2:v2 k3:v3'
 - k2:v2 k3:v3 k1:v1
 + k1:v1 k2:v2 k3:v3
 ```
+
 In Python 3.7 onwards, dictionary enumeration is in the order of insertions. So that's what we are hitting. Fix is to fix the tests so that it doesn't assume this.
 
 Fixed this by in one case sorting the order of the string being compared and in a second case
-only doing a test if the version is at least 3.6:
+only doing a test if the version is at least 3.7:
 
-```if min_version(3, 7):
+```
+if min_version(3, 7):
             output_msg = msgmap.dict_to_str(d)
             self.assertEqual(output_msg, msg_clean)
-...
+```
 
 def min_version(major, minor):
     """Returns true if the python version is at least {major}'.'{minor}"""
